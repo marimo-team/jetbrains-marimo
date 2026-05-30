@@ -10,36 +10,57 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.content.ContentFactory
 import com.github.kirangadhave.marimopycharm.MyBundle
 import com.github.kirangadhave.marimopycharm.services.MyProjectService
+import com.intellij.openapi.util.Disposer
+import com.intellij.ui.jcef.JBCefApp
+import com.intellij.ui.jcef.JBCefBrowser
+import java.awt.BorderLayout
 import javax.swing.JButton
 
 
 class MyToolWindowFactory : ToolWindowFactory {
-
-    init {
-        thisLogger().warn("Don't forget to remove all non-needed sample code files with their corresponding registration entries in `plugin.xml`.")
-    }
-
-    override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
+    override fun createToolWindowContent(
+        project: Project,
+        toolWindow: ToolWindow
+    ) {
         val myToolWindow = MyToolWindow(toolWindow)
         val content = ContentFactory.getInstance().createContent(myToolWindow.getContent(), null, false)
         toolWindow.contentManager.addContent(content)
     }
 
-    override fun shouldBeAvailable(project: Project) = true
-
-    class MyToolWindow(toolWindow: ToolWindow) {
-
+    class MyToolWindow(private val toolWindow: ToolWindow) {
         private val service = toolWindow.project.service<MyProjectService>()
 
-        fun getContent() = JBPanel<JBPanel<*>>().apply {
+        fun getContent() = JBPanel<JBPanel<*>>(BorderLayout()).apply {
             val label = JBLabel(MyBundle["randomLabel", "?"])
 
-            add(label)
-            add(JButton(MyBundle["shuffle"]).apply {
-                addActionListener {
-                    label.text = MyBundle["randomLabel", service.getRandomNumber()]
-                }
-            })
+            val controls = JBPanel<JBPanel<*>>().apply {
+                add(label)
+                add(JButton(MyBundle["shuffle"]).apply {
+                    addActionListener {
+                        label.text = MyBundle["randomLabel", service.getRandomNumber()]
+                    }
+                })
+                add(JButton("Open Google").apply{
+                    addActionListener {
+                        openBrowser(this@apply.parent.parent as JBPanel<*>)
+                    }
+                })
+            }
+
+            add(controls, BorderLayout.NORTH)
+        }
+
+        private fun openBrowser(container: JBPanel<*>) {
+            if (!JBCefApp.isSupported()) {
+                thisLogger().warn("JCEF is not supported in this runtime!")
+                return
+            }
+
+            val browser = JBCefBrowser("https://google.com")
+            Disposer.register(toolWindow.disposable,browser)
+            container.add(browser.component, BorderLayout.CENTER)
+            container.revalidate()
+            container.repaint()
         }
     }
 }

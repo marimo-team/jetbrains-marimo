@@ -1,3 +1,4 @@
+import org.gradle.process.CommandLineArgumentProvider
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
@@ -11,7 +12,17 @@ dependencies {
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
-        intellijIdea("2025.2.6.2")
+        pycharm("2026.1.2")
         testFramework(TestFrameworkType.Platform)
+    }
+}
+
+val sampleProjectPath = layout.projectDirectory.dir("examples").asFile.absolutePath
+
+tasks {
+    runIde {
+        argumentProviders += CommandLineArgumentProvider {
+            listOf(sampleProjectPath)
+        }
     }
 }
