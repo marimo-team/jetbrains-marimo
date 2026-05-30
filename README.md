@@ -1,45 +1,76 @@
-# marimo-pycharm
+# marimo for PyCharm
 
-![Build](https://github.com/kirangadhave/marimo-pycharm/workflows/Build/badge.svg)
-[![Version](https://img.shields.io/jetbrains/plugin/v/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
-[![Downloads](https://img.shields.io/jetbrains/plugin/d/MARKETPLACE_ID.svg)](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID)
+Open and run [marimo](https://marimo.io) notebooks directly in PyCharm.
 
-## Template ToDo list
-- [x] Create a new [IntelliJ Platform Plugin Template][template] project.
-- [ ] Get familiar with the [template documentation][template].
-- [ ] Adjust the [group](./gradle.properties), as well as the [id](./src/main/resources/META-INF/plugin.xml), [name](./src/main/resources/META-INF/plugin.xml), and [sources package](./src/main/kotlin).
-- [ ] Adjust the plugin [description](./src/main/resources/META-INF/plugin.xml) (see [Tips][docs:plugin-description]) and this README to describe what your plugin does.
-- [ ] Review the [Legal Agreements](https://plugins.jetbrains.com/docs/marketplace/legal-agreements.html?from=IJPluginTemplate).
-- [ ] [Publish a plugin manually](https://plugins.jetbrains.com/docs/intellij/publishing-plugin.html?from=IJPluginTemplate) for the first time.
-- [ ] Set the `MARKETPLACE_ID` in the above README badges. You can obtain it once the plugin is published to JetBrains Marketplace.
-- [ ] Set the [Plugin Signing](https://plugins.jetbrains.com/docs/intellij/plugin-signing.html?from=IJPluginTemplate) related [secrets](https://github.com/JetBrains/intellij-platform-plugin-template#environment-variables).
-- [ ] Set the [Deployment Token](https://plugins.jetbrains.com/docs/marketplace/plugin-upload.html?from=IJPluginTemplate).
-- [ ] Click the <kbd>Watch</kbd> button on the top of the [IntelliJ Platform Plugin Template][template] to be notified about releases containing new features and fixes.
+marimo notebooks are stored as plain Python files, and this plugin lets you open them in a full marimo editor without leaving your IDE — reactive cells, interactive UI widgets, package management, and more, all in a dedicated notebook tab.
 
-This Fancy IntelliJ Platform Plugin is going to be your implementation of the brilliant ideas that you have.
+> **Early preview.** This plugin is an experimental proof of concept. Expect rough edges, and please share feedback.
 
-## Installation
+## Features
 
-- Using the IDE built-in plugin system:
+- **Open `.py` marimo notebooks as notebooks** — files that use marimo open in an interactive editor instead of a plain text view.
+- **Full marimo experience** — reactive execution, `mo.ui` widgets, SQL cells, the variables and dependency panels, and the built-in package manager all work as they do in marimo.
+- **Git-friendly** — notebooks stay as regular `.py` files, so diffs and reviews work normally.
 
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>Marketplace</kbd> > <kbd>Search for "marimo-pycharm"</kbd> >
-  <kbd>Install</kbd>
+## Requirements
 
-- Using JetBrains Marketplace:
+- PyCharm 2025.1 or later (Community or Professional)
+- [uv](https://docs.astral.sh/uv/) installed and on your `PATH` (the plugin uses it to run marimo)
 
-  Go to [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID) and install it by clicking the <kbd>Install to ...</kbd> button in case your IDE is running.
+## Getting started
 
-  You can also download the [latest release](https://plugins.jetbrains.com/plugin/MARKETPLACE_ID/versions) from JetBrains Marketplace and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
+1. Install the plugin.
+2. Open a folder containing a marimo notebook.
+3. Open the notebook `.py` file — it loads in the marimo editor.
+4. Edit and run cells; results update reactively.
 
-- Manually:
+A marimo notebook is a Python file that looks roughly like this:
 
-  Download the [latest release](https://github.com/kirangadhave/marimo-pycharm/releases/latest) and install it manually using
-  <kbd>Settings/Preferences</kbd> > <kbd>Plugins</kbd> > <kbd>⚙️</kbd> > <kbd>Install plugin from disk...</kbd>
+```python
+import marimo
 
+app = marimo.App()
+
+@app.cell
+def _():
+    import marimo as mo
+    return (mo,)
+```
+
+If a `.py` file isn't a marimo notebook, it opens in the normal Python editor as usual.
+
+## Development
+
+This plugin is built on the [IntelliJ Platform Plugin Template][template]. You'll need a JDK 21+ (IntelliJ IDEA's bundled JetBrains Runtime works fine); Gradle is provided via the wrapper.
+
+Run the plugin in a sandboxed IDE:
+
+```bash
+./gradlew runIde
+```
+
+This launches a separate PyCharm/IDEA instance with the plugin loaded. Open a marimo `.py` file there to try it out. (In IntelliJ IDEA you can also use the **Run Plugin** run configuration.)
+
+Other useful tasks:
+
+| Task | What it does |
+|---|---|
+| `./gradlew runIde` | Sandboxed IDE with the plugin loaded |
+| `./gradlew test` | Run the test suite |
+| `./gradlew buildPlugin` | Build a distributable `.zip` in `build/distributions/` |
+| `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
+
+By default the plugin runs released marimo via `uvx marimo`. To test against a local marimo checkout, set the `MARIMO_CMD` environment variable before launching:
+
+```bash
+MARIMO_CMD="uv run --project /path/to/marimo marimo" ./gradlew runIde
+```
+
+## Feedback
+
+This is an early proof of concept built as a side project. Bug reports and ideas are welcome via the issue tracker. Interest in marimo support for PyCharm is also tracked upstream at [JetBrains PY-78283](https://youtrack.jetbrains.com/issue/PY-78283/Add-UI-support-for-Marimo).
 
 ---
 Plugin based on the [IntelliJ Platform Plugin Template][template].
 
 [template]: https://github.com/JetBrains/intellij-platform-plugin-template
-[docs:plugin-description]: https://plugins.jetbrains.com/docs/intellij/plugin-user-experience.html#plugin-description-and-presentation
