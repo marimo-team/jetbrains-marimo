@@ -10,10 +10,14 @@
 
     <depends>com.intellij.modules.platform</depends>
 
-    <resource-bundle>messages.MyBundle</resource-bundle>
+    <resource-bundle>messages.MarimoBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <toolWindow factoryClass="com.github.kirangadhave.marimopycharm.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
-        <postStartupActivity implementation="com.github.kirangadhave.marimopycharm.startup.MyProjectActivity" />
+        <notificationGroup id="marimo.notifications" displayType="BALLOON"/>
     </extensions>
+
+    <projectListeners>
+        <listener class="com.github.kirangadhave.marimopycharm.listeners.PythonFileOpenListener"
+                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
+    </projectListeners>
 </idea-plugin>
