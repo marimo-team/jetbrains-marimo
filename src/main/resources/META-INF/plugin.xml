@@ -1,0 +1,19 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>org.marimo.pycharm</id>
+    <name>marimo for PyCharm</name>
+    <vendor>marimo</vendor>
+    <description><![CDATA[
+        <p>Open <b>marimo</b> notebooks (<code>.py</code>) inside PyCharm. PoC: renders the marimo web editor in an embedded JCEF browser tab.</p>
+        <p>20% project — strict fail-fast PoC. See <code>.context/plan.md</code>.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+
+    <resource-bundle>messages.MyBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <toolWindow factoryClass="org.jetbrains.plugins.template.toolWindow.MyToolWindowFactory" id="MyToolWindow"/>
+        <postStartupActivity implementation="org.jetbrains.plugins.template.startup.MyProjectActivity" />
+    </extensions>
+</idea-plugin>
