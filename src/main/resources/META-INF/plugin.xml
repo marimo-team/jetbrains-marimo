@@ -13,11 +13,6 @@
     <resource-bundle>messages.MarimoBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <notificationGroup id="marimo.notifications" displayType="BALLOON"/>
+        <fileEditorProvider implementation="com.github.kirangadhave.marimopycharm.editor.MarimoFileEditorProvider"/>
     </extensions>
-
-    <projectListeners>
-        <listener class="com.github.kirangadhave.marimopycharm.listeners.PythonFileOpenListener"
-                  topic="com.intellij.openapi.fileEditor.FileEditorManagerListener"/>
-    </projectListeners>
 </idea-plugin>
