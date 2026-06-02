@@ -9,6 +9,7 @@ class LauncherRegistryTest : BasePlatformTestCase() {
         override val id = id
         override fun canLaunch(request: LaunchRequest) = can
         override fun launch(request: LaunchRequest) = throw UnsupportedOperationException()
+        override fun marimoCliPrefix(request: LaunchRequest): List<String>? = null
     }
 
     private val request: LaunchRequest

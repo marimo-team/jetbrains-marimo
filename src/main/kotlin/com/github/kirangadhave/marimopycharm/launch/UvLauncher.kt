@@ -17,12 +17,15 @@ class UvLauncher : MarimoLauncher {
         return startMarimoServer(cmd, request.host, request.port)
     }
 
+    override fun marimoCliPrefix(request: LaunchRequest): List<String>? =
+        findUv()?.let { listOf(it, "run", "--with", "marimo", "marimo") }
+
     /**
      * GUI-launched IDEs on macOS inherit a minimal PATH that excludes Homebrew (/opt/homebrew/bin),
      * the uv installer dir (~/.local/bin), and /usr/local/bin — so a PATH-only lookup misses uv that
      * the user's shell can see. Fall back to the well-known install locations before giving up.
      */
-    private fun findUv(): String? {
+    internal fun findUv(): String? {
         com.intellij.execution.configurations.PathEnvironmentVariableUtil
             .findExecutableInPathOnAnyOS("uv")?.let { return it.absolutePath }
 

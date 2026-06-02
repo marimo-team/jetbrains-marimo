@@ -42,6 +42,13 @@ class MarimoServerService(private val project: Project) : Disposable {
     /** Base URL of the running server for [file], or null if none has been started. */
     fun baseUrlFor(file: VirtualFile): String? = baseUrls[file.url]
 
+    /** marimo CLI prefix for [file], re-resolving the applicable launcher. Null if none applies. */
+    fun marimoCliPrefixFor(file: VirtualFile): List<String>? {
+        val request = LaunchRequest(project = project, notebook = file, port = 0)
+        val launcher = runCatching { registry.resolve(request) }.getOrNull() ?: return null
+        return launcher.marimoCliPrefix(request)
+    }
+
     fun release(file: VirtualFile) {
         handles.remove(file.url)?.let(Disposer::dispose)
         baseUrls.remove(file.url)

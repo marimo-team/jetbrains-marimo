@@ -10,6 +10,7 @@
 
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.python</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
 
     <resource-bundle>messages.MarimoBundle</resource-bundle>
 
@@ -17,5 +18,17 @@
         <fileEditorProvider implementation="com.github.kirangadhave.marimopycharm.editor.MarimoFileEditorProvider"/>
         <toolWindow id="marimo Variables" anchor="right" secondary="true"
                     factoryClass="com.github.kirangadhave.marimopycharm.vars.MarimoVariablesToolWindowFactory"/>
+        <notificationGroup id="Marimo" displayType="BALLOON"/>
     </extensions>
+
+    <actions>
+        <group id="Marimo.Pair"
+               class="com.github.kirangadhave.marimopycharm.pair.MarimoPairActionGroup"
+               text="Pair with marimo"
+               description="Start an AI harness paired on this marimo notebook, or copy its prompt"
+               icon="AllIcons.Actions.Lightning"
+               popup="true">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+        </group>
+    </actions>
 </idea-plugin>

@@ -14,6 +14,7 @@ dependencies {
     intellijPlatform {
         pycharm("2026.1.2")
         bundledPlugin("PythonCore")
+        bundledPlugin("org.jetbrains.plugins.terminal")
         testFramework(TestFrameworkType.Platform)
     }
 }

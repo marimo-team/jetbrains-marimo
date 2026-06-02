@@ -1,6 +1,10 @@
 package com.github.kirangadhave.marimopycharm.editor
 
 import com.github.kirangadhave.marimopycharm.server.MarimoServerService
+import com.intellij.openapi.actionSystem.ActionManager
+import com.intellij.openapi.actionSystem.CommonDataKeys
+import com.intellij.openapi.actionSystem.DataProvider
+import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditor
@@ -21,16 +25,21 @@ import javax.swing.SwingConstants
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
-    private val panel = JPanel(BorderLayout())
+    private val panel = object : JPanel(BorderLayout()), DataProvider {
+        override fun getData(dataId: String): Any? =
+            if (CommonDataKeys.VIRTUAL_FILE.`is`(dataId)) file else null
+    }
     private val browser = if (JBCefApp.isSupported()) JBCefBrowser() else null
     private val server = project.service<MarimoServerService>()
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     init {
+        addPairToolbar()
         panel.add(JLabel("Starting marimo…", SwingConstants.CENTER), BorderLayout.CENTER)
         server.urlFor(file).whenComplete { url, err ->
             ApplicationManager.getApplication().invokeLater {
                 panel.removeAll()
+                addPairToolbar()
                 if (err != null || browser == null) {
                     panel.add(JLabel(errorText(err), SwingConstants.CENTER), BorderLayout.CENTER)
                 } else {
@@ -40,6 +49,15 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
                 panel.revalidate(); panel.repaint()
             }
         }
+    }
+
+    private fun addPairToolbar() {
+        val pairGroup = ActionManager.getInstance().getAction("Marimo.Pair") ?: return
+        val group = DefaultActionGroup(pairGroup)
+        val toolbar = ActionManager.getInstance()
+            .createActionToolbar("MarimoEditorToolbar", group, true)
+        toolbar.targetComponent = panel
+        panel.add(toolbar.component, BorderLayout.NORTH)
     }
 
     private fun errorText(err: Throwable?): String =

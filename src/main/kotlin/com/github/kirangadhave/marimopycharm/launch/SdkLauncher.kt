@@ -18,6 +18,10 @@ class SdkLauncher : MarimoLauncher {
         return startMarimoServer(cmd, request.host, request.port)
     }
 
+    override fun marimoCliPrefix(request: LaunchRequest): List<String>? =
+        SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
+            ?.let { listOf(it, "-m", "marimo") }
+
     companion object {
         fun buildCommandLine(
             pythonPath: String, notebookPath: String, workDir: String, host: String, port: Int,

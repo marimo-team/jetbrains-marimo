@@ -31,6 +31,13 @@ interface MarimoLauncher {
     fun canLaunch(request: LaunchRequest): Boolean
     /** Spawn the server. */
     fun launch(request: LaunchRequest): MarimoServerHandle
+
+    /**
+     * Tokens that invoke the marimo CLI for this launcher (e.g.
+     * ["uv","run","--with","marimo","marimo"] or ["/path/python","-m","marimo"]).
+     * Null if the CLI cannot be resolved on this machine.
+     */
+    fun marimoCliPrefix(request: LaunchRequest): List<String>?
 }
 
 class NoApplicableLauncherException(request: LaunchRequest) :
