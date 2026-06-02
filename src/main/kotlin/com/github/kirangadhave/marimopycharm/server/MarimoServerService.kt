@@ -3,6 +3,7 @@ package com.github.kirangadhave.marimopycharm.server
 import com.github.kirangadhave.marimopycharm.launch.LaunchRequest
 import com.github.kirangadhave.marimopycharm.launch.LauncherRegistry
 import com.github.kirangadhave.marimopycharm.launch.MarimoServerHandle
+import com.github.kirangadhave.marimopycharm.launch.SdkLauncher
 import com.github.kirangadhave.marimopycharm.launch.UvLauncher
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
@@ -16,7 +17,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Service(Service.Level.PROJECT)
 class MarimoServerService(private val project: Project) : Disposable {
 
-    private val registry = LauncherRegistry(listOf(UvLauncher()))
+    private val registry = LauncherRegistry(listOf(SdkLauncher(), UvLauncher()))
     private val handles = ConcurrentHashMap<String, MarimoServerHandle>()
 
     fun urlFor(file: VirtualFile): CompletableFuture<String> {

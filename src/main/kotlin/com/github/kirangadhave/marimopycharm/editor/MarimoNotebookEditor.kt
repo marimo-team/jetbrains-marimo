@@ -44,7 +44,8 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
 
     private fun errorText(err: Throwable?): String =
         "<html><center>Could not start marimo.<br/>" +
-            "Check that <code>uv</code> is on PATH and marimo is installed.<br/>" +
+            "Install marimo in the project interpreter (<code>pip install marimo</code>), " +
+            "or make <code>uv</code> available on PATH.<br/>" +
             "${err?.message ?: ""}</center></html>"
 
     override fun getComponent(): JComponent = panel
