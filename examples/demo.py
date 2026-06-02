@@ -6,13 +6,11 @@ app = marimo.App(width="medium")
 
 @app.cell(hide_code=True)
 def _(mo):
-    mo.md(
-        r"""
-        # 💰 Compound growth explorer
+    mo.md(r"""
+    # 💰 Compound growth explorer
 
-        Move the sliders — every dependent cell recomputes on its own.
-        """
-    )
+    Move the sliders — every dependent cell recomputes on its own.
+    """)
     return
 
 
@@ -46,18 +44,19 @@ def _(annual_rate, compound_balance, principal, years):
     return (final_balance,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(annual_rate, final_balance, mo, principal, years):
-    summary = f"After **{years.value} years** at **{annual_rate.value:.1%}**, **${principal.value:,.0f}** grows to **${final_balance:,.2f}**."
-    mo.md(summary)
+    mo.md(f"""
+    After **{years.value} years** at **{annual_rate.value:.1%}**, **{principal.value:,.0f}** → **{final_balance:,.2f}**.
+    """)
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(annual_rate, mo, principal, yearly_schedule, years):
     schedule = yearly_schedule(principal.value, annual_rate.value, years.value)
     mo.ui.table(schedule, label="Year-by-year balance")
-    return (schedule,)
+    return
 
 
 if __name__ == "__main__":
