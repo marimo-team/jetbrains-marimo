@@ -12,6 +12,8 @@ class UvLauncher : MarimoLauncher {
         val uv = findUv() ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
         val cmd = buildCommandLine(uv, request.notebook.path, workDir, request.host, request.port)
+        val (themeEnv, themeHome) = MarimoThemeConfig.environment()
+        cmd.withEnvironment(themeEnv, themeHome)
         return startMarimoServer(cmd, request.host, request.port)
     }
 
