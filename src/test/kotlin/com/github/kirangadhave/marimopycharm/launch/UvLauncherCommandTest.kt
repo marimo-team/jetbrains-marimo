@@ -20,6 +20,6 @@ class UvLauncherCommandTest {
     }
 
     @Test fun expectedUrlMatchesHostAndPort() {
-        assertEquals("http://127.0.0.1:2718", UvLauncher.expectedUrl("127.0.0.1", 2718))
+        assertEquals("http://127.0.0.1:2718", expectedMarimoUrl("127.0.0.1", 2718))
     }
 }

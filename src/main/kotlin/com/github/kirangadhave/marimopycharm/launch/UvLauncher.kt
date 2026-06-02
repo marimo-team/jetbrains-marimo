@@ -1,15 +1,7 @@
 package com.github.kirangadhave.marimopycharm.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
-import com.intellij.execution.process.OSProcessHandler
-import com.intellij.execution.process.ProcessAdapter
-import com.intellij.execution.process.ProcessEvent
-import com.intellij.openapi.util.Key
-import com.intellij.util.io.HttpRequests
 import java.io.File
-import java.io.IOException
-import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 
 class UvLauncher : MarimoLauncher {
     override val id = "uv"
@@ -20,34 +12,7 @@ class UvLauncher : MarimoLauncher {
         val uv = findUv() ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
         val cmd = buildCommandLine(uv, request.notebook.path, workDir, request.host, request.port)
-        val handler = OSProcessHandler(cmd)
-        val url = expectedUrl(request.host, request.port)
-        val ready = CompletableFuture<String>()
-
-        // Race two readiness signals: marimo's stdout banner and an HTTP poll. Whichever wins resolves.
-        handler.addProcessListener(object : ProcessAdapter() {
-            override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                if (event.text.contains(url) || event.text.contains("URL:")) ready.complete(url)
-            }
-        })
-        handler.startNotify()
-        pollUntilUp(url, ready)
-        return UvServerHandle(handler, ready)
-    }
-
-    private fun pollUntilUp(url: String, ready: CompletableFuture<String>) {
-        Thread {
-            val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(30)
-            while (!ready.isDone && System.nanoTime() < deadline) {
-                try {
-                    HttpRequests.head(url).tryConnect()
-                    ready.complete(url); return@Thread
-                } catch (_: IOException) {
-                    Thread.sleep(200)
-                }
-            }
-            if (!ready.isDone) ready.completeExceptionally(IOException("marimo server did not start: $url"))
-        }.apply { isDaemon = true }.start()
+        return startMarimoServer(cmd, request.host, request.port)
     }
 
     /**
@@ -77,22 +42,10 @@ class UvLauncher : MarimoLauncher {
                 "--headless", "--host", host, "--port", port.toString(), "--no-token",
             )
 
-        fun expectedUrl(host: String, port: Int) = "http://$host:$port"
-
         private val FALLBACK_UV_PATHS = listOf(
             "~/.local/bin/uv",
             "/opt/homebrew/bin/uv",
             "/usr/local/bin/uv",
         )
-    }
-}
-
-private class UvServerHandle(
-    override val processHandle: OSProcessHandler,
-    private val ready: CompletableFuture<String>,
-) : MarimoServerHandle {
-    override fun awaitReady(): CompletableFuture<String> = ready
-    override fun dispose() {
-        processHandle.destroyProcess()
     }
 }
