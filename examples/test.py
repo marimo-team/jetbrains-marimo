@@ -35,5 +35,13 @@ def _(test_fn_2):
     return
 
 
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Hello, World
+    """)
+    return
+
+
 if __name__ == "__main__":
     app.run()
