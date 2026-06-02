@@ -15,5 +15,7 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="com.github.kirangadhave.marimopycharm.editor.MarimoFileEditorProvider"/>
+        <toolWindow id="marimo Variables" anchor="right" secondary="true"
+                    factoryClass="com.github.kirangadhave.marimopycharm.vars.MarimoVariablesToolWindowFactory"/>
     </extensions>
 </idea-plugin>
