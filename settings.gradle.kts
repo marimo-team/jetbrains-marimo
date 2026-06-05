@@ -1,6 +1,6 @@
 import org.jetbrains.intellij.platform.gradle.extensions.intellijPlatform
 
-rootProject.name = "marimo-pycharm"
+rootProject.name = "jetbrains-marimo"
 
 pluginManagement {
     plugins {

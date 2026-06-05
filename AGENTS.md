@@ -31,7 +31,7 @@ To test against a local marimo checkout instead of the released package:
 
 ## Layout
 
-Source lives under `src/main/kotlin/io/marimo/pycharm/`:
+Source lives under `src/main/kotlin/io/marimo/notebook/`:
 
 - `detect/` — decide whether a `.py` file is a marimo notebook.
 - `editor/` — the custom `FileEditorProvider` that opens notebooks in the marimo editor.

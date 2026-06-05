@@ -1,10 +1,11 @@
 <!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
 <idea-plugin>
-    <id>io.marimo.pycharm</id>
-    <name>marimo for PyCharm</name>
+    <id>io.marimo.notebook</id>
+    <name>marimo</name>
     <vendor url="https://marimo.io" email="contact@marimo.io">marimo</vendor>
     <description><![CDATA[
-        <p>Open and run <a href="https://marimo.io">marimo</a> notebooks directly in PyCharm.</p>
+        <p>Open and run <a href="https://marimo.io">marimo</a> notebooks in PyCharm — and in
+        IntelliJ IDEA and other JetBrains IDEs with the Python plugin installed.</p>
         <p>marimo notebooks are stored as plain Python files. This plugin opens them in a full
         marimo editor inside the IDE — reactive cells, interactive UI widgets, SQL cells, the
         variables and dependency panels, and the built-in package manager — all in a dedicated
@@ -19,15 +20,15 @@
     <resource-bundle>messages.MarimoBundle</resource-bundle>
 
     <extensions defaultExtensionNs="com.intellij">
-        <fileEditorProvider implementation="io.marimo.pycharm.editor.MarimoFileEditorProvider"/>
+        <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
         <toolWindow id="marimo Variables" anchor="right" secondary="true"
-                    factoryClass="io.marimo.pycharm.vars.MarimoVariablesToolWindowFactory"/>
+                    factoryClass="io.marimo.notebook.vars.MarimoVariablesToolWindowFactory"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
     </extensions>
 
     <actions>
         <group id="Marimo.Pair"
-               class="io.marimo.pycharm.pair.MarimoPairActionGroup"
+               class="io.marimo.notebook.pair.MarimoPairActionGroup"
                text="Pair with marimo"
                description="Start an AI harness paired on this marimo notebook, or copy its prompt"
                icon="AllIcons.Actions.Lightning"
