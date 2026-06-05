@@ -5,6 +5,14 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.intellij.platform")
     id("org.jetbrains.changelog")
+    id("com.diffplug.spotless") version "7.0.2"
+}
+
+spotless {
+    kotlin {
+        target("src/**/*.kt")
+        licenseHeader("/* Copyright \$YEAR Marimo. All rights reserved. */\n\n")
+    }
 }
 
 dependencies {
