@@ -21,12 +21,29 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
-        <toolWindow id="marimo Variables" anchor="right" secondary="true"
-                    factoryClass="io.marimo.notebook.vars.MarimoVariablesToolWindowFactory"/>
+        <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoSourceEditorProvider"/>
+        <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
+        <internalFileTemplate name="marimo Notebook"/>
     </extensions>
 
     <actions>
+        <action id="Marimo.NewNotebook"
+                class="io.marimo.notebook.editor.CreateMarimoNotebookAction"
+                text="marimo Notebook"
+                description="Create a new marimo notebook"
+                icon="io.marimo.notebook.MarimoIcons.FILE">
+            <add-to-group group-id="NewGroup" anchor="first"/>
+        </action>
+
+        <action id="Marimo.OpenAsPythonFile"
+                class="io.marimo.notebook.editor.OpenAsPythonFileAction"
+                text="Open as Python File"
+                description="Show this marimo notebook's raw Python source">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+
         <group id="Marimo.Pair"
                class="io.marimo.notebook.pair.MarimoPairActionGroup"
                text="Pair with marimo"
