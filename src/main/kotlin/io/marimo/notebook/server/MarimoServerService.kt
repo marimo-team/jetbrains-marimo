@@ -2,11 +2,12 @@
 
 package io.marimo.notebook.server
 
+import io.marimo.notebook.launch.LaunchDecision
+import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
-import io.marimo.notebook.launch.LauncherRegistry
 import io.marimo.notebook.launch.MarimoServerHandle
+import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
-import io.marimo.notebook.launch.UvLauncher
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
@@ -19,7 +20,7 @@ import java.util.concurrent.ConcurrentHashMap
 @Service(Service.Level.PROJECT)
 class MarimoServerService(private val project: Project) : Disposable {
 
-    private val registry = LauncherRegistry(listOf(SdkLauncher(), UvLauncher()))
+    private val planner = LaunchPlanner(SdkLauncher())
     private val handles = ConcurrentHashMap<String, MarimoServerHandle>()
 
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
@@ -31,17 +32,21 @@ class MarimoServerService(private val project: Project) : Disposable {
             notebook = file,
             port = NetUtils.findAvailableSocketPort(),
         )
-        val launcher = registry.resolve(request)
+        val launcher = when (val decision = planner.plan(request)) {
+            is LaunchDecision.Launch -> decision.launcher
+            is LaunchDecision.NoInterpreter ->
+                return CompletableFuture.failedFuture(NoInterpreterException(decision.message))
+        }
         val handle = launcher.launch(request)
         handles[file.url] = handle
         Disposer.register(this, handle)
         return handle.awaitReady()
     }
 
-    /** marimo CLI prefix for [file], re-resolving the applicable launcher. Null if none applies. */
+    /** marimo CLI prefix for [file] on the planned launcher. Null when no interpreter is configured. */
     fun marimoCliPrefixFor(file: VirtualFile): List<String>? {
         val request = LaunchRequest(project = project, notebook = file, port = 0)
-        val launcher = runCatching { registry.resolve(request) }.getOrNull() ?: return null
+        val launcher = (planner.plan(request) as? LaunchDecision.Launch)?.launcher ?: return null
         return launcher.marimoCliPrefix(request)
     }
 

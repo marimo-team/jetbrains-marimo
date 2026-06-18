@@ -2,6 +2,9 @@
 
 package io.marimo.notebook.launch
 
+/** Thrown when a launch is requested but no interpreter is configured to run marimo on. */
+class NoInterpreterException(message: String) : RuntimeException(message)
+
 /** The outcome of deciding how to launch marimo for a request. */
 sealed interface LaunchDecision {
     /** Launch marimo with the chosen launcher. */
