@@ -25,9 +25,18 @@
         <toolWindow id="marimo Variables" anchor="right" secondary="true"
                     factoryClass="io.marimo.notebook.vars.MarimoVariablesToolWindowFactory"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
+        <internalFileTemplate name="marimo Notebook"/>
     </extensions>
 
     <actions>
+        <action id="Marimo.NewNotebook"
+                class="io.marimo.notebook.editor.CreateMarimoNotebookAction"
+                text="marimo Notebook"
+                description="Create a new marimo notebook"
+                icon="io.marimo.notebook.MarimoIcons.FILE">
+            <add-to-group group-id="NewGroup" anchor="first"/>
+        </action>
+
         <group id="Marimo.Pair"
                class="io.marimo.notebook.pair.MarimoPairActionGroup"
                text="Pair with marimo"
