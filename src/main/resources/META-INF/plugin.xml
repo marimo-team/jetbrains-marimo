@@ -21,6 +21,7 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
+        <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
         <toolWindow id="marimo Variables" anchor="right" secondary="true"
                     factoryClass="io.marimo.notebook.vars.MarimoVariablesToolWindowFactory"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
