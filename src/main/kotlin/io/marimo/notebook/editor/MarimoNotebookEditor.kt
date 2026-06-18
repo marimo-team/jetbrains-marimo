@@ -4,6 +4,7 @@ package io.marimo.notebook.editor
 
 import io.marimo.notebook.launch.MarimoEnvProbe
 import io.marimo.notebook.launch.MarimoInstaller
+import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.server.MarimoServerService
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -19,6 +20,10 @@ import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
+import org.cef.browser.CefBrowser
+import org.cef.browser.CefFrame
+import org.cef.handler.CefLoadHandler
+import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.BorderLayout
 import java.awt.Component
 import java.beans.PropertyChangeListener
@@ -40,7 +45,36 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     init {
+        browser?.let(::installLoadErrorHandler)
         loadNotebook()
+    }
+
+    /**
+     * Catch the case where the server started but its page fails to load (server died after readiness,
+     * connection refused, render crash) so the user sees the actionable panel rather than a raw Chromium
+     * error page. Only main-frame errors matter; sub-frame failures and user-cancelled loads (ERR_ABORTED,
+     * e.g. a Retry that navigates away mid-load) are not editor failures.
+     */
+    private fun installLoadErrorHandler(browser: JBCefBrowser) {
+        browser.jbCefClient.addLoadHandler(
+            object : CefLoadHandlerAdapter() {
+                override fun onLoadError(
+                    cefBrowser: CefBrowser?,
+                    frame: CefFrame?,
+                    errorCode: CefLoadHandler.ErrorCode?,
+                    errorText: String?,
+                    failedUrl: String?,
+                ) {
+                    if (frame?.isMain != true) return
+                    if (errorCode == null || errorCode == CefLoadHandler.ErrorCode.ERR_NONE) return
+                    if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
+                    val detail = errorText?.takeIf { it.isNotBlank() } ?: errorCode.name
+                    val model = MarimoErrorModel.of(MarimoFailure.EditorLoadFailed(detail), MarimoPresence.Unknown)
+                    onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
+                }
+            },
+            browser.cefBrowser,
+        )
     }
 
     private fun loadNotebook() {
@@ -62,7 +96,9 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
     /** Probe off the EDT — detection may run a subprocess — then render the matching error panel. */
     private fun showServerError(err: Throwable?) {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val presence = project.service<MarimoEnvProbe>().probe(file)
+            val probe = project.service<MarimoEnvProbe>()
+            probe.invalidate()
+            val presence = probe.probe(file)
             val model = MarimoErrorModel.of(MarimoFailure.ServerNotStarted(err), presence)
             onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
         }
