@@ -17,11 +17,15 @@ import com.jetbrains.python.sdk.PythonSdkUtil
  * to the uv launcher.
  */
 object SdkPythonResolver {
-    fun resolvePythonPath(project: Project, notebook: VirtualFile): String? {
+    fun resolvePythonPath(project: Project, notebook: VirtualFile): String? =
+        resolveSdk(project, notebook)?.homePath
+
+    /** The Python [Sdk] PyCharm has configured for [notebook], or null when none is. */
+    fun resolveSdk(project: Project, notebook: VirtualFile): Sdk? {
         val sdk = moduleSdk(project, notebook)
             ?: ProjectRootManager.getInstance(project).projectSdk
         if (sdk == null || !PythonSdkUtil.isPythonSdk(sdk)) return null
-        return sdk.homePath
+        return sdk
     }
 
     private fun moduleSdk(project: Project, notebook: VirtualFile): Sdk? {
