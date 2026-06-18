@@ -10,7 +10,9 @@
         marimo editor inside the IDE — reactive cells, interactive UI widgets, SQL cells, the
         variables and dependency panels, and the built-in package manager — all in a dedicated
         notebook tab. Files that aren't marimo notebooks open in the normal Python editor.</p>
-        <p>Requires <a href="https://docs.astral.sh/uv/">uv</a> on your <code>PATH</code>.</p>
+        <p>marimo runs on your configured project interpreter; the plugin offers to install marimo
+        for you if it isn't present. <a href="https://docs.astral.sh/uv/">uv</a> is optional — it's
+        only used to run a notebook in an isolated sandbox.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>

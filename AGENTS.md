@@ -13,7 +13,9 @@ maintainers, not just the immediate task.
 - **Kotlin** on the IntelliJ Platform, built with **Gradle** (use the wrapper, `./gradlew`).
 - Requires **JDK 21+** (the JetBrains Runtime bundled with IntelliJ IDEA works). No JDK on
   `PATH`? Set `JAVA_HOME` to a 21+ JDK before running Gradle.
-- The plugin runs marimo via **uv** (`uvx marimo`), so `uv` must be on `PATH` at runtime.
+- The plugin runs marimo on the IDE's configured project interpreter (`<python> -m marimo`), and
+  offers to install marimo into it when missing. **uv** is only needed for the isolated-sandbox
+  launch path; it must be on `PATH` for that to be available.
 
 ## Common commands
 
@@ -26,8 +28,8 @@ maintainers, not just the immediate task.
 | `./gradlew buildPlugin` | Build the distributable zip in `build/distributions/` |
 | `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
 
-To test against a local marimo checkout instead of the released package:
-`MARIMO_CMD="uv run --project /path/to/marimo marimo" ./gradlew runIde`.
+To test against a local marimo checkout, install it into the sandbox IDE's project interpreter in
+editable mode (`pip install -e /path/to/marimo`) and open a notebook.
 
 ## Layout
 

@@ -14,8 +14,10 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 
 ## Requirements
 
-- PyCharm 2025.1 or later (Community or Professional)
-- [uv](https://docs.astral.sh/uv/) installed and on your `PATH` (the plugin uses it to run marimo)
+- PyCharm 2026.1 or later (Community or Professional), or IntelliJ IDEA with the Python plugin
+- A project interpreter with marimo installed — the plugin runs marimo on your configured interpreter,
+  and offers to install it for you if it's missing
+- [uv](https://docs.astral.sh/uv/) (optional) — only needed to run a notebook in an isolated sandbox
 
 ## Getting started
 
@@ -60,11 +62,9 @@ Other useful tasks:
 | `./gradlew buildPlugin` | Build a distributable `.zip` in `build/distributions/` |
 | `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
 
-By default the plugin runs released marimo via `uvx marimo`. To test against a local marimo checkout, set the `MARIMO_CMD` environment variable before launching:
-
-```bash
-MARIMO_CMD="uv run --project /path/to/marimo marimo" ./gradlew runIde
-```
+The plugin runs marimo on the sandbox IDE's configured project interpreter. To try a local marimo
+checkout, install it into that interpreter in editable mode (`pip install -e /path/to/marimo`) and
+open a notebook.
 
 ## Feedback
 

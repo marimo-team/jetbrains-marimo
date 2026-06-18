@@ -15,6 +15,18 @@ spotless {
     }
 }
 
+intellijPlatform {
+    pluginConfiguration {
+        ideaVersion {
+            // Floor: 2026.1 — the install/probe path uses Python packaging APIs that don't exist
+            // before then. Open-ended ceiling so new IDE releases don't lock the plugin out
+            // (an explicit untilBuild would otherwise default to the build branch we compile against).
+            sinceBuild = "261"
+            untilBuild = provider { null }
+        }
+    }
+}
+
 dependencies {
     testImplementation("junit:junit:4.13.2")
 
