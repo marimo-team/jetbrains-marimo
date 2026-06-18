@@ -39,16 +39,26 @@ class MarimoErrorPanel(
         }
 
         content.add(strut())
-        content.add(centered(buttonRow(model.actions, onAction)))
+        content.add(centered(buttonRow(model.actions, model.sandboxEnabled, onAction)))
 
         add(content)
     }
 
-    private fun buttonRow(actions: List<MarimoErrorAction>, onAction: (MarimoErrorAction) -> Unit): JPanel =
+    private fun buttonRow(
+        actions: List<MarimoErrorAction>,
+        sandboxEnabled: Boolean,
+        onAction: (MarimoErrorAction) -> Unit,
+    ): JPanel =
         JPanel(FlowLayout(FlowLayout.CENTER, JBUI.scale(8), 0)).apply {
             isOpaque = false
             actions.forEach { action ->
-                add(JButton(label(action)).apply { addActionListener { onAction(action) } })
+                add(JButton(label(action)).apply {
+                    addActionListener { onAction(action) }
+                    if (action == MarimoErrorAction.START_IN_SANDBOX && !sandboxEnabled) {
+                        isEnabled = false
+                        toolTipText = SANDBOX_NEEDS_UV
+                    }
+                })
             }
         }
 
@@ -64,6 +74,11 @@ class MarimoErrorPanel(
         when (action) {
             MarimoErrorAction.RETRY -> "Retry"
             MarimoErrorAction.INSTALL -> "Install marimo"
+            MarimoErrorAction.START_IN_SANDBOX -> "Start in Sandbox"
             MarimoErrorAction.OPEN_AS_PYTHON -> "Open as Python File"
         }
+
+    companion object {
+        const val SANDBOX_NEEDS_UV = "Sandbox mode requires uv — install from astral.sh/uv"
+    }
 }

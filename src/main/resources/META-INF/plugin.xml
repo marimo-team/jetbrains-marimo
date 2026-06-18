@@ -44,6 +44,15 @@
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
 
+        <action id="Marimo.RunInSandbox"
+                class="io.marimo.notebook.editor.RunInSandboxAction"
+                text="Start marimo in Sandbox"
+                description="Run this marimo notebook in an isolated uv environment"
+                icon="io.marimo.notebook.MarimoIcons.FILE">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+
         <group id="Marimo.Pair"
                class="io.marimo.notebook.pair.MarimoPairActionGroup"
                text="Pair with marimo"

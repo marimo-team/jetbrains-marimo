@@ -16,6 +16,8 @@ data class LaunchRequest(
     val port: Int,
     val host: String = "127.0.0.1",
     val mode: MarimoMode = MarimoMode.EDIT,
+    /** Run the notebook in marimo's isolated uv environment (PEP 723 deps); requires uv. */
+    val sandbox: Boolean = false,
 )
 
 /** Owns a spawned marimo process; the lifecycle service drives readiness and disposal. */

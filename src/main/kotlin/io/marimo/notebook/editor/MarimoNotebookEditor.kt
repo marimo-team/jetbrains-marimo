@@ -5,6 +5,7 @@ package io.marimo.notebook.editor
 import io.marimo.notebook.launch.MarimoEnvProbe
 import io.marimo.notebook.launch.MarimoInstaller
 import io.marimo.notebook.launch.MarimoPresence
+import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.server.MarimoServerService
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -69,7 +70,9 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
                     if (errorCode == null || errorCode == CefLoadHandler.ErrorCode.ERR_NONE) return
                     if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
                     val detail = errorText?.takeIf { it.isNotBlank() } ?: errorCode.name
-                    val model = MarimoErrorModel.of(MarimoFailure.EditorLoadFailed(detail), MarimoPresence.Unknown)
+                    val model = MarimoErrorModel.of(
+                        MarimoFailure.EditorLoadFailed(detail), MarimoPresence.Unknown, uvAvailable = false,
+                    )
                     onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
                 }
             },
@@ -99,7 +102,9 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
             val probe = project.service<MarimoEnvProbe>()
             probe.invalidate()
             val presence = probe.probe(file)
-            val model = MarimoErrorModel.of(MarimoFailure.ServerNotStarted(err), presence)
+            val model = MarimoErrorModel.of(
+                MarimoFailure.ServerNotStarted(err), presence, uvAvailable = UvLauncher.findUv() != null,
+            )
             onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
         }
     }
@@ -111,10 +116,17 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
                 project.service<MarimoInstaller>().installMarimo(file)
                 relaunch()
             }
+            MarimoErrorAction.START_IN_SANDBOX -> {
+                server.enableSandbox(file)
+                relaunch()
+            }
             MarimoErrorAction.OPEN_AS_PYTHON ->
                 FileEditorManager.getInstance(project).setSelectedEditor(file, MARIMO_SOURCE_EDITOR_TYPE)
         }
     }
+
+    /** Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox). */
+    fun reload() = relaunch()
 
     /**
      * The service caches the failed handle by file URL, so a retry that reused it would replay the same
