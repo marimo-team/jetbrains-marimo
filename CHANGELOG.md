@@ -3,8 +3,6 @@
 # marimo-pycharm Changelog
 
 ## [Unreleased]
-
-## [0.0.1]
 First public preview of marimo for JetBrains IDEs.
 
 ### Added
