@@ -1,4 +1,5 @@
 import org.gradle.process.CommandLineArgumentProvider
+import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
 plugins {
@@ -23,6 +24,18 @@ intellijPlatform {
             // (an explicit untilBuild would otherwise default to the build branch we compile against).
             sinceBuild = "261"
             untilBuild = provider { null }
+        }
+        // "What's new" on the Marketplace listing is rendered from the matching CHANGELOG.md section,
+        // falling back to [Unreleased] for builds whose version isn't pinned in the changelog yet.
+        changeNotes = provider {
+            with(changelog) {
+                renderItem(
+                    (getOrNull(project.version.toString()) ?: getUnreleased())
+                        .withHeader(false)
+                        .withEmptySections(false),
+                    Changelog.OutputType.HTML,
+                )
+            }
         }
     }
     pluginVerification {

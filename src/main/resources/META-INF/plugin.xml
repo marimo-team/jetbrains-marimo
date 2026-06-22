@@ -4,15 +4,30 @@
     <name>marimo</name>
     <vendor url="https://marimo.io" email="contact@marimo.io">marimo</vendor>
     <description><![CDATA[
-        <p>Open and run <a href="https://marimo.io">marimo</a> notebooks in PyCharm — and in
-        IntelliJ IDEA and other JetBrains IDEs with the Python plugin installed.</p>
-        <p>marimo notebooks are stored as plain Python files. This plugin opens them in a full
-        marimo editor inside the IDE — reactive cells, interactive UI widgets, SQL cells, the
-        variables and dependency panels, and the built-in package manager — all in a dedicated
-        notebook tab. Files that aren't marimo notebooks open in the normal Python editor.</p>
-        <p>marimo runs on your configured project interpreter; the plugin offers to install marimo
-        for you if it isn't present. <a href="https://docs.astral.sh/uv/">uv</a> is optional — it's
-        only used to run a notebook in an isolated sandbox.</p>
+        <p><a href="https://marimo.io">marimo</a> is a reactive Python notebook. This plugin brings
+        the full marimo editor inside PyCharm and other JetBrains IDEs, so you can open, edit, and
+        run notebooks without leaving your IDE.</p>
+
+        <p>marimo notebooks are stored as plain <code>.py</code> files — no JSON, no hidden output
+        state — so they diff cleanly, review like code, and run as scripts. The plugin detects which
+        Python files are marimo notebooks and opens them in a dedicated reactive editor tab;
+        everything else opens in the normal Python editor.</p>
+
+        <p><b>Features</b></p>
+        <ul>
+          <li><b>Reactive editor, in the IDE</b> — cells re-run automatically when their inputs change.</li>
+          <li><b>Interactive widgets</b> — sliders, tables, plots, and other <code>mo.ui</code> elements work inline.</li>
+          <li><b>SQL cells, variables, and dependency panels</b> — the full marimo experience.</li>
+          <li><b>Runs on your project interpreter</b> — with a one-click offer to install marimo when it's missing.</li>
+          <li><b>Isolated sandbox runs</b> — optionally launch a notebook in a one-off <a href="https://docs.astral.sh/uv/">uv</a> environment.</li>
+          <li><b>Pair with marimo</b> — attach an AI harness to a notebook from the IDE.</li>
+          <li><b>Theme-aware</b> — the editor follows your IDE's light/dark theme.</li>
+        </ul>
+
+        <p><b>Requirements:</b> PyCharm 2026.1+ (or another JetBrains IDE with the Python plugin) and
+        a configured project interpreter. uv is optional, used only for sandbox runs.</p>
+
+        <p>Open source — <a href="https://github.com/marimo-team/jetbrains-marimo">github.com/marimo-team/jetbrains-marimo</a>.</p>
     ]]></description>
 
     <depends>com.intellij.modules.platform</depends>
