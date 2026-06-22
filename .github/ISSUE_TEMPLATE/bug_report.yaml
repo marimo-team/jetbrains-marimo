@@ -1,0 +1,54 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/refs/heads/master/src/schemas/json/github-issue-forms.json
+name: '🐞 Bug report'
+description: Report an issue with the marimo PyCharm plugin
+labels: [bug]
+type: Bug
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for filing this bug report and helping us improve the plugin!
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Describe the bug
+      description: |
+        A clear and concise description of the bug. If you have a workaround or plan to submit a PR for this issue, please let us know.
+        You may also include a stack trace or screenshots here.
+      placeholder: What happened?
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction-steps
+    attributes:
+      label: Steps to reproduce
+      description: |
+        Help us help you! If possible, provide steps to reproduce the bug, and a
+        minimal marimo notebook that triggers it.
+      placeholder: |
+        1. Open '...'
+        2. Click on '...'
+        3. See error
+    validations:
+      required: true
+  - type: textarea
+    id: env
+    attributes:
+      label: Environment
+      description: Fill in the versions you are running.
+      value: |
+        - Plugin version:
+        - IDE and version (e.g. PyCharm 2025.1.2 Community):
+        - OS:
+        - `marimo --version`:
+        - `uv --version`:
+    validations:
+      required: true
+  - type: checkboxes
+    id: will-submit-pr
+    attributes:
+      label: Will you submit a PR?
+      description: |
+        If you plan to submit a PR for this issue, please let us know. We'd love to review a PR!
+      options:
+        - label: 'Yes'

@@ -1,0 +1,67 @@
+<!-- Plugin Configuration File. Read more: https://plugins.jetbrains.com/docs/intellij/plugin-configuration-file.html -->
+<idea-plugin>
+    <id>io.marimo.notebook</id>
+    <name>marimo</name>
+    <vendor url="https://marimo.io" email="contact@marimo.io">marimo</vendor>
+    <description><![CDATA[
+        <p>Open and run <a href="https://marimo.io">marimo</a> notebooks in PyCharm — and in
+        IntelliJ IDEA and other JetBrains IDEs with the Python plugin installed.</p>
+        <p>marimo notebooks are stored as plain Python files. This plugin opens them in a full
+        marimo editor inside the IDE — reactive cells, interactive UI widgets, SQL cells, the
+        variables and dependency panels, and the built-in package manager — all in a dedicated
+        notebook tab. Files that aren't marimo notebooks open in the normal Python editor.</p>
+        <p>marimo runs on your configured project interpreter; the plugin offers to install marimo
+        for you if it isn't present. <a href="https://docs.astral.sh/uv/">uv</a> is optional — it's
+        only used to run a notebook in an isolated sandbox.</p>
+    ]]></description>
+
+    <depends>com.intellij.modules.platform</depends>
+    <depends>com.intellij.modules.python</depends>
+    <depends>org.jetbrains.plugins.terminal</depends>
+
+    <resource-bundle>messages.MarimoBundle</resource-bundle>
+
+    <extensions defaultExtensionNs="com.intellij">
+        <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
+        <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoSourceEditorProvider"/>
+        <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
+        <notificationGroup id="Marimo" displayType="BALLOON"/>
+        <internalFileTemplate name="marimo Notebook"/>
+    </extensions>
+
+    <actions>
+        <action id="Marimo.NewNotebook"
+                class="io.marimo.notebook.editor.CreateMarimoNotebookAction"
+                text="marimo Notebook"
+                description="Create a new marimo notebook"
+                icon="io.marimo.notebook.MarimoIcons.FILE">
+            <add-to-group group-id="NewGroup" anchor="first"/>
+        </action>
+
+        <action id="Marimo.OpenAsPythonFile"
+                class="io.marimo.notebook.editor.OpenAsPythonFileAction"
+                text="Open as Python File"
+                description="Show this marimo notebook's raw Python source">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+
+        <action id="Marimo.RunInSandbox"
+                class="io.marimo.notebook.editor.RunInSandboxAction"
+                text="Start marimo in Sandbox"
+                description="Run this marimo notebook in an isolated uv environment"
+                icon="io.marimo.notebook.MarimoIcons.FILE">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+
+        <group id="Marimo.Pair"
+               class="io.marimo.notebook.pair.MarimoPairActionGroup"
+               text="Pair with marimo"
+               description="Start an AI harness paired on this marimo notebook, or copy its prompt"
+               icon="AllIcons.Actions.Lightning"
+               popup="true">
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+        </group>
+    </actions>
+</idea-plugin>

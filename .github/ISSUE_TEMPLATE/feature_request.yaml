@@ -1,0 +1,34 @@
+# yaml-language-server: $schema=https://raw.githubusercontent.com/SchemaStore/schemastore/refs/heads/master/src/schemas/json/github-issue-forms.json
+name: '🚀 New feature proposal'
+description: Propose a new feature for the marimo PyCharm plugin
+labels: [enhancement, needs discussion]
+type: Feature
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for your interest in the plugin and sharing what features you would like to see!
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Description
+      description: 'A clear and concise description of the problem you are facing. Please describe your use case in detail. Thanks!'
+      placeholder: I am hoping to be able to ...
+    validations:
+      required: true
+  - type: textarea
+    id: alternative
+    attributes:
+      label: Alternatives
+      description: "Alternatives you've considered."
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional context
+      description: Any other context or screenshots about the feature request here.
+  - type: checkboxes
+    id: will-submit-pr
+    attributes:
+      label: Are you willing to submit a PR? (Please confirm the feature fits the roadmap before submitting.)
+      options:
+        - label: 'Yes'

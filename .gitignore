@@ -1,0 +1,26 @@
+.DS_Store
+.gradle
+.idea
+.intellijPlatform
+.kotlin
+build
+
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.python-version
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.ipynb_checkpoints/
+
+# marimo
+__marimo__/
+.marimo.toml
+
+# Claude Code — ignore local/runtime; keep shared config (settings.json, commands/, agents/, skills/)
+.claude/settings.local.json
+.claude/scheduled_tasks.lock
