@@ -1,4 +1,5 @@
-import org.gradle.process.CommandLineArgumentProvider
+import org.gradle.api.tasks.WriteProperties
+import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 
@@ -14,6 +15,26 @@ spotless {
         target("src/**/*.kt")
         licenseHeader("/* Copyright \$YEAR Marimo. All rights reserved. */\n\n")
     }
+}
+
+// The telemetry environment is fixed when the artifact is built: only the release workflow passes
+// -Ptelemetry.env=production. Every other build — local runIde, side-loaded buildPlugin zips, CI
+// checks — stays "development", so analytics can exclude non-release traffic. Generated into a
+// bundled resource so it travels with the plugin and can't be spoofed by the runtime environment.
+val telemetryEnv = providers.gradleProperty("telemetry.env").orElse("development").get()
+val telemetryResourcesDir = layout.buildDirectory.dir("generated/telemetry-resources")
+
+val generateTelemetryConfig = tasks.register<WriteProperties>("generateTelemetryConfig") {
+    destinationFile = telemetryResourcesDir.map { it.file("telemetry.properties") }
+    property("environment", telemetryEnv)
+}
+
+sourceSets.named("main") {
+    resources.srcDir(telemetryResourcesDir)
+}
+
+tasks.named<ProcessResources>("processResources") {
+    dependsOn(generateTelemetryConfig)
 }
 
 intellijPlatform {
@@ -62,6 +83,8 @@ intellijPlatform {
 }
 
 dependencies {
+    implementation("com.posthog:posthog-server:2.8.1")
+
     testImplementation("junit:junit:4.13.2")
 
     // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
@@ -74,15 +97,5 @@ dependencies {
         bundledPlugin("PythonCore")
         bundledPlugin("org.jetbrains.plugins.terminal")
         testFramework(TestFrameworkType.Platform)
-    }
-}
-
-val sampleProjectPath = layout.projectDirectory.dir("examples").asFile.absolutePath
-
-tasks {
-    runIde {
-        argumentProviders += CommandLineArgumentProvider {
-            listOf(sampleProjectPath)
-        }
     }
 }

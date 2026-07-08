@@ -20,7 +20,7 @@
           <li><b>SQL cells, variables, and dependency panels</b> — the full marimo experience.</li>
           <li><b>Runs on your project interpreter</b> — with a one-click offer to install marimo when it's missing.</li>
           <li><b>Isolated sandbox runs</b> — optionally launch a notebook in a one-off <a href="https://docs.astral.sh/uv/">uv</a> environment.</li>
-          <li><b>Pair with marimo</b> — attach an AI harness to a notebook from the IDE.</li>
+          <li><b>Pair with marimo</b> — open a pairing prompt in JetBrains AI Chat when available, or attach a terminal harness.</li>
           <li><b>Theme-aware</b> — the editor follows your IDE's light/dark theme.</li>
         </ul>
 
@@ -42,6 +42,11 @@
         <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
         <internalFileTemplate name="marimo Notebook"/>
+        <applicationConfigurable
+            parentId="tools"
+            instance="io.marimo.notebook.telemetry.MarimoTelemetryConfigurable"
+            id="io.marimo.notebook.telemetry.settings"
+            displayName="marimo"/>
     </extensions>
 
     <actions>
@@ -72,7 +77,7 @@
 
         <group id="Marimo.Pair"
                class="io.marimo.notebook.pair.MarimoPairActionGroup"
-               text="Pair with marimo"
+               text="Pair with AI"
                description="Start an AI harness paired on this marimo notebook, or copy its prompt"
                icon="AllIcons.Actions.Lightning"
                popup="true">
