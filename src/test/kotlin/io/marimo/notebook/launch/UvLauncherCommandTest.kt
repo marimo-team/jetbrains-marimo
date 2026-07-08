@@ -18,7 +18,7 @@ class UvLauncherCommandTest {
         assertEquals("/proj", cmd.workDirectory?.path)
         val args = cmd.parametersList.parameters
         assertEquals(listOf("run", "--with", "marimo", "marimo", "edit", "/proj/nb.py",
-            "--headless", "--host", "127.0.0.1", "--port", "2718", "--no-token"), args)
+            "--headless", "--watch", "--host", "127.0.0.1", "--port", "2718", "--no-token"), args)
     }
 
     @Test fun sandboxAppendsSandboxFlag() {
@@ -31,7 +31,7 @@ class UvLauncherCommandTest {
             sandbox = true,
         )
         assertEquals(listOf("run", "--with", "marimo", "marimo", "edit", "/proj/nb.py",
-            "--headless", "--host", "127.0.0.1", "--port", "2718", "--no-token", "--sandbox"),
+            "--headless", "--watch", "--host", "127.0.0.1", "--port", "2718", "--no-token", "--sandbox"),
             cmd.parametersList.parameters)
     }
 

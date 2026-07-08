@@ -7,6 +7,9 @@ import io.marimo.notebook.launch.MarimoInstaller
 import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.telemetry.MarimoConsentPrompt
+import io.marimo.notebook.telemetry.MarimoTelemetry
+import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DataProvider
@@ -16,13 +19,21 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorState
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
+import com.intellij.icons.AllIcons
+import com.intellij.ide.BrowserUtil
 import com.intellij.openapi.util.UserDataHolderBase
+import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.ui.components.JBLabel
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.util.ui.JBUI
+import com.intellij.util.ui.UIUtil
 import org.cef.browser.CefBrowser
 import org.cef.browser.CefFrame
+import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 import java.awt.BorderLayout
@@ -47,7 +58,51 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
 
     init {
         browser?.let(::installLoadErrorHandler)
+        browser?.let(::installPopupHandler)
         loadNotebook()
+    }
+
+    /**
+     * marimo opens a duplicated (or otherwise linked) notebook with `window.open("?file=…", "_blank")`.
+     * Left to JCEF's default, that popup becomes a detached OS window that can't be docked as a tab. Catch
+     * it here: open notebook deep links as IDE editor tabs and send genuine external links to the system
+     * browser, so no stray Chromium window ever appears.
+     */
+    private fun installPopupHandler(browser: JBCefBrowser) {
+        browser.jbCefClient.addLifeSpanHandler(
+            object : CefLifeSpanHandlerAdapter() {
+                override fun onBeforePopup(
+                    cefBrowser: CefBrowser?,
+                    frame: CefFrame?,
+                    targetUrl: String?,
+                    targetFrameName: String?,
+                ): Boolean {
+                    when (val popup = classifyMarimoPopup(targetUrl)) {
+                        null -> return false
+                        is MarimoPopup.Notebook -> openNotebookTab(popup.path)
+                        is MarimoPopup.External -> BrowserUtil.browse(popup.url)
+                    }
+                    return true
+                }
+            },
+            browser.cefBrowser,
+        )
+    }
+
+    /**
+     * Resolve a just-created notebook path to a [VirtualFile] and open it as an editor tab. The VFS refresh
+     * is synchronous and must run off the EDT; the freshly copied file is picked up as a marimo notebook and
+     * rendered in this same editor kind.
+     */
+    private fun openNotebookTab(path: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val target = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+            if (target == null) {
+                thisLogger().warn("marimo popup: could not resolve notebook path $path")
+                return@executeOnPooledThread
+            }
+            onEdt { FileEditorManager.getInstance(project).openFile(target, true) }
+        }
     }
 
     /**
@@ -91,6 +146,9 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
                 else -> onEdt {
                     browser.loadURL(url)
                     showContent(browser.component)
+                    MarimoConsentPrompt.maybePrompt(project)
+                    val launcher = if (server.isSandbox(file)) "uv-sandbox" else "sdk"
+                    MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookOpened(launcher))
                 }
             }
         }
@@ -98,12 +156,21 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
 
     /** Probe off the EDT — detection may run a subprocess — then render the matching error panel. */
     private fun showServerError(err: Throwable?) {
+        thisLogger().warn("marimo failed to start for ${file.name}", err)
         ApplicationManager.getApplication().executeOnPooledThread {
             val probe = project.service<MarimoEnvProbe>()
             probe.invalidate()
             val presence = probe.probe(file)
+            val uvAvailable = UvLauncher.findUv() != null
+            val reason = when {
+                presence is MarimoPresence.Unknown -> "no_interpreter"
+                presence is MarimoPresence.Missing -> "marimo_missing"
+                !uvAvailable -> "uv_missing"
+                else -> "other"
+            }
+            MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookLaunchFailed(reason))
             val model = MarimoErrorModel.of(
-                MarimoFailure.ServerNotStarted(err), presence, uvAvailable = UvLauncher.findUv() != null,
+                MarimoFailure.ServerNotStarted(err), presence, uvAvailable = uvAvailable,
             )
             onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
         }
@@ -118,6 +185,7 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
             }
             MarimoErrorAction.START_IN_SANDBOX -> {
                 server.enableSandbox(file)
+                MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
                 relaunch()
             }
             MarimoErrorAction.OPEN_AS_PYTHON ->
@@ -139,7 +207,7 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
 
     private fun showContent(component: Component) {
         panel.removeAll()
-        addPairToolbar()
+        addToolbar()
         panel.add(component, BorderLayout.CENTER)
         panel.revalidate()
         panel.repaint()
@@ -147,14 +215,33 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
 
     private fun onEdt(block: () -> Unit) = ApplicationManager.getApplication().invokeLater(block)
 
-    private fun addPairToolbar() {
-        val pairGroup = ActionManager.getInstance().getAction("Marimo.Pair") ?: return
+    private fun addToolbar() {
+        val row = JPanel(BorderLayout())
+        pairToolbar()?.let { row.add(it, BorderLayout.WEST) }
+        if (server.isSandbox(file)) row.add(sandboxIndicator(), BorderLayout.EAST)
+        if (row.componentCount > 0) panel.add(row, BorderLayout.NORTH)
+    }
+
+    private fun pairToolbar(): JComponent? {
+        val pairGroup = ActionManager.getInstance().getAction("Marimo.Pair") ?: return null
         val group = DefaultActionGroup(pairGroup)
         val toolbar = ActionManager.getInstance()
             .createActionToolbar("MarimoEditorToolbar", group, true)
         toolbar.targetComponent = panel
-        panel.add(toolbar.component, BorderLayout.NORTH)
+        return toolbar.component
     }
+
+    /**
+     * Read-only badge marking that cells run in marimo's isolated uv sandbox (PEP 723 inline deps)
+     * rather than the project interpreter. Not a toggle: leaving sandbox mode can't undo package
+     * changes it already made, so the state is surfaced but not reversible from here.
+     */
+    private fun sandboxIndicator(): JComponent =
+        JBLabel("Sandbox", AllIcons.Nodes.Padlock, SwingConstants.LEFT).apply {
+            toolTipText = "Running in marimo's isolated uv sandbox (PEP 723 dependencies), not the project interpreter."
+            foreground = UIUtil.getContextHelpForeground()
+            border = JBUI.Borders.emptyRight(8)
+        }
 
     override fun getComponent(): JComponent = panel
     override fun getPreferredFocusedComponent(): JComponent? = browser?.component

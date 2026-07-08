@@ -42,23 +42,25 @@ data class MarimoErrorModel(
                     )
             }
 
+        // A failed launch carries the process's stderr tail (a Python traceback) as its message.
+        // The headline already names the cause, so that raw text is kept out of the panel and left
+        // to the IDE log; the panel stays a clean message + actions.
         private fun serverNotStarted(
             cause: Throwable?,
             presence: MarimoPresence,
             uvAvailable: Boolean,
-        ): MarimoErrorModel {
-            val detail = cause?.message.nullIfBlank()
-            return when {
+        ): MarimoErrorModel =
+            when {
                 cause is UvUnavailableException ->
                     MarimoErrorModel(
                         message = "marimo sandbox mode needs uv. Install uv to run in an isolated environment.",
-                        detail = detail,
+                        detail = null,
                         actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
                     )
                 cause is NoInterpreterException ->
                     MarimoErrorModel(
                         message = "No Python interpreter is configured. Configure one to run marimo on it.",
-                        detail = detail,
+                        detail = null,
                         actions = listOf(
                             MarimoErrorAction.RETRY,
                             MarimoErrorAction.START_IN_SANDBOX,
@@ -69,7 +71,7 @@ data class MarimoErrorModel(
                 presence is MarimoPresence.Missing ->
                     MarimoErrorModel(
                         message = "marimo isn't installed in the project interpreter.",
-                        detail = detail,
+                        detail = null,
                         actions = listOf(
                             MarimoErrorAction.INSTALL,
                             MarimoErrorAction.RETRY,
@@ -81,11 +83,10 @@ data class MarimoErrorModel(
                 else ->
                     MarimoErrorModel(
                         message = "marimo couldn't be started.",
-                        detail = detail,
+                        detail = null,
                         actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
                     )
             }
-        }
 
         private fun String?.nullIfBlank(): String? = this?.takeIf { it.isNotBlank() }
     }

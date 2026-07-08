@@ -31,7 +31,7 @@ class UvLauncher : MarimoLauncher {
         ): GeneralCommandLine {
             val params = mutableListOf(
                 "run", "--with", "marimo", "marimo", "edit", notebookPath,
-                "--headless", "--host", host, "--port", port.toString(), "--no-token",
+                "--headless", "--watch", "--host", host, "--port", port.toString(), "--no-token",
             )
             if (sandbox) params.add("--sandbox")
             return GeneralCommandLine(uvPath).withWorkDirectory(workDir).withParameters(params)

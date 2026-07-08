@@ -63,6 +63,15 @@ class MarimoErrorModelTest {
         assertEquals(null, model.detail)
     }
 
+    @Test fun serverErrorNeverSurfacesRawTrace() {
+        val trace = "marimo exited (code 1) before serving http://127.0.0.1:2718\n" +
+            "Traceback (most recent call last):\n  File \"x\", line 1\nModuleNotFoundError: No module named 'marimo'"
+        listOf(MarimoPresence.Missing, MarimoPresence.Unknown, MarimoPresence.Installed("0.1.0")).forEach { presence ->
+            val model = of(MarimoFailure.ServerNotStarted(RuntimeException(trace)), presence)
+            assertEquals("raw launch trace must not reach the panel", null, model.detail)
+        }
+    }
+
     @Test fun everyModeOffersOpenAsPython() {
         val failures = listOf(
             MarimoFailure.ServerNotStarted(null),

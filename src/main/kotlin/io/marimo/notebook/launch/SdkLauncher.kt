@@ -14,10 +14,14 @@ class SdkLauncher : MarimoLauncher {
         val python = SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
             ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
-        val cmd = buildCommandLine(python, request.notebook.path, workDir, request.host, request.port)
         val (themeEnv, themeHome) = MarimoThemeConfig.environment()
-        cmd.withEnvironment(themeEnv, themeHome)
-        return startMarimoServer(cmd, request.host, request.port)
+        fun command(watch: Boolean) =
+            buildCommandLine(python, request.notebook.path, workDir, request.host, request.port, watch)
+                .apply { withEnvironment(themeEnv, themeHome) }
+        return startMarimoServer(
+            command(watch = true), request.host, request.port,
+            watchFallbackCmd = { command(watch = false) },
+        )
     }
 
     override fun marimoCliPrefix(request: LaunchRequest): List<String>? =
@@ -27,11 +31,14 @@ class SdkLauncher : MarimoLauncher {
     companion object {
         fun buildCommandLine(
             pythonPath: String, notebookPath: String, workDir: String, host: String, port: Int,
-        ): GeneralCommandLine = GeneralCommandLine(pythonPath)
-            .withWorkDirectory(workDir)
-            .withParameters(
-                "-m", "marimo", "edit", notebookPath,
-                "--headless", "--host", host, "--port", port.toString(), "--no-token",
-            )
+            watch: Boolean = true,
+        ): GeneralCommandLine {
+            val params = buildList {
+                addAll(listOf("-m", "marimo", "edit", notebookPath, "--headless"))
+                if (watch) add("--watch")
+                addAll(listOf("--host", host, "--port", port.toString(), "--no-token"))
+            }
+            return GeneralCommandLine(pythonPath).withWorkDirectory(workDir).withParameters(params)
+        }
     }
 }

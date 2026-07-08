@@ -32,6 +32,11 @@ class MarimoSourceEditorProvider : FileEditorProvider, DumbAware {
     override fun createEditor(project: Project, file: VirtualFile): FileEditor =
         object : PsiAwareTextEditorImpl(project, file, platform) {
             override fun getName(): String = "Source"
+
+            override fun selectNotify() {
+                refreshMarimoSourceFromDisk(file)
+                super.selectNotify()
+            }
         }
 
     override fun readState(element: Element, project: Project, file: VirtualFile): FileEditorState =
