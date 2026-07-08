@@ -10,8 +10,14 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 
 ## Features
 
-- **Open `.py` marimo notebooks as notebooks** — files that use marimo open in an interactive editor instead of a plain text view.
+- **Open `.py` marimo notebooks as notebooks** — files that use marimo open in an interactive editor instead of a plain text view. Non-marimo files keep the normal Python editor.
 - **Full marimo experience** — reactive execution, `mo.ui` widgets, SQL cells, the variables and dependency panels, and the built-in package manager all work as they do in marimo.
+- **Runs on your interpreter** — the plugin launches marimo on your configured project interpreter, and offers to install it when it's missing.
+- **Start in a sandbox** — run a notebook in an isolated [uv](https://docs.astral.sh/uv/) environment.
+- **Pair with AI** — attach an AI harness to a notebook, and open a pairing prompt in JetBrains AI Chat when AI Assistant is available (with a copy-and-paste fallback).
+- **Clear recovery when a notebook can't start** — Retry, Install, or Open as Python File instead of a stack trace.
+- **New → marimo Notebook** — a file template and notebook icon for marimo `.py` files, plus "Open as Python File" to view the raw source.
+- **Stays in sync** — edits made to a notebook's source in another editor reload the marimo editor automatically, and the editor theme follows the IDE's light/dark theme.
 - **Git-friendly** — notebooks stay as regular `.py` files, so diffs and reviews work normally.
 
 ## Requirements
