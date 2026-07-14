@@ -2,14 +2,13 @@ name: CodeQL
 
 on:
   push:
-    branches: [ main ]
+    branches: [main]
   pull_request:
-    branches: [ main ]
+    branches: [main]
   schedule:
     - cron: "23 5 * * 1"
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
   analyze:

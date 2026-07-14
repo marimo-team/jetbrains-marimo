@@ -5,10 +5,9 @@
 name: Release
 on:
   release:
-    types: [ prereleased, released ]
+    types: [prereleased, released]
 
-permissions:
-  contents: read
+permissions: {}
 
 jobs:
 
