@@ -91,6 +91,7 @@ object MarimoPairLauncher {
             manager.toolWindow?.activate(null)
         } catch (e: Throwable) {
             thisLogger().warn("Failed to open a terminal for the pair session", e)
+            MarimoTelemetry.getInstance().captureException(e)
             MarimoPairNotifications.warning(project, "Could not open a terminal. Run this manually:\n$command")
         }
     }

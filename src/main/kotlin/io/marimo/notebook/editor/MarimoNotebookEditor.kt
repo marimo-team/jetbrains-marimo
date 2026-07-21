@@ -169,6 +169,7 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
                 else -> "other"
             }
             MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookLaunchFailed(reason))
+            MarimoTelemetry.getInstance().captureException(err ?: RuntimeException("marimo failed to start"))
             val model = MarimoErrorModel.of(
                 MarimoFailure.ServerNotStarted(err), presence, uvAvailable = uvAvailable,
             )
