@@ -128,6 +128,9 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         // Public, write-only project key (not a secret) — safe to ship in the plugin.
         const val POSTHOG_API_KEY = "phc_rC8Zgmycm8WEoyb3PU2hxEaXvtYfpofh6hZFiibwisHt"
 
+        // Replaced with the real Sentry DSN before Marketplace submit (Phase C).
+        const val SENTRY_DSN = "<PLACEHOLDER_DSN>"
+
         const val PRIVACY_URL = "https://github.com/marimo-team/jetbrains-marimo/blob/main/PRIVACY.md"
 
         // Baked in at build time from telemetry.properties; "production" only on the release build.

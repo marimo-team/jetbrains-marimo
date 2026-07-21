@@ -84,6 +84,7 @@ intellijPlatform {
 
 dependencies {
     implementation("com.posthog:posthog-server:2.8.1")
+    implementation("io.sentry:sentry:7.22.6")
 
     testImplementation("junit:junit:4.13.2")
 
