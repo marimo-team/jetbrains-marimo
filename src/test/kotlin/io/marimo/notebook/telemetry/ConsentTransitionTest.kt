@@ -24,9 +24,28 @@ class ConsentTransitionTest {
         }
     }
 
+    private class RecordingSentrySink : SentrySink {
+        val captured = mutableListOf<Throwable>()
+        var closed = false
+
+        override fun captureException(throwable: Throwable) {
+            captured += throwable
+        }
+
+        override fun close() {
+            closed = true
+        }
+    }
+
+    private fun marimoError() =
+        RuntimeException("boom").apply {
+            stackTrace = arrayOf(StackTraceElement("io.marimo.notebook.launch.SdkLauncher", "start", "SdkLauncher.kt", 1))
+        }
+
     @Test fun allowThenRevoke() {
         val sink = RecordingSink()
-        val telemetry = MarimoTelemetry().withSinkForTest(sink)
+        val sentry = RecordingSentrySink()
+        val telemetry = MarimoTelemetry().withSinkForTest(sink).withSentrySinkForTest(sentry)
 
         telemetry.allow()
         assertEquals(Consent.ALLOWED, telemetry.consent)
@@ -51,5 +70,31 @@ class ConsentTransitionTest {
 
         telemetry.capture(TelemetryEvent.SandboxStarted)
         assertTrue(sink.events.isEmpty())
+    }
+
+    @Test fun sentryCapturesWhenAllowedAndStopsAfterRevoke() {
+        val sentry = RecordingSentrySink()
+        val telemetry = MarimoTelemetry().withSinkForTest(RecordingSink()).withSentrySinkForTest(sentry)
+
+        telemetry.allow()
+        val error = marimoError()
+        telemetry.captureException(error)
+        assertEquals(listOf<Throwable>(error), sentry.captured)
+
+        telemetry.revoke()
+        assertTrue(sentry.closed)
+
+        telemetry.captureException(marimoError())
+        assertEquals(1, sentry.captured.size)
+    }
+
+    @Test fun sentryNoCaptureWhenDenied() {
+        val sentry = RecordingSentrySink()
+        val telemetry = MarimoTelemetry().withSentrySinkForTest(sentry)
+
+        telemetry.deny()
+        telemetry.captureException(marimoError())
+        assertTrue(sentry.captured.isEmpty())
+        assertFalse(sentry.closed)
     }
 }
