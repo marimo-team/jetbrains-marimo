@@ -27,9 +27,19 @@ class ConsentTransitionTest {
     private class RecordingSentrySink : SentrySink {
         val captured = mutableListOf<Throwable>()
         var closed = false
+        var sessionsStarted = 0
+        var sessionsEnded = 0
 
         override fun captureException(throwable: Throwable) {
             captured += throwable
+        }
+
+        override fun startSession() {
+            sessionsStarted++
+        }
+
+        override fun endSession() {
+            sessionsEnded++
         }
 
         override fun close() {
@@ -86,6 +96,21 @@ class ConsentTransitionTest {
 
         telemetry.captureException(marimoError())
         assertEquals(1, sentry.captured.size)
+    }
+
+    @Test fun sentrySessionStartsOnAllowAndEndsOnRevoke() {
+        val sentry = RecordingSentrySink()
+        val telemetry = MarimoTelemetry().withSinkForTest(RecordingSink()).withSentrySinkForTest(sentry)
+
+        telemetry.allow()
+        assertEquals(1, sentry.sessionsStarted)
+        assertEquals(0, sentry.sessionsEnded)
+
+        telemetry.captureException(marimoError())
+        assertEquals(1, sentry.sessionsStarted)
+
+        telemetry.revoke()
+        assertEquals(1, sentry.sessionsEnded)
     }
 
     @Test fun sentryNoCaptureWhenDenied() {

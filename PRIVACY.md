@@ -49,6 +49,11 @@ captured process-output tail. Crash reports do **not** include your notebook con
 outputs, or SQL, and never your name, email, or account. This is the one place telemetry can carry a
 path; usage events never do.
 
+To measure how often the plugin runs without crashing (crash-free sessions and users), Sentry also
+receives a lightweight **session** per consented run: the plugin version, environment, the anonymous
+identifier, and whether that session ended cleanly or with a crash. Sessions carry no file paths and
+no content.
+
 ## While telemetry is disabled
 
 Nothing is sent. No usage events and no crash reports leave your machine while the setting is off,
