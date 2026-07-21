@@ -59,6 +59,14 @@ no content.
 Nothing is sent. No usage events and no crash reports leave your machine while the setting is off,
 regardless of the IDE's Data Sharing setting.
 
+## Company privacy policy
+
+marimo is part of CoreWeave, Inc. This document describes what the marimo for JetBrains plugin
+collects specifically; it supplements — and is governed by — CoreWeave's company-wide
+[Privacy Policy](https://docs.coreweave.com/policies/terms-of-service/privacy-policy). Where this
+document is silent, the CoreWeave Privacy Policy applies. For data access or deletion requests,
+contact **privacy@coreweave.com**.
+
 ## Contact
 
-Questions about this policy or the data collected: **contact@marimo.io**.
+Questions about this policy or the data the plugin collects: **contact@marimo.io**.
