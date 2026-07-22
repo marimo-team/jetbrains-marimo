@@ -103,3 +103,44 @@ jobs:
             --body "Current pull request contains patched \`CHANGELOG.md\` file for the \`$VERSION\` version." \
             --label "$LABEL" \
             --head $BRANCH
+
+      # Notify Slack about the release outcome
+      - name: Notify Slack - Release Success
+        if: success()
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL_RELEASES }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "✅ Release completed successfully for jetbrains-marimo",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "✅ *Release successful*\n\n*Repository:* jetbrains-marimo\n*Version:* ${{ github.event.release.tag_name }}\n*Release:* <${{ github.event.release.html_url }}|${{ github.event.release.tag_name }}>\n*Marketplace:* https://plugins.jetbrains.com/plugin/index?xmlId=io.marimo.notebook"
+                  }
+                }
+              ]
+            }
+
+      - name: Notify Slack - Release Failed
+        if: failure()
+        uses: slackapi/slack-github-action@af78098f536edbc4de71162a307590698245be95 # v3.0.1
+        with:
+          webhook: ${{ secrets.SLACK_WEBHOOK_URL_RELEASES }}
+          webhook-type: incoming-webhook
+          payload: |
+            {
+              "text": "❌ Release failed for jetbrains-marimo",
+              "blocks": [
+                {
+                  "type": "section",
+                  "text": {
+                    "type": "mrkdwn",
+                    "text": "❌ *Release failed*\n\n*Repository:* jetbrains-marimo\n*Version:* ${{ github.event.release.tag_name }}\n*Commit:* <https://github.com/${{ github.repository }}/commit/${{ github.sha }}|${{ github.sha }}>\n*Triggered by:* ${{ github.actor }}\n*Workflow:* <https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}|View logs>"
+                  }
+                }
+              ]
+            }
