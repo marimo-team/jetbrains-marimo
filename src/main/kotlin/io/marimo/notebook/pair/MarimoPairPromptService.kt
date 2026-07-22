@@ -8,6 +8,7 @@ import com.intellij.notification.NotificationGroupManager
 import com.intellij.notification.NotificationType
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.server.MarimoServerService
@@ -20,24 +21,7 @@ internal object MarimoPairPromptService {
      * EDT. Errors are reported here so every delivery path has the same concise recovery message.
      */
     fun generate(project: Project, file: VirtualFile, onPrompt: (String) -> Unit) {
-        val server = project.service<MarimoServerService>()
-        server.urlFor(file).whenComplete { url, err ->
-            if (err != null || url == null) {
-                onEdt { MarimoPairNotifications.warning(project, "Could not start marimo: ${err?.message ?: "unknown error"}") }
-                return@whenComplete
-            }
-
-            val prefix = server.marimoCliPrefixFor(file)
-            if (prefix == null) {
-                onEdt {
-                    MarimoPairNotifications.warning(
-                        project,
-                        "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
-                    )
-                }
-                return@whenComplete
-            }
-
+        MarimoPairSession.resolve(project, file, logContext = "pair prompt") { url, prefix ->
             ApplicationManager.getApplication().executeOnPooledThread {
                 val result = runCatching {
                     val command = GeneralCommandLine(MarimoHarness.promptArgs(prefix, url))
@@ -66,6 +50,41 @@ internal object MarimoPairPromptService {
 
     private fun onEdt(action: () -> Unit) =
         ApplicationManager.getApplication().invokeLater(action)
+}
+
+/**
+ * Shared entry guard for the pairing workflow: starts (or reuses) the notebook server, resolves the
+ * marimo CLI prefix, and delivers both to [onReady] on the EDT. Failures warn the user with the same
+ * concise recovery message on every pairing path and log under [logContext].
+ */
+internal object MarimoPairSession {
+
+    fun resolve(
+        project: Project,
+        file: VirtualFile,
+        logContext: String,
+        onReady: (url: String, prefix: List<String>) -> Unit,
+    ) {
+        val server = project.service<MarimoServerService>()
+        server.urlFor(file).whenComplete { url, err ->
+            ApplicationManager.getApplication().invokeLater {
+                if (err != null || url == null) {
+                    thisLogger().warn("Could not start the marimo server for a $logContext", err)
+                    MarimoPairNotifications.warning(project, "Could not start marimo.")
+                    return@invokeLater
+                }
+                val prefix = server.marimoCliPrefixFor(file)
+                if (prefix == null) {
+                    MarimoPairNotifications.warning(
+                        project,
+                        "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
+                    )
+                    return@invokeLater
+                }
+                onReady(url, prefix)
+            }
+        }
+    }
 }
 
 /** Shared notification formatting for the pairing workflow. */

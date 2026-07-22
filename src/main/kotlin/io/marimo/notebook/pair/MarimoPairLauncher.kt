@@ -2,11 +2,8 @@
 
 package io.marimo.notebook.pair
 
-import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
@@ -28,25 +25,10 @@ object MarimoPairLauncher {
             return
         }
 
-        val server = project.service<MarimoServerService>()
-        server.urlFor(file).whenComplete { url, err ->
-            ApplicationManager.getApplication().invokeLater {
-                if (err != null || url == null) {
-                    MarimoPairNotifications.warning(project, "Could not start marimo: ${err?.message ?: "unknown error"}")
-                    return@invokeLater
-                }
-                val prefix = server.marimoCliPrefixFor(file)
-                if (prefix == null) {
-                    MarimoPairNotifications.warning(
-                        project,
-                        "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
-                    )
-                    return@invokeLater
-                }
-                runInTerminal(project, file, harness, harness.terminalCommand(prefix, url))
-                MarimoTelemetry.getInstance()
-                    .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
-            }
+        MarimoPairSession.resolve(project, file, logContext = "pair session") { url, prefix ->
+            runInTerminal(project, file, harness, harness.terminalCommand(prefix, url))
+            MarimoTelemetry.getInstance()
+                .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
         }
     }
 
