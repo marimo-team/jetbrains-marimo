@@ -2,6 +2,7 @@ import org.gradle.api.tasks.WriteProperties
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
 plugins {
     id("org.jetbrains.kotlin.jvm")
@@ -67,6 +68,15 @@ intellijPlatform {
         // plugin loads fine. The ignore file mutes only that "not found" signature, scoped to
         // com.jetbrains.python, so real method/class-level incompatibilities still fail verification.
         ignoredProblemsFile = layout.projectDirectory.file("verifier-ignored-problems.txt")
+
+        // The plugin deliberately calls a few @ApiStatus.Internal platform methods that have no public
+        // equivalent (opening a terminal tab via TerminalToolWindowManager, reading the plugin's own
+        // version via PluginManagerCore). Drop INTERNAL_API_USAGES from the default failure set so those
+        // don't fail verification, while still failing on real compatibility and override-only problems.
+        failureLevel = listOf(
+            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+            VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
+        )
     }
 
     // Signing and publishing read their material from environment variables, supplied in CI by the
