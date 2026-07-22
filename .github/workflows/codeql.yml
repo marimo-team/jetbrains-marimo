@@ -50,6 +50,6 @@ jobs:
         run: ./gradlew compileKotlin compileTestKotlin
 
       - name: Perform CodeQL Analysis
-        uses: github/codeql-action/analyze@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3
+        uses: github/codeql-action/analyze@e0647621c2984b5ed2f768cb892365bf2a616ad1 # v3
         with:
           category: "/language:java-kotlin"
