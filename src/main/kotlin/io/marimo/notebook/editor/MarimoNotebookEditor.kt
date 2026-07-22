@@ -218,7 +218,6 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
             }
             MarimoErrorAction.START_IN_SANDBOX -> {
                 server.enableSandbox(file)
-                MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
                 relaunch()
             }
             MarimoErrorAction.OPEN_AS_PYTHON ->

@@ -10,6 +10,8 @@ import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.telemetry.MarimoTelemetry
+import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.progress.ProcessCanceledException
@@ -68,7 +70,9 @@ class MarimoServerService(private val project: Project) : Disposable {
 
     /** Route this notebook through marimo's sandbox (uv) on its next launch and thereafter. */
     fun enableSandbox(file: VirtualFile) {
-        sandboxFiles.add(file.url)
+        if (sandboxFiles.add(file.url)) {
+            MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
+        }
     }
 
     /** Whether [file] is currently routed through marimo's sandbox (uv). */

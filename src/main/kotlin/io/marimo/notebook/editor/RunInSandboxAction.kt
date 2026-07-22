@@ -6,8 +6,6 @@ import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.detect.MarimoDetector
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.server.MarimoServerService
-import io.marimo.notebook.telemetry.MarimoTelemetry
-import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -46,7 +44,6 @@ class RunInSandboxAction : AnAction(), DumbAware {
         val project = e.project ?: return
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
         project.service<MarimoServerService>().enableSandbox(file)
-        MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
         val editors = FileEditorManager.getInstance(project)
         editors.getEditors(file).filterIsInstance<MarimoNotebookEditor>().forEach { it.reload() }
         editors.openFile(file, true)
