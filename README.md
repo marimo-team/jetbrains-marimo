@@ -1,3 +1,5 @@
+[![Marketplace version](https://img.shields.io/jetbrains/plugin/v/32416.svg?label=marketplace)](https://plugins.jetbrains.com/plugin/32416-marimo)
+
 # marimo for PyCharm
 
 Open and run [marimo](https://marimo.io) notebooks directly in PyCharm.
