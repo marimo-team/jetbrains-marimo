@@ -19,8 +19,24 @@ class SdkLauncherCommandTest {
         val args = cmd.parametersList.parameters
         assertEquals(
             listOf("-m", "marimo", "edit", "/proj/nb.py",
-                "--headless", "--host", "127.0.0.1", "--port", "2718", "--no-token"),
+                "--headless", "--watch", "--host", "127.0.0.1", "--port", "2718", "--no-token"),
             args,
+        )
+    }
+
+    @Test fun omitsWatchWhenDisabled() {
+        val cmd = SdkLauncher.buildCommandLine(
+            pythonPath = "/proj/.venv/bin/python",
+            notebookPath = "/proj/nb.py",
+            workDir = "/proj",
+            host = "127.0.0.1",
+            port = 2718,
+            watch = false,
+        )
+        assertEquals(
+            listOf("-m", "marimo", "edit", "/proj/nb.py",
+                "--headless", "--host", "127.0.0.1", "--port", "2718", "--no-token"),
+            cmd.parametersList.parameters,
         )
     }
 }

@@ -46,8 +46,12 @@ jobs:
           languages: java-kotlin
           build-mode: manual
 
+      # CodeQL's java-kotlin extractor hooks into the Kotlin compiler daemon to build its database,
+      # and that extra in-process work exhausts the daemon's default heap on this project (GC-overhead
+      # OOM). Raise the daemon heap for the traced build; the untraced Build/Test jobs compile fine at
+      # the default.
       - name: Build
-        run: ./gradlew compileKotlin compileTestKotlin
+        run: ./gradlew compileKotlin compileTestKotlin -Pkotlin.daemon.jvmargs=-Xmx4g
 
       - name: Perform CodeQL Analysis
         uses: github/codeql-action/analyze@02c5e83432fe5497fd85b873b6c9f16a8578e1d9 # v3

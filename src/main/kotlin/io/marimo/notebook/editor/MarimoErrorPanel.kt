@@ -6,10 +6,9 @@ import com.intellij.icons.AllIcons
 import com.intellij.ui.components.JBLabel
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import java.awt.Component
 import java.awt.FlowLayout
+import java.awt.GridBagConstraints
 import java.awt.GridBagLayout
-import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JPanel
 
@@ -24,24 +23,27 @@ class MarimoErrorPanel(
 ) : JPanel(GridBagLayout()) {
 
     init {
-        val content = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            isOpaque = false
+        // Every row shares column 0 with anchor CENTER, and all weights stay 0, so GridBag centers the
+        // whole block in the panel and each row on one vertical axis regardless of its width.
+        val gbc = GridBagConstraints().apply {
+            gridx = 0
+            gridy = 0
+            anchor = GridBagConstraints.CENTER
+            insets = JBUI.insets(4, 0)
         }
 
-        content.add(centered(JBLabel(AllIcons.General.Error)))
-        content.add(strut())
-        content.add(centered(JBLabel(html(model.message))))
+        add(JBLabel(AllIcons.General.Error), gbc)
+
+        gbc.gridy++
+        add(JBLabel(html(model.message)), gbc)
 
         model.detail?.let {
-            content.add(strut())
-            content.add(centered(JBLabel(html(it)).apply { foreground = UIUtil.getContextHelpForeground() }))
+            gbc.gridy++
+            add(JBLabel(html(it)).apply { foreground = UIUtil.getContextHelpForeground() }, gbc)
         }
 
-        content.add(strut())
-        content.add(centered(buttonRow(model.actions, model.sandboxEnabled, onAction)))
-
-        add(content)
+        gbc.gridy++
+        add(buttonRow(model.actions, model.sandboxEnabled, onAction), gbc)
     }
 
     private fun buttonRow(
@@ -61,11 +63,6 @@ class MarimoErrorPanel(
                 })
             }
         }
-
-    private fun centered(component: Component): Component =
-        component.also { (it as? javax.swing.JComponent)?.alignmentX = Component.CENTER_ALIGNMENT }
-
-    private fun strut() = javax.swing.Box.createVerticalStrut(JBUI.scale(8))
 
     private fun html(text: String): String =
         "<html><div style='text-align:center;width:${JBUI.scale(360)}px'>$text</div></html>"

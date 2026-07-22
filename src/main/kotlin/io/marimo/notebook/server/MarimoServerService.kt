@@ -10,8 +10,11 @@ import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.telemetry.MarimoTelemetry
+import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.components.Service
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
@@ -43,7 +46,16 @@ class MarimoServerService(private val project: Project) : Disposable {
             is LaunchDecision.NeedsUv ->
                 return CompletableFuture.failedFuture(UvUnavailableException(decision.message))
         }
-        val handle = launcher.launch(request)
+        // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into a
+        // failed future so it reaches the editor's error panel instead of escaping as an IDE
+        // internal-error balloon with a raw stack trace.
+        val handle = try {
+            launcher.launch(request)
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: Exception) {
+            return CompletableFuture.failedFuture(e)
+        }
         handles[file.url] = handle
         Disposer.register(this, handle)
         return handle.awaitReady()
@@ -58,8 +70,13 @@ class MarimoServerService(private val project: Project) : Disposable {
 
     /** Route this notebook through marimo's sandbox (uv) on its next launch and thereafter. */
     fun enableSandbox(file: VirtualFile) {
-        sandboxFiles.add(file.url)
+        if (sandboxFiles.add(file.url)) {
+            MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
+        }
     }
+
+    /** Whether [file] is currently routed through marimo's sandbox (uv). */
+    fun isSandbox(file: VirtualFile): Boolean = file.url in sandboxFiles
 
     fun release(file: VirtualFile) {
         handles.remove(file.url)?.let(Disposer::dispose)

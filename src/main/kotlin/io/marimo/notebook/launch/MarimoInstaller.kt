@@ -6,9 +6,12 @@ import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.service
+import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.telemetry.MarimoTelemetry
+import io.marimo.notebook.telemetry.TelemetryEvent
 
 /**
  * Installs marimo into the interpreter PyCharm resolves for a notebook, then re-probes presence.
@@ -30,21 +33,31 @@ class MarimoInstaller(private val project: Project) {
     fun installMarimo(notebook: VirtualFile): MarimoPresence {
         val sdk = SdkPythonResolver.resolveSdk(project, notebook) ?: return MarimoPresence.Unknown
         val pythonPath = sdk.homePath ?: return MarimoPresence.Unknown
-        return ProgressManager.getInstance().runProcessWithProgressSynchronously<MarimoPresence, RuntimeException>(
-            {
-                resolveInstallCommand(pythonPath)?.let { command ->
-                    val handler = CapturingProcessHandler(command)
-                    val indicator = ProgressManager.getInstance().progressIndicator
-                    if (indicator != null) handler.runProcessWithProgressIndicator(indicator) else handler.runProcess()
-                }
-                val probe = project.service<MarimoEnvProbe>()
-                probe.invalidate()
-                probe.probe(notebook)
-            },
-            "Installing marimo",
-            true,
-            project,
-        )
+        val presence = try {
+            ProgressManager.getInstance().runProcessWithProgressSynchronously<MarimoPresence, RuntimeException>(
+                {
+                    resolveInstallCommand(pythonPath)?.let { command ->
+                        val handler = CapturingProcessHandler(command)
+                        val indicator = ProgressManager.getInstance().progressIndicator
+                        if (indicator != null) handler.runProcessWithProgressIndicator(indicator) else handler.runProcess()
+                    }
+                    val probe = project.service<MarimoEnvProbe>()
+                    probe.invalidate()
+                    probe.probe(notebook)
+                },
+                "Installing marimo",
+                true,
+                project,
+            )
+        } catch (e: ProcessCanceledException) {
+            throw e
+        } catch (e: Throwable) {
+            MarimoTelemetry.getInstance().captureException(e)
+            throw e
+        }
+        MarimoTelemetry.getInstance()
+            .capture(TelemetryEvent.MarimoInstallResult(success = presence is MarimoPresence.Installed))
+        return presence
     }
 
     /**

@@ -3,6 +3,7 @@
 package io.marimo.notebook.editor
 
 import io.marimo.notebook.detect.MarimoDetector
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.fileEditor.FileEditorProvider
@@ -32,6 +33,11 @@ class MarimoSourceEditorProvider : FileEditorProvider, DumbAware {
     override fun createEditor(project: Project, file: VirtualFile): FileEditor =
         object : PsiAwareTextEditorImpl(project, file, platform) {
             override fun getName(): String = "Source"
+
+            override fun selectNotify() {
+                ApplicationManager.getApplication().executeOnPooledThread { refreshMarimoSourceFromDisk(file) }
+                super.selectNotify()
+            }
         }
 
     override fun readState(element: Element, project: Project, file: VirtualFile): FileEditorState =
