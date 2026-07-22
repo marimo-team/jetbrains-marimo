@@ -48,4 +48,29 @@ class MarimoPopupTest {
         val popup = classifyMarimoPopup("http://127.0.0.1:5123/?file=")
         assertEquals(MarimoPopup.External("http://127.0.0.1:5123/?file="), popup)
     }
+
+    @Test fun classifiesRelativeFileDeepLinkAsNotebook() {
+        val popup = classifyMarimoPopup("?file=%2Ftmp%2Fa.py")
+        assertEquals(MarimoPopup.Notebook("/tmp/a.py"), popup)
+    }
+
+    @Test fun classifiesLocalhostFileDeepLinkAsNotebook() {
+        val popup = classifyMarimoPopup("http://localhost:5123/?file=%2Ftmp%2Fa.py")
+        assertEquals(MarimoPopup.Notebook("/tmp/a.py"), popup)
+    }
+
+    @Test fun bareFileParamDoesNotShadowFileWithValue() {
+        val popup = classifyMarimoPopup("http://127.0.0.1:5123/?file&file=%2Ftmp%2Fa.py")
+        assertEquals(MarimoPopup.Notebook("/tmp/a.py"), popup)
+    }
+
+    @Test fun bareFileParamWithoutValueIsExternal() {
+        val url = "http://127.0.0.1:5123/?file"
+        assertEquals(MarimoPopup.External(url), classifyMarimoPopup(url))
+    }
+
+    @Test fun doesNotOpenLocalPathFromExternalHost() {
+        val url = "https://evil.example.com/?file=%2Fetc%2Fpasswd"
+        assertEquals(MarimoPopup.External(url), classifyMarimoPopup(url))
+    }
 }
