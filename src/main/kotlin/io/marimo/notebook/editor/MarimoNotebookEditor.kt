@@ -16,6 +16,9 @@ import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.editor.colors.EditorColorsListener
+import com.intellij.openapi.editor.colors.EditorColorsManager
+import com.intellij.openapi.editor.colors.FontPreferences
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.fileEditor.FileEditorState
@@ -44,6 +47,7 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.SwingConstants
+import kotlin.math.ln
 
 class MarimoNotebookEditor(private val project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
@@ -59,7 +63,35 @@ class MarimoNotebookEditor(private val project: Project, private val file: Virtu
     init {
         browser?.let(::installLoadErrorHandler)
         browser?.let(::installPopupHandler)
+        browser?.let(::installEditorFontZoom)
         loadNotebook()
+    }
+
+    /**
+     * Keep the embedded notebook's zoom in step with the IDE's editor font size, so enlarging the font
+     * across editors enlarges the notebook too. CEF resets zoom on navigation, so reapply on every main-frame
+     * load as well as whenever the global scheme changes.
+     */
+    private fun installEditorFontZoom(browser: JBCefBrowser) {
+        ApplicationManager.getApplication().messageBus.connect(this)
+            .subscribe(EditorColorsManager.TOPIC, EditorColorsListener { onEdt { applyEditorFontZoom(browser) } })
+        browser.jbCefClient.addLoadHandler(
+            object : CefLoadHandlerAdapter() {
+                override fun onLoadEnd(cefBrowser: CefBrowser?, frame: CefFrame?, httpStatusCode: Int) {
+                    if (frame?.isMain == true) onEdt { applyEditorFontZoom(browser) }
+                }
+            },
+            browser.cefBrowser,
+        )
+    }
+
+    /**
+     * Map the editor font size onto a CEF zoom level, where the scale factor is `1.2^level`. The platform
+     * default font size renders the notebook at its native 100%; larger fonts scale it up proportionally.
+     */
+    private fun applyEditorFontZoom(browser: JBCefBrowser) {
+        val fontSize = EditorColorsManager.getInstance().globalScheme.editorFontSize
+        browser.cefBrowser.zoomLevel = ln(fontSize.toDouble() / FontPreferences.DEFAULT_FONT_SIZE) / ln(1.2)
     }
 
     /**
