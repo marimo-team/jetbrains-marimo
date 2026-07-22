@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-07-22
+
 ### Added
 - Opt-in telemetry to help improve the plugin: anonymous usage events (PostHog) and crash reports (Sentry). It is off by default and can be toggled at any time in **Settings → Tools → marimo**, independent of the IDE's global Data Sharing setting. See [PRIVACY.md](PRIVACY.md) for exactly what is and isn't sent.
 
