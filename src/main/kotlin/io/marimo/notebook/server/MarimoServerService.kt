@@ -10,6 +10,7 @@ import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.openapi.Disposable
@@ -28,6 +29,15 @@ class MarimoServerService(private val project: Project) : Disposable {
     private val planner = LaunchPlanner(SdkLauncher(), UvLauncher())
     private val handles = ConcurrentHashMap<String, MarimoServerHandle>()
     private val sandboxFiles = ConcurrentHashMap.newKeySet<String>()
+    private val views = ConcurrentHashMap<String, MarimoNotebookView>()
+
+    /**
+     * The per-file view (browser + panel + server) that editor tabs render. One per notebook,
+     * shared across every tab showing it, so moving a notebook between splits reuses the live view
+     * instead of tearing down and relaunching marimo. Disposed with the project.
+     */
+    fun viewFor(file: VirtualFile): MarimoNotebookView =
+        views.computeIfAbsent(file.url) { MarimoNotebookView(project, file).also { Disposer.register(this, it) } }
 
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
         val existing = handles[file.url]
