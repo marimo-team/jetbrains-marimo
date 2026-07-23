@@ -53,5 +53,9 @@ layout under `src/test/kotlin/`.
 - Add tests for behavior changes; keep `./gradlew check` green before opening a PR.
 - The local marimo server is launched on `127.0.0.1` with `--no-token` (auth disabled). Keep
   it bound to localhost; never expose the port.
+- **Releasing:** the only manual steps are bumping `version` in `gradle.properties` and recording
+  user-facing changes under the `## [Unreleased]` heading in `CHANGELOG.md`. Leave that heading as
+  `[Unreleased]` — do **not** hand-write a versioned section; CI's `patchChangelog` renames it to
+  `## [<version>]` and opens the `changelog-update-<version>` PR when the draft release is published.
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor workflow.

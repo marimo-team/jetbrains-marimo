@@ -4,6 +4,9 @@
 
 ## [Unreleased]
 
+### Fixed
+- Moving a notebook tab to another editor split no longer restarts marimo; the running notebook and its outputs move with the tab.
+
 ## [0.1.0] - 2026-07-22
 
 ### Added
