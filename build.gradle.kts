@@ -28,6 +28,8 @@ val telemetryResourcesDir = layout.buildDirectory.dir("generated/telemetry-resou
 val generateTelemetryConfig = tasks.register<WriteProperties>("generateTelemetryConfig") {
     destinationFile = telemetryResourcesDir.map { it.file("telemetry.properties") }
     property("environment", telemetryEnv)
+    // Baked in so the runtime reports the plugin's own version without querying an internal platform API.
+    property("version", providers.provider { project.version.toString() })
 }
 
 sourceSets.named("main") {
@@ -69,13 +71,10 @@ intellijPlatform {
         // com.jetbrains.python, so real method/class-level incompatibilities still fail verification.
         ignoredProblemsFile = layout.projectDirectory.file("verifier-ignored-problems.txt")
 
-        // The plugin deliberately calls a few @ApiStatus.Internal platform methods that have no public
-        // equivalent (opening a terminal tab via TerminalToolWindowManager, reading the plugin's own
-        // version via PluginManagerCore). Drop INTERNAL_API_USAGES from the default failure set so those
-        // don't fail verification, while still failing on real compatibility and override-only problems.
         failureLevel = listOf(
             VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
             VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
+            VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
         )
     }
 
