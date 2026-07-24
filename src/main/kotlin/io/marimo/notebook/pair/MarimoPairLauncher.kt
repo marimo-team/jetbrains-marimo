@@ -13,6 +13,8 @@ import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
 import com.intellij.util.EnvironmentUtil
 import java.awt.datatransfer.StringSelection
+import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner
+import org.jetbrains.plugins.terminal.TerminalTabState
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
 object MarimoPairLauncher {
@@ -67,8 +69,15 @@ object MarimoPairLauncher {
     ) {
         val workDir = file.parent?.path ?: project.basePath
         try {
-            val widget = manager.createNewSession(workDir, title, null, true, false)
-            tagWithNotebook(contentManager, widget, file.path)
+            val runner = LocalTerminalDirectRunner.createTerminalRunner(project)
+            val tabState = TerminalTabState().apply {
+                myTabName = title
+                myWorkingDirectory = workDir
+            }
+            // A null content manager lets the platform resolve — and lazily create — the terminal tool
+            // window, so the first pair launch works even before the tool window has been opened.
+            val widget = manager.createNewSession(runner, tabState, null)
+            tagWithNotebook(contentManager ?: manager.toolWindow?.contentManager, widget, file.path)
             widget.sendCommandToExecute(command)
             manager.toolWindow?.activate(null)
         } catch (e: Throwable) {

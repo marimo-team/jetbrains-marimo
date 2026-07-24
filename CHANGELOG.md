@@ -4,6 +4,10 @@
 
 ## [Unreleased]
 
+### Fixed
+
+- "Pair with marimo" now opens its terminal tab reliably on the first launch, even when the Terminal tool window hasn't been opened yet.
+
 ## [0.1.1] - 2026-07-23
 
 ### Fixed

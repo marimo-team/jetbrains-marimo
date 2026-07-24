@@ -2,7 +2,6 @@
 
 package io.marimo.notebook.telemetry
 
-import com.intellij.ide.plugins.PluginManagerCore
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationInfo
 import com.intellij.openapi.application.ApplicationManager
@@ -11,7 +10,6 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.intellij.openapi.extensions.PluginId
 import com.posthog.server.PostHog
 import com.posthog.server.PostHogConfig
 import com.posthog.server.PostHogInterface
@@ -160,8 +158,7 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     private fun buildSentrySink(): SentrySink? =
         if (SENTRY_DSN.startsWith("<")) null else RealSentrySink()
 
-    private fun pluginVersion(): String =
-        PluginManagerCore.getPlugin(PluginId.getId(PLUGIN_ID))?.version ?: "unknown"
+    private fun pluginVersion(): String = PLUGIN_VERSION
 
     private fun environment(): String = ENVIRONMENT
 
@@ -240,7 +237,6 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     }
 
     companion object {
-        const val PLUGIN_ID = "io.marimo.notebook"
         const val POSTHOG_HOST = "https://us.i.posthog.com"
 
         // Public, write-only project key (not a secret) — safe to ship in the plugin.
@@ -251,13 +247,23 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
 
         const val PRIVACY_URL = "https://github.com/marimo-team/jetbrains-marimo/blob/main/PRIVACY.md"
 
-        // Baked in at build time from telemetry.properties; "production" only on the release build.
-        // Falls back to "development" if the resource is missing or its token was never filtered.
+        // Baked in at build time by the generateTelemetryConfig Gradle task.
+        private val telemetryConfig: Properties by lazy {
+            Properties().apply {
+                MarimoTelemetry::class.java.getResourceAsStream("/telemetry.properties")?.use { load(it) }
+            }
+        }
+
+        // "production" only on the release build; falls back to "development" if the resource is
+        // missing or its token was never filtered.
         private val ENVIRONMENT: String by lazy {
-            MarimoTelemetry::class.java.getResourceAsStream("/telemetry.properties")
-                ?.use { Properties().apply { load(it) }.getProperty("environment") }
+            telemetryConfig.getProperty("environment")
                 ?.takeIf { it.isNotBlank() && !it.startsWith("\$") }
                 ?: "development"
+        }
+
+        private val PLUGIN_VERSION: String by lazy {
+            telemetryConfig.getProperty("version")?.takeIf { it.isNotBlank() } ?: "unknown"
         }
 
         fun getInstance(): MarimoTelemetry =
