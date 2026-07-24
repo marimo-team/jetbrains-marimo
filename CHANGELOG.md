@@ -4,6 +4,8 @@
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-07-24
+
 ### Fixed
 
 - "Pair with marimo" now opens its terminal tab reliably on the first launch, even when the Terminal tool window hasn't been opened yet.
@@ -51,7 +53,8 @@ First public preview of marimo for JetBrains IDEs.
 - Duplicating a notebook now opens the copy as an editor tab instead of a detached window; external links from the notebook open in your system browser.
 - Wait for the marimo server to accept connections before loading the editor, fixing an intermittent `ERR_CONNECTION_REFUSED` when opening a notebook.
 
-[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.1...HEAD
+[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.2...HEAD
+[0.1.2]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/marimo-team/jetbrains-marimo/compare/0.0.1...0.1.0
 [0.0.1]: https://github.com/marimo-team/jetbrains-marimo/commits/0.0.1
