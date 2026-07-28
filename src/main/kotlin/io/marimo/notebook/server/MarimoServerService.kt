@@ -5,7 +5,7 @@ package io.marimo.notebook.server
 import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
-import io.marimo.notebook.launch.MarimoServerHandle
+import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
@@ -22,13 +22,19 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.net.NetUtils
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
+import java.util.concurrent.atomic.AtomicBoolean
 
 @Service(Service.Level.PROJECT)
 class MarimoServerService(private val project: Project) : Disposable {
 
+    /** State that affects how one notebook's marimo server is launched and reused. */
+    private class NotebookServerState {
+        val lifecycle = MarimoNotebookLifecycle()
+        val sandboxEnabled = AtomicBoolean(false)
+    }
+
     private val planner = LaunchPlanner(SdkLauncher(), UvLauncher())
-    private val handles = ConcurrentHashMap<String, MarimoServerHandle>()
-    private val sandboxFiles = ConcurrentHashMap.newKeySet<String>()
+    private val notebookServers = ConcurrentHashMap<String, NotebookServerState>()
     private val views = ConcurrentHashMap<String, MarimoNotebookView>()
 
     /**
@@ -39,15 +45,19 @@ class MarimoServerService(private val project: Project) : Disposable {
     fun viewFor(file: VirtualFile): MarimoNotebookView =
         views.computeIfAbsent(file.url) { MarimoNotebookView(project, file).also { Disposer.register(this, it) } }
 
+    /** The server lifecycle retained for this notebook across editor reopenings. */
+    fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle =
+        stateFor(file).lifecycle
+
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
-        val existing = handles[file.url]
-        if (existing != null) return existing.awaitReady()
+        val state = stateFor(file)
+        state.lifecycle.liveHandle()?.let { return it.awaitReady() }
 
         val request = LaunchRequest(
             project = project,
             notebook = file,
             port = NetUtils.findAvailableSocketPort(),
-            sandbox = file.url in sandboxFiles,
+            sandbox = state.sandboxEnabled.get(),
         )
         val launcher = when (val decision = planner.plan(request)) {
             is LaunchDecision.Launch -> decision.launcher
@@ -66,8 +76,8 @@ class MarimoServerService(private val project: Project) : Disposable {
         } catch (e: Exception) {
             return CompletableFuture.failedFuture(e)
         }
-        handles[file.url] = handle
-        Disposer.register(this, handle)
+        Disposer.register(state.lifecycle, handle)
+        state.lifecycle.attach(handle)
         return handle.awaitReady()
     }
 
@@ -80,20 +90,26 @@ class MarimoServerService(private val project: Project) : Disposable {
 
     /** Route this notebook through marimo's sandbox (uv) on its next launch and thereafter. */
     fun enableSandbox(file: VirtualFile) {
-        if (sandboxFiles.add(file.url)) {
+        if (stateFor(file).sandboxEnabled.compareAndSet(false, true)) {
             MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
         }
     }
 
     /** Whether [file] is currently routed through marimo's sandbox (uv). */
-    fun isSandbox(file: VirtualFile): Boolean = file.url in sandboxFiles
+    fun isSandbox(file: VirtualFile): Boolean = notebookServers[file.url]?.sandboxEnabled?.get() ?: false
 
     fun release(file: VirtualFile) {
-        handles.remove(file.url)?.let(Disposer::dispose)
+        notebookServers[file.url]?.lifecycle?.release()
     }
 
     override fun dispose() {
-        handles.values.forEach(Disposer::dispose)
-        handles.clear()
+        notebookServers.values.forEach { Disposer.dispose(it.lifecycle) }
+        notebookServers.clear()
+        views.clear()
     }
+
+    private fun stateFor(file: VirtualFile): NotebookServerState =
+        notebookServers.computeIfAbsent(file.url) {
+            NotebookServerState().also { Disposer.register(this, it.lifecycle) }
+        }
 }
