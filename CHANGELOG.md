@@ -2,12 +2,6 @@
 
 # marimo-pycharm Changelog
 
-## [Unreleased]
-
-### Fixed
-
-- Edits made in a notebook's Source tab now reach the marimo editor when you switch back to it. Previously the changes stayed in the IDE's memory until you saved explicitly or switched away from the IDE, so newly added cells appeared not to show up at all.
-
 ## [0.1.2] - 2026-07-24
 
 ### Fixed

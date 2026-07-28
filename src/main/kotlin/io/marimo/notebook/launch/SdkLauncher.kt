@@ -14,10 +14,8 @@ class SdkLauncher : MarimoLauncher {
         val python = SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
             ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
-        val (themeEnv, themeHome) = MarimoThemeConfig.environment()
         fun command(watch: Boolean) =
             buildCommandLine(python, request.notebook.path, workDir, request.host, request.port, watch)
-                .apply { withEnvironment(themeEnv, themeHome) }
         return startMarimoServer(
             command(watch = true), request.host, request.port,
             watchFallbackCmd = { command(watch = false) },

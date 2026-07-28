@@ -6,6 +6,7 @@ import io.marimo.notebook.launch.MarimoEnvProbe
 import io.marimo.notebook.launch.MarimoInstaller
 import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.UvLauncher
+import io.marimo.notebook.server.MarimoPageConfig
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.telemetry.MarimoConsentPrompt
 import io.marimo.notebook.telemetry.MarimoTelemetry
@@ -17,6 +18,7 @@ import com.intellij.openapi.actionSystem.DataProvider
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.editor.colors.EditorColorsListener
 import com.intellij.openapi.editor.colors.EditorColorsManager
 import com.intellij.openapi.editor.colors.FontPreferences
@@ -61,10 +63,20 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     private val browser = if (JBCefApp.isSupported()) JBCefBrowser() else null
     private val server = project.service<MarimoServerService>()
 
+    /** Theme state for the loaded page; read and written on the EDT only. */
+    private var loadedUrl: String? = null
+    private var appliedTheme: String? = null
+    private var followsIdeTheme = false
+
+    /** Disposal can be triggered from any thread, and is checked from the EDT. */
+    @Volatile
+    private var disposed = false
+
     init {
         browser?.let(::installLoadErrorHandler)
         browser?.let(::installPopupHandler)
         browser?.let(::installEditorFontZoom)
+        browser?.let(::installIdeThemeSync)
         loadNotebook()
     }
 
@@ -95,6 +107,26 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     private fun applyEditorFontZoom(browser: JBCefBrowser) {
         val fontSize = EditorColorsManager.getInstance().globalScheme.editorFontSize
         browser.cefBrowser.zoomLevel = ln(fontSize.toDouble() / FontPreferences.DEFAULT_FONT_SIZE) / ln(1.2)
+    }
+
+    /**
+     * Follow the IDE's light/dark theme while it changes. The theme reaches marimo as a query parameter
+     * read when the page loads, so applying a new one means reloading the page — done only for a notebook
+     * that left the choice to the host, and only when the light/dark answer actually changed (the look and
+     * feel also fires for font and colour-scheme edits).
+     */
+    private fun installIdeThemeSync(browser: JBCefBrowser) {
+        ApplicationManager.getApplication().messageBus.connect(this)
+            .subscribe(LafManagerListener.TOPIC, LafManagerListener { onEdt { syncIdeTheme(browser) } })
+    }
+
+    private fun syncIdeTheme(browser: JBCefBrowser) {
+        val url = loadedUrl ?: return
+        if (!followsIdeTheme) return
+        val theme = MarimoThemedUrl.ideTheme()
+        if (theme == appliedTheme) return
+        appliedTheme = theme
+        browser.loadURL(MarimoThemedUrl.withTheme(url, theme))
     }
 
     /**
@@ -170,7 +202,15 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         )
     }
 
+    /**
+     * Theme state is cleared up front so that a look-and-feel change arriving while the server is starting
+     * can't reload the previous page — that URL belongs to a server that may already have been released.
+     * Theme sync resumes once [showNotebook] records the page it actually loaded.
+     */
     private fun loadNotebook() {
+        loadedUrl = null
+        appliedTheme = null
+        followsIdeTheme = false
         showContent(JLabel("Starting marimo…", SwingConstants.CENTER))
         server.urlFor(file).whenComplete { url, err ->
             when {
@@ -178,13 +218,28 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                 browser == null -> onEdt {
                     showContent(JLabel("The embedded browser isn't available in this IDE.", SwingConstants.CENTER))
                 }
-                else -> onEdt {
-                    browser.loadURL(url)
-                    showContent(browser.component)
-                    MarimoConsentPrompt.maybePrompt(project)
-                    val launcher = if (server.isSandbox(file)) "uv-sandbox" else "sdk"
-                    MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookOpened(launcher))
-                }
+                else -> showNotebook(browser, url)
+            }
+        }
+    }
+
+    /**
+     * Ask the server which theme the notebook resolves to before rendering it, so the IDE's theme is only
+     * applied when marimo leaves the choice to the host. The request blocks, and completing a ready server
+     * URL can happen on the caller's thread, so keep it off the EDT.
+     */
+    private fun showNotebook(browser: JBCefBrowser, url: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val resolvedTheme = MarimoPageConfig.fetchDisplayTheme(url)
+            onEdt {
+                followsIdeTheme = MarimoThemedUrl.followsIdeTheme(resolvedTheme)
+                appliedTheme = MarimoThemedUrl.ideTheme()
+                loadedUrl = url
+                browser.loadURL(MarimoThemedUrl.of(url, resolvedTheme, appliedTheme!!))
+                showContent(browser.component)
+                MarimoConsentPrompt.maybePrompt(project)
+                val launcher = if (server.isSandbox(file)) "uv-sandbox" else "sdk"
+                MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookOpened(launcher))
             }
         }
     }
@@ -249,7 +304,13 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         panel.repaint()
     }
 
-    private fun onEdt(block: () -> Unit) = ApplicationManager.getApplication().invokeLater(block)
+    /**
+     * Every async continuation lands here, and any of them can be queued while the notebook is still
+     * open and run after it was closed — touching a disposed browser or project. Drop those.
+     */
+    private fun onEdt(block: () -> Unit) = ApplicationManager.getApplication().invokeLater {
+        if (!disposed) block()
+    }
 
     private fun addToolbar() {
         val row = JPanel(BorderLayout())
@@ -280,6 +341,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         }
 
     override fun dispose() {
+        disposed = true
         browser?.dispose()
         server.release(file)
     }

@@ -13,10 +13,8 @@ class UvLauncher : MarimoLauncher {
     override fun launch(request: LaunchRequest): MarimoServerHandle {
         val uv = findUv() ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
-        val (themeEnv, themeHome) = MarimoThemeConfig.environment()
         fun command(watch: Boolean) =
             buildCommandLine(uv, request.notebook.path, workDir, request.host, request.port, request.sandbox, watch)
-                .apply { withEnvironment(themeEnv, themeHome) }
         return startMarimoServer(
             command(watch = true), request.host, request.port,
             watchFallbackCmd = { command(watch = false) },

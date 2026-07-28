@@ -21,7 +21,8 @@
           <li><b>Runs on your project interpreter</b> — with a one-click offer to install marimo when it's missing.</li>
           <li><b>Isolated sandbox runs</b> — optionally launch a notebook in a one-off <a href="https://docs.astral.sh/uv/">uv</a> environment.</li>
           <li><b>Pair with marimo</b> — open a pairing prompt in JetBrains AI Chat when available, or attach a terminal harness.</li>
-          <li><b>Theme-aware</b> — the editor follows your IDE's light/dark theme.</li>
+          <li><b>Theme-aware</b> — notebooks set to marimo's <code>system</code> theme follow your IDE's
+              light/dark theme as you switch it; a theme you pin to light or dark is respected.</li>
         </ul>
 
         <p><b>Requirements:</b> PyCharm 2026.1+ (or another JetBrains IDE with the Python plugin) and
