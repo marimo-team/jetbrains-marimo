@@ -73,6 +73,7 @@ class MarimoErrorPanel(
             MarimoErrorAction.INSTALL -> "Install marimo"
             MarimoErrorAction.START_IN_SANDBOX -> "Start in Sandbox"
             MarimoErrorAction.OPEN_AS_PYTHON -> "Open as Python File"
+            MarimoErrorAction.CLOSE -> "Close Tab"
         }
 
     companion object {

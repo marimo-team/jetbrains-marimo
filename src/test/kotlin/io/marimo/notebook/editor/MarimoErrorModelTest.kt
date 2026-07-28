@@ -4,6 +4,7 @@ package io.marimo.notebook.editor
 
 import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.NoInterpreterException
+import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvUnavailableException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -80,6 +81,42 @@ class MarimoErrorModelTest {
         )
         failures.forEach {
             val model = of(it, MarimoPresence.Missing)
+            assertTrue("escape hatch always present", model.actions.contains(MarimoErrorAction.OPEN_AS_PYTHON))
+        }
+    }
+
+    @Test fun deliberateStopOffersRestartAndClose() {
+        val model = of(MarimoFailure.ServerStopped(StopCause.Deliberate), MarimoPresence.Installed("0.1.0"))
+        assertTrue("restart is the primary offer", model.actions.contains(MarimoErrorAction.RETRY))
+        assertTrue("shutting down often means 'I'm done'", model.actions.contains(MarimoErrorAction.CLOSE))
+    }
+
+    @Test fun unexpectedStopDoesNotOfferClose() {
+        val model = of(
+            MarimoFailure.ServerStopped(StopCause.Unexpected(137, "Killed")),
+            MarimoPresence.Installed("0.1.0"),
+        )
+        assertTrue(model.actions.contains(MarimoErrorAction.RETRY))
+        assertFalse("walking away is not the remedy for a crash", model.actions.contains(MarimoErrorAction.CLOSE))
+    }
+
+    @Test fun stopMessageDistinguishesDeliberateFromCrash() {
+        val deliberate = of(MarimoFailure.ServerStopped(StopCause.Deliberate), MarimoPresence.Unknown)
+        val crashed = of(MarimoFailure.ServerStopped(StopCause.Unexpected(1, "")), MarimoPresence.Unknown)
+        assertFalse("the two causes must not read identically", deliberate.message == crashed.message)
+    }
+
+    @Test fun stopNeverSurfacesRawProcessOutput() {
+        val tail = "Traceback (most recent call last):\n  File \"x\", line 1\nMemoryError"
+        val model = of(MarimoFailure.ServerStopped(StopCause.Unexpected(1, tail)), MarimoPresence.Unknown)
+        val shown = "${model.message} ${model.detail.orEmpty()}"
+        assertFalse("process output belongs in the IDE log, not the panel", shown.contains("MemoryError"))
+        assertFalse(shown.contains("Traceback"))
+    }
+
+    @Test fun bothStopCausesOfferOpenAsPython() {
+        listOf(StopCause.Deliberate, StopCause.Unexpected(1, "")).forEach { cause ->
+            val model = of(MarimoFailure.ServerStopped(cause), MarimoPresence.Unknown)
             assertTrue("escape hatch always present", model.actions.contains(MarimoErrorAction.OPEN_AS_PYTHON))
         }
     }

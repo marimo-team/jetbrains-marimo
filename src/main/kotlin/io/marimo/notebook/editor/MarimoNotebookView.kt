@@ -4,7 +4,9 @@ package io.marimo.notebook.editor
 
 import io.marimo.notebook.launch.MarimoEnvProbe
 import io.marimo.notebook.launch.MarimoInstaller
+import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.MarimoPresence
+import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.server.MarimoPageConfig
 import io.marimo.notebook.server.MarimoServerService
@@ -62,6 +64,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     }
     private val browser = if (JBCefApp.isSupported()) JBCefBrowser() else null
     private val server = project.service<MarimoServerService>()
+    private val lifecycle = server.lifecycleFor(file)
 
     /** Theme state for the loaded page; read and written on the EDT only. */
     private var loadedUrl: String? = null
@@ -77,6 +80,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         browser?.let(::installPopupHandler)
         browser?.let(::installEditorFontZoom)
         browser?.let(::installIdeThemeSync)
+        lifecycle.addListener { onStateChanged(it) }
         loadNotebook()
     }
 
@@ -244,6 +248,26 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         }
     }
 
+    /**
+     * The page can die while the tab stays mounted — marimo's shutdown exits the whole server, and
+     * `window.close()` does nothing inside JCEF. Without this the tab keeps showing a notebook that
+     * cannot answer, which is indistinguishable from a hang.
+     */
+    private fun onStateChanged(state: MarimoNotebookState) {
+        when (state) {
+            is MarimoNotebookState.Stopping -> onEdt {
+                showContent(JLabel("Shutting down marimo…", SwingConstants.CENTER))
+            }
+            is MarimoNotebookState.Stopped -> showStopped(state.cause)
+            else -> Unit
+        }
+    }
+
+    private fun showStopped(cause: StopCause) {
+        val model = MarimoErrorModel.of(MarimoFailure.ServerStopped(cause), MarimoPresence.Unknown, uvAvailable = false)
+        onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
+    }
+
     /** Probe off the EDT — detection may run a subprocess — then render the matching error panel. */
     private fun showServerError(err: Throwable?) {
         thisLogger().warn("marimo failed to start for ${file.name}", err)
@@ -280,6 +304,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             }
             MarimoErrorAction.OPEN_AS_PYTHON ->
                 FileEditorManager.getInstance(project).setSelectedEditor(file, MARIMO_SOURCE_EDITOR_TYPE)
+            MarimoErrorAction.CLOSE ->
+                FileEditorManager.getInstance(project).closeFile(file)
         }
     }
 

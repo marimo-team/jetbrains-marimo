@@ -4,10 +4,11 @@ package io.marimo.notebook.editor
 
 import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.NoInterpreterException
+import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvUnavailableException
 
 /** An action the error panel can offer; the editor supplies the behaviour for each. */
-enum class MarimoErrorAction { RETRY, INSTALL, START_IN_SANDBOX, OPEN_AS_PYTHON }
+enum class MarimoErrorAction { RETRY, INSTALL, START_IN_SANDBOX, OPEN_AS_PYTHON, CLOSE }
 
 /** Why the marimo editor could not be shown. */
 sealed interface MarimoFailure {
@@ -16,6 +17,9 @@ sealed interface MarimoFailure {
 
     /** The server started but the embedded browser failed to load it. */
     data class EditorLoadFailed(val detail: String?) : MarimoFailure
+
+    /** The server served this notebook and then stopped: shut down from the page, or died. */
+    data class ServerStopped(val cause: StopCause) : MarimoFailure
 }
 
 /**
@@ -40,6 +44,7 @@ data class MarimoErrorModel(
                         detail = failure.detail.nullIfBlank(),
                         actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
                     )
+                is MarimoFailure.ServerStopped -> serverStopped(failure.cause)
             }
 
         // A failed launch carries the process's stderr tail (a Python traceback) as its message.
@@ -84,6 +89,29 @@ data class MarimoErrorModel(
                     MarimoErrorModel(
                         message = "marimo couldn't be started.",
                         detail = null,
+                        actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
+                    )
+            }
+
+        // The process output tail is deliberately dropped: it is a Python traceback that belongs in
+        // the IDE log, and the headline already names the cause. Close is offered only for a
+        // deliberate stop, where being finished with the notebook is the likely intent.
+        private fun serverStopped(cause: StopCause): MarimoErrorModel =
+            when (cause) {
+                is StopCause.Deliberate ->
+                    MarimoErrorModel(
+                        message = "marimo was shut down for this notebook.",
+                        detail = "Restart it to keep working, or close the tab.",
+                        actions = listOf(
+                            MarimoErrorAction.RETRY,
+                            MarimoErrorAction.CLOSE,
+                            MarimoErrorAction.OPEN_AS_PYTHON,
+                        ),
+                    )
+                is StopCause.Unexpected ->
+                    MarimoErrorModel(
+                        message = "marimo stopped unexpectedly.",
+                        detail = "See the IDE log for the process output.",
                         actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
                     )
             }
