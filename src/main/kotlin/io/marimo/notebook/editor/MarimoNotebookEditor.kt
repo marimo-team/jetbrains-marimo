@@ -28,6 +28,15 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     /** Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox). */
     fun reload() = view.reload()
 
+    /**
+     * Hand any pending Source-tab edits to the marimo server, which only sees them once they reach
+     * disk. Unlike the Source tab's disk refresh, this stays on the EDT: writing the document
+     * requires it, and the document is already in memory, so there is no disk scan to move off.
+     */
+    override fun selectNotify() {
+        flushMarimoSourceToDisk(file)
+    }
+
     override fun getComponent(): JComponent = view.panel
     override fun getPreferredFocusedComponent(): JComponent? = view.preferredFocusedComponent
     override fun getName(): String = "marimo"

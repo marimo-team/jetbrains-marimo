@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.editor
 
+import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
@@ -40,5 +41,28 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         refreshMarimoSourceFromDisk(file)
 
         assertEquals(updated, document.text)
+    }
+
+    /**
+     * marimo only learns about source edits by watching the file's modification time, and the
+     * platform does not write an edited document to disk when the user merely switches editor tabs
+     * (idle autosave is off by default, and moving to the notebook tab never deactivates the IDE
+     * frame). Selecting the notebook tab must therefore flush the document itself.
+     */
+    fun testFlushWritesEditedDocumentToDisk() {
+        val original = "import marimo\napp = marimo.App()\n"
+        val edited = "import marimo\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    x = 1\n    return\n"
+
+        ioFile = File(FileUtil.createTempDirectory("marimo-sync", null), "nb.py")
+        ioFile.writeText(original)
+        val file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile)!!
+
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(edited) }
+        assertEquals(original, ioFile.readText())
+
+        flushMarimoSourceToDisk(file)
+
+        assertEquals(edited, ioFile.readText())
     }
 }
