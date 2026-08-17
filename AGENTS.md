@@ -14,8 +14,8 @@ maintainers, not just the immediate task.
 - Requires **JDK 21+** (the JetBrains Runtime bundled with IntelliJ IDEA works). No JDK on
   `PATH`? Set `JAVA_HOME` to a 21+ JDK before running Gradle.
 - The plugin runs marimo on the IDE's configured project interpreter (`<python> -m marimo`), and
-  offers to install marimo into it when missing. **uv** is only needed for the isolated-sandbox
-  launch path; it must be on `PATH` for that to be available.
+  offers to install marimo into it when missing. **uv** must be on `PATH` for the isolated-sandbox
+  launch path to be available, and is used by maintainers for the release-prep script.
 
 ## Common commands
 
@@ -45,17 +45,25 @@ Source lives under `src/main/kotlin/io/marimo/notebook/`:
 Plugin wiring is in `src/main/resources/META-INF/plugin.xml`. Tests mirror the package
 layout under `src/test/kotlin/`.
 
+`scripts/release_changes.py` reports the merged pull requests going into the next release,
+grouped by the label each one carries.
+
 ## Conventions
 
 - **License header** on every `.kt` file (`/* Copyright $YEAR Marimo. All rights reserved. */`),
   enforced by Spotless via `gradle check`. Run `./gradlew spotlessApply` to add it.
-- **Conventional commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`).
+- **Conventional commits** (`feat:`, `fix:`, `docs:`, `refactor:`, `test:`, `chore:`, `release:`).
+- **Every PR carries a category label** (`enhancement`, `bug`, `documentation`, `internal`,
+  `preview`, `dependencies`, `breaking`, `other`), enforced by CI. Release notes are grouped by it.
+  PRs do **not** edit `CHANGELOG.md`.
 - Add tests for behavior changes; keep `./gradlew check` green before opening a PR.
 - The local marimo server is launched on `127.0.0.1` with `--no-token` (auth disabled). Keep
   it bound to localhost; never expose the port.
-- **Releasing:** the only manual steps are bumping `version` in `gradle.properties` and recording
-  user-facing changes under the `## [Unreleased]` heading in `CHANGELOG.md`. Leave that heading as
-  `[Unreleased]` — do **not** hand-write a versioned section; CI's `patchChangelog` renames it to
-  `## [<version>]` and opens the `changelog-update-<version>` PR when the draft release is published.
+- **Releasing:** run `uv run scripts/release_changes.py`, bump `version` in `gradle.properties`,
+  write the entries under `## [Unreleased]`, run `./gradlew patchChangelog` (it renames the heading —
+  never hand-write a versioned section), merge a `release: <version>` PR, then run the **Release**
+  workflow by hand — once as a dry run to preview the notes, then for real. The tag and the GitHub
+  release are created last, only after the Marketplace accepts the plugin. Full runbook in
+  [CONTRIBUTING.md](CONTRIBUTING.md).
 
 See [CONTRIBUTING.md](CONTRIBUTING.md) for the full contributor workflow.

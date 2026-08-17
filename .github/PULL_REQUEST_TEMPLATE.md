@@ -16,6 +16,7 @@ Closes #
 
 ## ✅ Merge Checklist
 
+- [ ] A category label is applied (`enhancement`, `bug`, `documentation`, `internal`, `preview`, `dependencies`, `breaking`, or `other`) — this is what release notes are grouped by.
 - [ ] I have read the [contributor guidelines](../CONTRIBUTING.md).
 - [ ] `./gradlew check` passes locally.
 - [ ] Tests have been added for the changes made.
