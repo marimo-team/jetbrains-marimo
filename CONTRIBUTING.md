@@ -94,9 +94,9 @@ Requires [uv](https://docs.astral.sh/uv/) and the
 
 3. **Write the entries** under the `## [Unreleased]` heading in `CHANGELOG.md`,
    grouped `### Added` / `### Changed` / `### Fixed` per the report's sections,
-   following [Keep a Changelog](https://keepachangelog.com). Add the
-   `## [Unreleased]` heading back if it is absent — `patchChangelog` needs it,
-   and it is the heading it renames in step 4.
+   following [Keep a Changelog](https://keepachangelog.com). If the
+   `## [Unreleased]` heading is missing, add it — `patchChangelog` recreates it
+   either way, but you need somewhere to write the entries now.
 
    This is shipped copy, not a summary of the diff: `build.gradle.kts` renders
    the matching section into the plugin's `changeNotes`, which is the "What's
@@ -111,8 +111,10 @@ Requires [uv](https://docs.astral.sh/uv/) and the
    ./gradlew patchChangelog
    ```
 
-   This renames `## [Unreleased]` to `## [<version>] - <date>`, opens a fresh
-   empty `[Unreleased]`, and updates the compare links.
+   This inserts `## [<version>] - <date>` below `## [Unreleased]`, so the entries
+   you just wrote end up under the version and an empty `[Unreleased]` is left at
+   the top. It also adds the version's compare link and repoints
+   `[Unreleased]:` at the new version.
 
 5. **Open a pull request titled `release: <version>`** with the version bump and
    the changelog, and get it merged. This is the review gate for the notes.

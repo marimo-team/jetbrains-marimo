@@ -2,6 +2,8 @@
 
 # marimo-pycharm Changelog
 
+## [Unreleased]
+
 ## [0.1.2] - 2026-07-24
 
 ### Fixed
