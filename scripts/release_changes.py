@@ -104,6 +104,15 @@ def commits_since(tag: str) -> list[tuple[str, str]]:
     return commits
 
 
+def to_pull_request(item: dict) -> PullRequest:
+    return PullRequest(
+        number=item["number"],
+        title=item["title"],
+        labels={label["name"] for label in item["labels"]},
+        body=item.get("body") or "",
+    )
+
+
 def merged_pull_requests(limit: int) -> dict[int, PullRequest]:
     raw = run(
         "gh", "pr", "list",
@@ -112,15 +121,23 @@ def merged_pull_requests(limit: int) -> dict[int, PullRequest]:
         "--limit", str(limit),
         "--json", "number,title,labels,body",
     )
-    return {
-        item["number"]: PullRequest(
-            number=item["number"],
-            title=item["title"],
-            labels={label["name"] for label in item["labels"]},
-            body=item.get("body") or "",
-        )
-        for item in json.loads(raw)
-    }
+    return {item["number"]: to_pull_request(item) for item in json.loads(raw)}
+
+
+def fetch_pull_request(number: int) -> PullRequest | None:
+    """Fetch one pull request that the bulk listing did not cover.
+
+    Returns None only when the pull request genuinely does not exist. Any other
+    failure — no credentials, rate limiting, a network fault — is raised, because
+    reporting it as a missing pull request would hide changes from the release.
+    """
+    try:
+        raw = run("gh", "pr", "view", str(number), "--json", "number,title,labels,body")
+    except subprocess.CalledProcessError as error:
+        if "Could not resolve to a PullRequest" in (error.stderr or ""):
+            return None
+        raise
+    return to_pull_request(json.loads(raw))
 
 
 def strip_conventional_prefix(title: str) -> str:
@@ -203,12 +220,17 @@ def render(tag: str, head: str, entries: list[Entry]) -> str:
         out += [
             "## Needs judgment",
             "",
-            "No destination label. Fix the label and re-run, or decide by hand.",
+            "No label that maps to a changelog section. Decide by hand, or relabel and re-run.",
             "",
         ]
         for entry in judgment:
-            labels = ", ".join(sorted(entry.pr.labels)) if entry.pr else "no pull request found"
-            out.append(f"* TODO: {entry.headline} ({entry.link}) — labels: {labels}")
+            if entry.pr is None:
+                reason = "no pull request found"
+            elif entry.pr.labels:
+                reason = "labels: " + ", ".join(sorted(entry.pr.labels))
+            else:
+                reason = "unlabeled"
+            out.append(f"* TODO: {entry.headline} ({entry.link}) — {reason}")
         out.append("")
 
     if excluded:
@@ -232,7 +254,8 @@ def main() -> None:
         "--pr-limit",
         type=int,
         default=100,
-        help="How many merged pull requests to index (default: 100).",
+        help="How many merged pull requests to prefetch in one call (default: 100). "
+        "Anything not covered is fetched individually.",
     )
     args = parser.parse_args()
 
@@ -247,7 +270,15 @@ def main() -> None:
     entries = []
     for sha, subject in commits:
         match = re.search(r"\(#(\d+)\)\s*$", subject)
-        pr = pull_requests.get(int(match.group(1))) if match else None
+        pr = None
+        if match:
+            number = int(match.group(1))
+            pr = pull_requests.get(number)
+            # The bulk listing is a prefetch, not the source of truth: a release
+            # spanning more than --pr-limit merges would otherwise report a
+            # numbered commit as having no pull request.
+            if pr is None:
+                pr = fetch_pull_request(number)
         entries.append(Entry(sha=sha, subject=subject, pr=pr))
 
     print(render(tag, head, entries))

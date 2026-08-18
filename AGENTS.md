@@ -60,8 +60,8 @@ grouped by the label each one carries.
 - The local marimo server is launched on `127.0.0.1` with `--no-token` (auth disabled). Keep
   it bound to localhost; never expose the port.
 - **Releasing:** run `uv run scripts/release_changes.py`, bump `version` in `gradle.properties`,
-  write the entries under `## [Unreleased]`, run `./gradlew patchChangelog` (it renames the heading —
-  never hand-write a versioned section), merge a `release: <version>` PR, then run the **Release**
+  write the entries under `## [Unreleased]`, run `./gradlew patchChangelog` (it inserts the versioned
+  heading — never hand-write one), merge a `release: <version>` PR, then run the **Release**
   workflow by hand — once as a dry run to preview the notes, then for real. The tag and the GitHub
   release are created last, only after the Marketplace accepts the plugin. Full runbook in
   [CONTRIBUTING.md](CONTRIBUTING.md).
