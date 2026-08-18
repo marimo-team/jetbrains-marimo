@@ -22,7 +22,7 @@ data class LaunchRequest(
 
 /** Owns a spawned marimo process; the lifecycle service drives readiness and disposal. */
 interface MarimoServerHandle : Disposable {
-    val isAlive: Boolean;
+    val isAlive: Boolean
     val processHandle: ProcessHandler
     /** Completes with the server URL once it accepts connections. */
     fun awaitReady(): CompletableFuture<String>

@@ -2,7 +2,6 @@
 
 package io.marimo.notebook.server
 
-import com.intellij.execution.process.ProcessHandler
 import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
@@ -10,6 +9,7 @@ import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.MarimoServerHandle
+import io.marimo.notebook.launch.ScriptedMarimoServerHandle
 import io.marimo.notebook.launch.StopCause
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
@@ -18,34 +18,6 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
 class MarimoServerReuseTest : BasePlatformTestCase() {
-
-    private class FakeHandle : MarimoServerHandle {
-        private val ready = CompletableFuture<String>()
-        private var terminationListener: ((Int, String) -> Unit)? = null
-
-        override val processHandle: ProcessHandler
-            get() = throw UnsupportedOperationException()
-        override var isAlive = true
-
-        override fun awaitReady(): CompletableFuture<String> = ready
-
-        override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
-            terminationListener = listener
-        }
-
-        fun becomeReady() {
-            ready.complete("http://127.0.0.1:1")
-        }
-
-        fun terminate() {
-            isAlive = false
-            terminationListener?.invoke(1, "crashed")
-        }
-
-        override fun dispose() {
-            isAlive = false
-        }
-    }
 
     private class BlockingLauncher : MarimoLauncher {
         override val id = "blocking"
@@ -60,7 +32,7 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
                 firstLaunchEntered.countDown()
                 allowFirstLaunch.await(5, TimeUnit.SECONDS)
             }
-            return FakeHandle()
+            return ScriptedMarimoServerHandle()
         }
 
         override fun marimoCliPrefix(request: LaunchRequest): List<String>? = null
@@ -69,12 +41,12 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
     fun testReopenedNotebookKeepsTheStoppedLifecycle() {
         val file = myFixture.addFileToProject("nb.py", "import marimo\n").virtualFile
         val service = project.service<MarimoServerService>()
-        val handle = FakeHandle()
+        val handle = ScriptedMarimoServerHandle()
 
         val initial = service.lifecycleFor(file)
         initial.attach(handle)
         handle.becomeReady()
-        handle.terminate()
+        handle.fireTerminated()
 
         val reopened = service.lifecycleFor(file)
 
@@ -85,7 +57,7 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
     fun testReleaseStopsTheLifecycleWithoutClearingSandboxMode() {
         val file = myFixture.addFileToProject("nb.py", "import marimo\n").virtualFile
         val service = project.service<MarimoServerService>()
-        val handle = FakeHandle()
+        val handle = ScriptedMarimoServerHandle()
         val lifecycle = service.lifecycleFor(file)
         lifecycle.attach(handle)
         service.enableSandbox(file)

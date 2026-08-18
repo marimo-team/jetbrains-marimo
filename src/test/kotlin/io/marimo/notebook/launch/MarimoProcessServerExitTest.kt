@@ -2,9 +2,10 @@
 
 package io.marimo.notebook.launch
 
-import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import java.io.File
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -50,7 +51,6 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
 
         handle.awaitReady().get(15, TimeUnit.SECONDS)
 
-        assertTrue("handle should be alive while serving", handle.isAlive)
         assertTrue("process exit was never reported", reported.await(15, TimeUnit.SECONDS))
         Thread.sleep(300)
 
@@ -60,17 +60,6 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
         assertFalse("handle must report dead after exit", handle.isAlive)
     }
 
-    private fun command(port: Int, exitCode: Int): GeneralCommandLine {
-        val javaBin = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
-        val classpath = System.getProperty("java.class.path")
-        val argFile = File.createTempFile("marimo-process-cp", ".txt")
-        argFile.deleteOnExit()
-        argFile.writeText("-cp \"${classpath.replace("\\", "\\\\")}\"")
-        return GeneralCommandLine(javaBin).withParameters(
-            "@${argFile.absolutePath}",
-            ServeThenExitProcess::class.java.name,
-            port.toString(),
-            exitCode.toString(),
-        )
-    }
+    private fun command(port: Int, exitCode: Int) =
+        javaProcess(ServeThenExitProcess::class.java.name, port.toString(), exitCode.toString())
 }

@@ -91,13 +91,16 @@ class MarimoNotebookLifecycle(
         setState(gen) { (state as? MarimoNotebookState.Stopping)?.let { MarimoNotebookState.Running(it.url) } }
     }
 
-    /** Kill the server without a state change. Callbacks from it become stale by generation. */
+    /** Kill the server and reset to a new launch state. Callbacks from it become stale by generation. */
     fun release() {
-        synchronized(lock) {
+        val update = synchronized(lock) {
             generation++
             handle?.let { Disposer.dispose(it) }
             handle = null
+            state = MarimoNotebookState.Starting
+            LifecycleStateUpdate(generation, state)
         }
+        listeners.forEach { it(update) }
     }
 
     /**

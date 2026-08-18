@@ -7,7 +7,9 @@ import io.marimo.notebook.launch.MarimoInstaller
 import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.LifecycleStateUpdate
+import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvLauncher
+import io.marimo.notebook.launch.redactAccessTokens
 import io.marimo.notebook.server.MarimoPageConfig
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.telemetry.MarimoConsentPrompt
@@ -280,6 +282,12 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             }
             is MarimoNotebookState.Stopped -> onEdt(navigation) {
                 if (!lifecycle.isCurrent(update)) return@onEdt
+                val cause = state.cause
+                if (cause is StopCause.Unexpected) {
+                    thisLogger().warn(
+                        "marimo stopped unexpectedly (exit ${cause.exitCode}):\n${redactAccessTokens(cause.outputTail)}",
+                    )
+                }
                 val model = MarimoErrorModel.of(
                     MarimoFailure.ServerStopped(state.cause), MarimoPresence.Unknown, uvAvailable = false,
                 )
