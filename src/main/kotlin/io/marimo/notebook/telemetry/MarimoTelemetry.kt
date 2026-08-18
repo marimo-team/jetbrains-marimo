@@ -153,8 +153,8 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
 
     private fun buildSink(): PostHogSink = RealPostHogSink()
 
-    // No usable DSN (still the Phase-C placeholder) means no crash reporting; usage events are
-    // unaffected. Skipping keeps a placeholder build from crashing on Sentry.init's DSN validation.
+    // An unset DSN means no crash reporting. Usage events are unaffected. Skipping the transport
+    // keeps such a build from crashing on Sentry.init's DSN validation.
     private fun buildSentrySink(): SentrySink? =
         if (SENTRY_DSN.startsWith("<")) null else RealSentrySink()
 

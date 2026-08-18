@@ -8,8 +8,6 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 
 ![A marimo notebook open in PyCharm, showing reactive controls and an interactive Altair chart](docs/cars-explorer.png)
 
-> **Early preview.** This plugin is an experimental proof of concept. Expect rough edges, and please share feedback.
-
 ## Features
 
 - **Open `.py` marimo notebooks as notebooks** — files that use marimo open in an interactive editor instead of a plain text view. Non-marimo files keep the normal Python editor.
@@ -78,7 +76,7 @@ open a notebook.
 
 ## Feedback
 
-This is an early proof of concept built as a side project. Bug reports and ideas are welcome via the issue tracker. Interest in marimo support for PyCharm is also tracked upstream at [JetBrains PY-78283](https://youtrack.jetbrains.com/issue/PY-78283/Add-UI-support-for-Marimo).
+Bug reports and ideas are welcome via the issue tracker. Interest in marimo support for PyCharm is also tracked upstream at [JetBrains PY-78283](https://youtrack.jetbrains.com/issue/PY-78283/Add-UI-support-for-Marimo).
 
 ---
 Plugin based on the [IntelliJ Platform Plugin Template][template].
