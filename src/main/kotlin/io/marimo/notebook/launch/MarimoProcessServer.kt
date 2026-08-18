@@ -8,7 +8,9 @@ import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessListener
 import com.intellij.openapi.util.Key
+import com.intellij.openapi.util.Disposer
 import com.intellij.util.io.HttpRequests
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -30,6 +32,8 @@ internal fun indicatesUnsupportedWatch(output: String): Boolean =
  * gap and hit ERR_CONNECTION_REFUSED. Stdout is still collected for process-exit diagnostics. Shared
  * by every process-based launcher (uv, sdk).
  *
+ * When [authenticatedUrl] is non-null the plugin supplied the URL JCEF must load (token auth on).
+ *
  * If [watchFallbackCmd] is supplied and the first attempt exits reporting an unsupported `--watch`
  * option, marimo is relaunched once with that command so interpreters carrying an older marimo still
  * open (losing only external-edit watching).
@@ -40,10 +44,17 @@ fun startMarimoServer(
     port: Int,
     readinessTimeoutSeconds: Long = 30,
     watchFallbackCmd: (() -> GeneralCommandLine)? = null,
+    authenticatedUrl: String? = null,
+    tokenPasswordFile: String? = null,
 ): MarimoServerHandle {
-    val url = expectedMarimoUrl(host, port)
+    val readyUrl = authenticatedUrl ?: expectedMarimoUrl(host, port)
+    val pollUrl = expectedMarimoUrl(host, port)
     val ready = CompletableFuture<String>()
     val handle = ProcessMarimoServerHandle(ready)
+
+    if (tokenPasswordFile != null) {
+        Disposer.register(handle) { File(tokenPasswordFile).delete() }
+    }
 
     fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
         val handler = OSProcessHandler(command)
@@ -71,7 +82,7 @@ fun startMarimoServer(
                     return
                 }
                 ready.completeExceptionally(
-                    IOException("marimo exited (code ${event.exitCode}) before serving $url\n${full.trim().takeLast(500)}"),
+                    IOException("marimo exited (code ${event.exitCode}) before serving $pollUrl\n${full.trim().takeLast(500)}"),
                 )
             }
         })
@@ -79,22 +90,22 @@ fun startMarimoServer(
     }
 
     runAttempt(cmd, watchFallbackCmd)
-    pollUntilUp(url, ready, readinessTimeoutSeconds)
+    pollUntilUp(pollUrl, readyUrl, ready, readinessTimeoutSeconds)
     return handle
 }
 
-private fun pollUntilUp(url: String, ready: CompletableFuture<String>, timeoutSeconds: Long) {
+private fun pollUntilUp(pollUrl: String, readyUrl: String, ready: CompletableFuture<String>, timeoutSeconds: Long) {
     Thread {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
         while (!ready.isDone && System.nanoTime() < deadline) {
             try {
-                HttpRequests.head(url).tryConnect()
-                ready.complete(url); return@Thread
+                HttpRequests.head(pollUrl).tryConnect()
+                ready.complete(readyUrl); return@Thread
             } catch (_: IOException) {
                 Thread.sleep(200)
             }
         }
-        if (!ready.isDone) ready.completeExceptionally(IOException("marimo server did not start: $url"))
+        if (!ready.isDone) ready.completeExceptionally(IOException("marimo server did not start: $pollUrl"))
     }.apply { isDaemon = true }.start()
 }
 

@@ -15,10 +15,15 @@ class SdkLauncher : MarimoLauncher {
             ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
         fun command(watch: Boolean) =
-            buildCommandLine(python, request.notebook.path, workDir, request.host, request.port, watch)
+            buildCommandLine(
+                python, request.notebook.path, workDir, request.host, request.port, watch,
+                request.tokenPasswordFile,
+            )
         return startMarimoServer(
             command(watch = true), request.host, request.port,
             watchFallbackCmd = { command(watch = false) },
+            authenticatedUrl = request.authenticatedUrl,
+            tokenPasswordFile = request.tokenPasswordFile,
         )
     }
 
@@ -30,11 +35,18 @@ class SdkLauncher : MarimoLauncher {
         fun buildCommandLine(
             pythonPath: String, notebookPath: String, workDir: String, host: String, port: Int,
             watch: Boolean = true,
+            tokenPasswordFile: String? = null,
         ): GeneralCommandLine {
             val params = buildList {
                 addAll(listOf("-m", "marimo", "edit", notebookPath, "--headless"))
                 if (watch) add("--watch")
-                addAll(listOf("--host", host, "--port", port.toString(), "--no-token"))
+                addAll(listOf("--host", host, "--port", port.toString()))
+                if (tokenPasswordFile != null) {
+                    add("--token-password-file")
+                    add(tokenPasswordFile)
+                } else {
+                    add("--no-token")
+                }
             }
             return GeneralCommandLine(pythonPath).withWorkDirectory(workDir).withParameters(params)
         }

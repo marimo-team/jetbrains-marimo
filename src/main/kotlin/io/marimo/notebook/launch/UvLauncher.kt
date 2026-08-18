@@ -14,10 +14,15 @@ class UvLauncher : MarimoLauncher {
         val uv = findUv() ?: throw NoApplicableLauncherException(request)
         val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
         fun command(watch: Boolean) =
-            buildCommandLine(uv, request.notebook.path, workDir, request.host, request.port, request.sandbox, watch)
+            buildCommandLine(
+                uv, request.notebook.path, workDir, request.host, request.port,
+                request.sandbox, watch, request.tokenPasswordFile,
+            )
         return startMarimoServer(
             command(watch = true), request.host, request.port,
             watchFallbackCmd = { command(watch = false) },
+            authenticatedUrl = request.authenticatedUrl,
+            tokenPasswordFile = request.tokenPasswordFile,
         )
     }
 
@@ -30,11 +35,18 @@ class UvLauncher : MarimoLauncher {
         fun buildCommandLine(
             uvPath: String, notebookPath: String, workDir: String, host: String, port: Int,
             sandbox: Boolean = false, watch: Boolean = true,
+            tokenPasswordFile: String? = null,
         ): GeneralCommandLine {
             val params = buildList {
                 addAll(listOf("run", "--with", "marimo", "marimo", "edit", notebookPath, "--headless"))
                 if (watch) add("--watch")
-                addAll(listOf("--host", host, "--port", port.toString(), "--no-token"))
+                addAll(listOf("--host", host, "--port", port.toString()))
+                if (tokenPasswordFile != null) {
+                    add("--token-password-file")
+                    add(tokenPasswordFile)
+                } else {
+                    add("--no-token")
+                }
                 if (sandbox) add("--sandbox")
             }
             return GeneralCommandLine(uvPath).withWorkDirectory(workDir).withParameters(params)

@@ -10,6 +10,11 @@ import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoServerHandle
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -39,7 +44,9 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
-            val handle = FakeHandle("http://127.0.0.1:${request.port}?access_token=secret${handles.size}")
+            val authUrl = request.authenticatedUrl
+                ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
+            val handle = FakeHandle(authUrl)
             handles.add(handle)
             if (requests.size == 2) secondLaunch.countDown()
             return handle
@@ -220,7 +227,6 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.stop(file)
         assertFalse(sdk.handles.single().isAlive)
     }
-
     private fun runningNotebook(name: String): VirtualFile {
         val file = notebook(name)
         manager.urlFor(file)
@@ -278,5 +284,18 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
 
         assertTrue("a cancelled-but-fired task must be ignored by generation", sdk.handles.single().isAlive)
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
+    }
+
+    fun testTheTokenSettingReachesTheLaunchRequest() {
+        val settings = MarimoSessionSettings.getInstance()
+        val before = settings.state.tokenAuthEnabled
+        try {
+            settings.state.tokenAuthEnabled = false
+            val file = notebook("token_toggle_nb.py")
+            manager.urlFor(file)
+            assertNull("the escape hatch must omit the password file", sdk.requests.single().tokenPasswordFile)
+        } finally {
+            settings.state.tokenAuthEnabled = before
+        }
     }
 }

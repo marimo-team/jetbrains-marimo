@@ -7,9 +7,11 @@ import com.intellij.openapi.ui.DialogPanel
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.panel
 import io.marimo.notebook.MarimoBundle
+import io.marimo.notebook.server.MarimoSessionSettings
 
 class MarimoTelemetryConfigurable : BoundConfigurable(MarimoBundle.message("telemetry.settings.title")) {
     private val telemetry = MarimoTelemetry.getInstance()
+    private val sessions = MarimoSessionSettings.getInstance()
 
     override fun createPanel(): DialogPanel = panel {
         row {
@@ -20,5 +22,10 @@ class MarimoTelemetryConfigurable : BoundConfigurable(MarimoBundle.message("tele
                 )
         }
         row { comment(MarimoBundle.message("telemetry.settings.note")) }
+        row {
+            checkBox(MarimoBundle.message("sessions.settings.token.checkbox"))
+                .bindSelected(sessions.state::tokenAuthEnabled)
+        }
+        row { comment(MarimoBundle.message("sessions.settings.token.note")) }
     }
 }

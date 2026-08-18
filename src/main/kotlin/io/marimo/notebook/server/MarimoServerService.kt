@@ -11,6 +11,9 @@ import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.launch.authenticatedMarimoUrl
+import io.marimo.notebook.launch.generateAccessToken
+import io.marimo.notebook.launch.writeTokenPasswordFile
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.ide.projectView.ProjectView
@@ -81,11 +84,28 @@ class MarimoServerService(private val project: Project) : Disposable {
         synchronized(session) {
             session.lifecycle.liveHandle()?.let { return it.awaitReady() }
 
+            val port = NetUtils.findAvailableSocketPort()
+            val host = "127.0.0.1"
+            val tokenAuth = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+            val tokenPasswordFile: String?
+            val authenticatedUrl: String?
+            if (tokenAuth) {
+                val token = generateAccessToken()
+                val tokenFile = writeTokenPasswordFile(token)
+                tokenPasswordFile = tokenFile.absolutePath
+                authenticatedUrl = authenticatedMarimoUrl(host, port, token)
+            } else {
+                tokenPasswordFile = null
+                authenticatedUrl = null
+            }
             val request = LaunchRequest(
                 project = project,
                 notebook = file,
-                port = NetUtils.findAvailableSocketPort(),
+                port = port,
+                host = host,
                 sandbox = session.sandboxEnabled.get(),
+                tokenPasswordFile = tokenPasswordFile,
+                authenticatedUrl = authenticatedUrl,
             )
             val launcher = when (val decision = planner.plan(request)) {
                 is LaunchDecision.Launch -> decision.launcher
