@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.server
 
+import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
@@ -10,77 +11,105 @@ import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
-import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
+import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
-import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 
+/**
+ * The project's notebook session manager. One [MarimoNotebookSession] per file owns that notebook's
+ * marimo process, JCEF view, launch mode, and editor-attachment count. Editor tabs attach to and
+ * detach from sessions; they never own the process. Status reads are side-effect-free, so painting
+ * an icon or updating an action can never start a server.
+ */
 @Service(Service.Level.PROJECT)
 class MarimoServerService(private val project: Project) : Disposable {
 
-    /** State that affects how one notebook's marimo server is launched and reused. */
-    private class NotebookServerState {
-        val lifecycle = MarimoNotebookLifecycle()
-        val sandboxEnabled = AtomicBoolean(false)
-        val launchLock = Any()
+    internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
+
+    internal var ttlScheduler = TtlScheduler { delayMillis, task ->
+        val future = AppExecutorUtil.getAppScheduledExecutorService()
+            .schedule(task, delayMillis, TimeUnit.MILLISECONDS)
+        TtlCancellable { future.cancel(false) }
     }
 
-    internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
-    private val notebookServers = ConcurrentHashMap<String, NotebookServerState>()
-    private val views = ConcurrentHashMap<String, MarimoNotebookView>()
+    internal var clock: () -> Long = System::currentTimeMillis
+
+    private val sessions = ConcurrentHashMap<String, MarimoNotebookSession>()
+    private val listeners = CopyOnWriteArrayList<() -> Unit>()
 
     /**
-     * The per-file view (browser + panel + server) that editor tabs render. One per notebook,
-     * shared across every tab showing it, so moving a notebook between splits reuses the live view
-     * instead of tearing down and relaunching marimo. Disposed with the project.
+     * The per-file view (browser + panel) that editor tabs render. One per notebook, shared across
+     * every tab showing it, so moving a notebook between splits reuses the live view instead of
+     * tearing down and relaunching marimo.
      */
-    fun viewFor(file: VirtualFile): MarimoNotebookView =
-        views.computeIfAbsent(file.url) { MarimoNotebookView(project, file).also { Disposer.register(this, it) } }
+    fun viewFor(file: VirtualFile): MarimoNotebookView {
+        val session = sessionFor(file)
+        synchronized(session) {
+            session.view?.let { return it }
+            val view = MarimoNotebookView(project, file)
+            session.view = view
+            Disposer.register(session, view)
+            return view
+        }
+    }
 
-    /** The server lifecycle retained for this notebook across editor reopenings. */
-    fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle =
-        stateFor(file).lifecycle
+    /** The server lifecycle retained for this notebook across editor reopenings. Creates a session. */
+    fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle = sessionFor(file).lifecycle
 
+    /**
+     * The URL the notebook editor must load, launching a server when none is alive. The value is
+     * marimo's authenticated startup URL and carries the access token: it may reach only the
+     * browser, the page-config fetch, and the pair harness — never status objects or logs.
+     */
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
-        val state = stateFor(file)
-        return synchronized(state.launchLock) {
-            state.lifecycle.liveHandle()?.let { return@synchronized it.awaitReady() }
+        val session = sessionFor(file)
+        synchronized(session) {
+            session.lifecycle.liveHandle()?.let { return it.awaitReady() }
 
             val request = LaunchRequest(
                 project = project,
                 notebook = file,
                 port = NetUtils.findAvailableSocketPort(),
-                sandbox = state.sandboxEnabled.get(),
+                sandbox = session.sandboxEnabled.get(),
             )
             val launcher = when (val decision = planner.plan(request)) {
                 is LaunchDecision.Launch -> decision.launcher
                 is LaunchDecision.NoInterpreter ->
-                    return@synchronized CompletableFuture.failedFuture(NoInterpreterException(decision.message))
+                    return launchPlanFailure(session, NoInterpreterException(decision.message))
                 is LaunchDecision.NeedsUv ->
-                    return@synchronized CompletableFuture.failedFuture(UvUnavailableException(decision.message))
+                    return launchPlanFailure(session, UvUnavailableException(decision.message))
             }
-            // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into a
-            // failed future so it reaches the editor's error panel instead of escaping as an IDE
+            // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into
+            // a failed future so it reaches the editor's error panel instead of escaping as an IDE
             // internal-error balloon with a raw stack trace.
             val handle = try {
                 launcher.launch(request)
             } catch (e: ProcessCanceledException) {
                 throw e
             } catch (e: Exception) {
-                return@synchronized CompletableFuture.failedFuture(e)
+                return launchPlanFailure(session, e)
             }
-            Disposer.register(state.lifecycle, handle)
-            state.lifecycle.attach(handle)
-            handle.awaitReady()
+            session.launchContext = MarimoLaunchContext(
+                port = request.port,
+                launcherId = launcher.id,
+                sandbox = request.sandbox,
+            )
+            Disposer.register(session.lifecycle, handle)
+            session.lifecycle.attach(handle)
+            return handle.awaitReady()
         }
     }
 
@@ -91,30 +120,146 @@ class MarimoServerService(private val project: Project) : Disposable {
         return launcher.marimoCliPrefix(request)
     }
 
+    /** An editor tab now shows [file]. EDT. */
+    fun attach(file: VirtualFile) {
+        val session = sessions[file.url] ?: return
+        synchronized(session) {
+            session.attachedTabs++
+            cancelTtlLocked(session)
+        }
+        notifySessionsChanged()
+    }
+
+    /** An editor tab showing [file] closed. The final detach arms the background TTL (Task 9). */
+    fun detach(file: VirtualFile) {
+        val session = sessions[file.url] ?: return
+        synchronized(session) {
+            if (session.attachedTabs > 0) session.attachedTabs--
+        }
+        notifySessionsChanged()
+    }
+
+    /** Side-effect-free status: null when the notebook has no session. Never creates one. */
+    fun statusFor(file: VirtualFile): MarimoSessionSnapshot? = statusForUrl(file.url)
+
+    fun statusForUrl(url: String): MarimoSessionSnapshot? =
+        sessions[url]?.let { synchronized(it) { it.snapshot() } }
+
+    /** All sessions, for the Sessions tool window. */
+    fun sessions(): List<MarimoSessionSnapshot> =
+        sessions.values.map { synchronized(it) { it.snapshot() } }
+
+    /**
+     * Stops [file]'s server now. With an attached tab the session entry stays so the tab renders a
+     * stopped panel with a Restart offer; with no tab the whole entry is removed and disposed.
+     */
+    fun stop(file: VirtualFile) = stopUrl(file.url)
+
+    fun stopUrl(url: String) {
+        val session = sessions[url] ?: return
+        val removed = synchronized(session) {
+            cancelTtlLocked(session)
+            if (session.attachedTabs == 0 && sessions.remove(url, session)) {
+                session.lifecycle.release()
+                true
+            } else {
+                session.lifecycle.stop()
+                false
+            }
+        }
+        if (removed) disposeSessionOnEdt(session)
+        notifySessionsChanged()
+    }
+
+    /**
+     * Stops the old server and starts a fresh one. The relaunch builds a new [LaunchRequest], so the
+     * port, the interpreter decision, the sandbox mode, and the working directory are recomputed,
+     * and marimo generates a new token.
+     */
+    fun restart(file: VirtualFile) {
+        val session = sessions[file.url] ?: return
+        val view = synchronized(session) { session.view }
+        onEdt {
+            if (view != null) {
+                view.reload()
+            } else {
+                session.lifecycle.release()
+                urlFor(file)
+            }
+        }
+        notifySessionsChanged()
+    }
+
     /** Route this notebook through marimo's sandbox (uv) on its next launch and thereafter. */
     fun enableSandbox(file: VirtualFile) {
-        if (stateFor(file).sandboxEnabled.compareAndSet(false, true)) {
+        if (sessionFor(file).sandboxEnabled.compareAndSet(false, true)) {
             MarimoTelemetry.getInstance().capture(TelemetryEvent.SandboxStarted)
         }
     }
 
-    /** Whether [file] is currently routed through marimo's sandbox (uv). */
-    fun isSandbox(file: VirtualFile): Boolean = notebookServers[file.url]?.sandboxEnabled?.get() ?: false
+    /** Whether [file] is currently routed through marimo's sandbox (uv). Never creates a session. */
+    fun isSandbox(file: VirtualFile): Boolean =
+        sessions[file.url]?.sandboxEnabled?.get() ?: false
 
+    /** Internal teardown used by the view's relaunch path: kill the process, keep the session. */
     fun release(file: VirtualFile) {
-        notebookServers[file.url]?.let { state ->
-            synchronized(state.launchLock) { state.lifecycle.release() }
-        }
+        sessions[file.url]?.lifecycle?.release()
+    }
+
+    /** [listener] runs after any session change. It must only schedule work, not block. */
+    fun addSessionsListener(parent: Disposable, listener: () -> Unit) {
+        listeners.add(listener)
+        Disposer.register(parent) { listeners.remove(listener) }
     }
 
     override fun dispose() {
-        notebookServers.values.forEach { Disposer.dispose(it.lifecycle) }
-        notebookServers.clear()
-        views.clear()
+        sessions.values.forEach { session ->
+            synchronized(session) { cancelTtlLocked(session) }
+            Disposer.dispose(session)
+        }
+        sessions.clear()
     }
 
-    private fun stateFor(file: VirtualFile): NotebookServerState =
-        notebookServers.computeIfAbsent(file.url) {
-            NotebookServerState().also { Disposer.register(this, it.lifecycle) }
+    private fun launchPlanFailure(
+        session: MarimoNotebookSession,
+        error: Exception,
+    ): CompletableFuture<String> {
+        session.lifecycle.onLaunchPlanFailed(error)
+        return CompletableFuture.failedFuture(error)
+    }
+
+    private fun cancelTtlLocked(session: MarimoNotebookSession) {
+        session.ttlGeneration++
+        session.ttl?.cancel()
+        session.ttl = null
+        session.expiresAtMillis = null
+    }
+
+    private fun disposeSessionOnEdt(session: MarimoNotebookSession) {
+        onEdt { Disposer.dispose(session) }
+    }
+
+    private fun sessionFor(file: VirtualFile): MarimoNotebookSession =
+        sessions.computeIfAbsent(file.url) {
+            MarimoNotebookSession(file.url, file.name).also { session ->
+                Disposer.register(this, session)
+                session.lifecycle.addListener { notifySessionsChanged() }
+            }
         }
+
+    private fun notifySessionsChanged() {
+        listeners.forEach { it() }
+        if (ApplicationManager.getApplication().isUnitTestMode) return
+        onEdt {
+            if (!project.isDisposed) ProjectView.getInstance(project).refresh()
+        }
+    }
+
+    /** Runs [block] now when already on the EDT, else schedules it there. */
+    private fun onEdt(block: () -> Unit) {
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread) block() else application.invokeLater {
+            if (!project.isDisposed) block()
+        }
+    }
 }
