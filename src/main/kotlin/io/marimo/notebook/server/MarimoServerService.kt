@@ -11,6 +11,7 @@ import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.launch.NotebookWorkDir
 import io.marimo.notebook.launch.authenticatedMarimoUrl
 import io.marimo.notebook.launch.generateAccessToken
 import io.marimo.notebook.launch.writeTokenPasswordFile
@@ -89,12 +90,14 @@ class MarimoServerService(private val project: Project) : Disposable {
 
             val port = NetUtils.findAvailableSocketPort()
             val host = "127.0.0.1"
+            val workDir = NotebookWorkDir.resolve(project, file)
             val baseRequest = LaunchRequest(
                 project = project,
                 notebook = file,
                 port = port,
                 host = host,
                 sandbox = session.sandboxEnabled.get(),
+                workDir = workDir,
             )
             val launcher = try {
                 when (val decision = planner.plan(baseRequest)) {
@@ -123,6 +126,7 @@ class MarimoServerService(private val project: Project) : Disposable {
                 val handle = launcher.launch(request)
                 session.launchContext = MarimoLaunchContext(
                     port = request.port,
+                    workDir = workDir,
                     launcherId = launcher.id,
                     sandbox = request.sandbox,
                 )

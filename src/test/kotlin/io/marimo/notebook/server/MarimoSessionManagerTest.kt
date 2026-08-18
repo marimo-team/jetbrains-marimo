@@ -10,6 +10,7 @@ import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoServerHandle
+import io.marimo.notebook.launch.NotebookWorkDir
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -302,7 +303,6 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
             settings.state.tokenAuthEnabled = before
         }
     }
-
     fun testPlanFailureDoesNotCreateATokenPasswordFile() {
         sdk.canLaunch = false
         uv.canLaunch = false
@@ -339,5 +339,14 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
 
         assertTrue(url.isCompletedExceptionally)
         assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
+    }
+
+    fun testLaunchRunsFromTheContentRootAndRecordsIt() {
+        val file = myFixture.addFileToProject("deep/nested/wd_nb.py", "import marimo\n").virtualFile
+        manager.urlFor(file)
+        val request = sdk.requests.single()
+        assertEquals(NotebookWorkDir.resolve(project, file), request.workDir)
+        assertEquals(request.workDir, manager.statusFor(file)!!.launch!!.workDir)
+        assertFalse(request.workDir!!.endsWith("deep/nested"))
     }
 }

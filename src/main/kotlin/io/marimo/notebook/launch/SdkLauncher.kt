@@ -13,7 +13,7 @@ class SdkLauncher : MarimoLauncher {
     override fun launch(request: LaunchRequest): MarimoServerHandle {
         val python = SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
             ?: throw NoApplicableLauncherException(request)
-        val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
+        val workDir = request.workDir ?: NotebookWorkDir.resolve(request.project, request.notebook)
         fun command(watch: Boolean) =
             buildCommandLine(
                 python, request.notebook.path, workDir, request.host, request.port, watch,
