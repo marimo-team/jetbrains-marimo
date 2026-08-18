@@ -61,7 +61,14 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
 
     private fun bannerCommand(url: String): GeneralCommandLine {
         val javaBin = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
+        // Linux allows 128 KB for one argument. The platform test classpath is larger than that, so
+        // an inline -cp value fails the spawn with E2BIG. A Java argument file keeps the command line
+        // short, because the launcher reads the classpath from the file after the process starts.
+        val classpath = System.getProperty("java.class.path")
+        val argFile = File.createTempFile("marimo-readiness-cp", ".txt")
+        argFile.deleteOnExit()
+        argFile.writeText("-cp \"${classpath.replace("\\", "\\\\")}\"")
         return GeneralCommandLine(javaBin)
-            .withParameters("-cp", System.getProperty("java.class.path"), BannerOnlyProcess::class.java.name, url)
+            .withParameters("@${argFile.absolutePath}", BannerOnlyProcess::class.java.name, url)
     }
 }
