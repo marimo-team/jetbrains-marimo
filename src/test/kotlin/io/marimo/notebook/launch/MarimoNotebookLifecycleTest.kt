@@ -3,208 +3,223 @@
 package io.marimo.notebook.launch
 
 import com.intellij.execution.process.ProcessHandler
+import java.util.concurrent.CompletableFuture
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertSame
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import java.util.concurrent.CompletableFuture
 
 class MarimoNotebookLifecycleTest {
 
-    private class ManualWatchdog : (Runnable) -> Unit {
-        private val pending = mutableListOf<Runnable>()
-
-        override fun invoke(task: Runnable) {
-            pending.add(task)
+    /** A handle the test scripts: readiness, termination, and liveness are all driven by hand. */
+    private class ScriptedHandle : MarimoServerHandle {
+        private val ready = CompletableFuture<String>()
+        private var terminationListener: ((Int, String) -> Unit)? = null
+        override var isAlive: Boolean = true
+        override val processHandle: ProcessHandler get() = throw UnsupportedOperationException()
+        override fun awaitReady(): CompletableFuture<String> = ready
+        override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
+            terminationListener = listener
         }
-
-        fun fireAll() {
-            val due = pending.toList()
-            pending.clear()
-            due.forEach(Runnable::run)
+        fun becomeReady(url: String) { ready.complete(url) }
+        fun failLaunch(error: Throwable) { ready.completeExceptionally(error) }
+        fun fireTerminated(exitCode: Int, tail: String) {
+            isAlive = false
+            terminationListener?.invoke(exitCode, tail)
         }
+        override fun dispose() { isAlive = false }
     }
 
-    private class FakeHandle : MarimoServerHandle {
-        private val ready = CompletableFuture<String>()
-        private var listener: ((Int, String) -> Unit)? = null
-
-        override val processHandle: ProcessHandler
-            get() = throw UnsupportedOperationException("The lifecycle does not need a process handler")
-        override var isAlive = true
-
-        override fun awaitReady(): CompletableFuture<String> = ready
-
-        override fun onTerminated(listener: (Int, String) -> Unit) {
-            this.listener = listener
-        }
-
-        fun becomeReady(url: String) {
-            ready.complete(url)
-        }
-
-        fun terminate(exitCode: Int, outputTail: String) {
-            isAlive = false
-            listener?.invoke(exitCode, outputTail)
-        }
-
-        override fun dispose() {
-            isAlive = false
-        }
+    /** Runs watchdogs on demand instead of on a timer, so the tests stay deterministic. */
+    private class ManualWatchdog : (Runnable) -> Unit {
+        private val pending = mutableListOf<Runnable>()
+        override fun invoke(task: Runnable) { pending.add(task) }
+        fun fireAll() { val due = pending.toList(); pending.clear(); due.forEach(Runnable::run) }
     }
 
     private fun lifecycle(watchdog: ManualWatchdog = ManualWatchdog()) =
         MarimoNotebookLifecycle(scheduleWatchdog = watchdog)
+
+    private fun runningLifecycle(url: String = "http://127.0.0.1:1234"): Pair<MarimoNotebookLifecycle, ScriptedHandle> {
+        val l = lifecycle()
+        val handle = ScriptedHandle()
+        l.attach(handle)
+        handle.becomeReady(url)
+        return l to handle
+    }
 
     @Test fun startsInStarting() {
         assertEquals(MarimoNotebookState.Starting, lifecycle().state)
     }
 
     @Test fun readyBecomesRunning() {
-        val lifecycle = lifecycle()
-
-        lifecycle.onReady("http://127.0.0.1:1234")
-
-        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), lifecycle.state)
+        val (l, _) = runningLifecycle()
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), l.state)
     }
 
     @Test fun launchFailureBecomesFailed() {
-        val lifecycle = lifecycle()
+        val l = lifecycle()
+        val handle = ScriptedHandle()
         val boom = RuntimeException("boom")
+        l.attach(handle)
+        handle.failLaunch(boom)
+        assertEquals(MarimoNotebookState.Failed(boom), l.state)
+    }
 
-        lifecycle.onLaunchFailed(boom)
-
-        assertEquals(MarimoNotebookState.Failed(boom), lifecycle.state)
+    @Test fun planFailureBecomesFailedWithoutAHandle() {
+        val l = lifecycle()
+        val boom = RuntimeException("no interpreter")
+        l.onLaunchPlanFailed(boom)
+        assertEquals(MarimoNotebookState.Failed(boom), l.state)
     }
 
     @Test fun shutdownIntentBecomesStoppingAndKeepsUrl() {
-        val lifecycle = lifecycle()
-        lifecycle.onReady("http://127.0.0.1:1234")
-
-        lifecycle.onShutdownObserved()
-
-        assertEquals(MarimoNotebookState.Stopping("http://127.0.0.1:1234"), lifecycle.state)
+        val (l, _) = runningLifecycle()
+        l.onShutdownObserved()
+        assertEquals(MarimoNotebookState.Stopping("http://127.0.0.1:1234"), l.state)
     }
 
     @Test fun shutdownIntentIsIgnoredWhenNotRunning() {
-        val lifecycle = lifecycle()
-
-        lifecycle.onShutdownObserved()
-
-        assertEquals(MarimoNotebookState.Starting, lifecycle.state)
+        val l = lifecycle()
+        l.onShutdownObserved()
+        assertEquals("no page to shut down while still starting", MarimoNotebookState.Starting, l.state)
     }
 
     @Test fun rejectedShutdownRevertsToRunning() {
-        val lifecycle = lifecycle()
-        lifecycle.onReady("http://127.0.0.1:1234")
-        lifecycle.onShutdownObserved()
-
-        lifecycle.onShutdownRejected()
-
-        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), lifecycle.state)
+        val (l, _) = runningLifecycle()
+        l.onShutdownObserved()
+        l.onShutdownRejected()
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), l.state)
     }
 
     @Test fun processExitAfterIntentIsDeliberate() {
-        val lifecycle = lifecycle()
-        lifecycle.onReady("http://127.0.0.1:1234")
-        lifecycle.onShutdownObserved()
-
-        lifecycle.onProcessTerminated(exitCode = 0, outputTail = "")
-
-        assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), lifecycle.state)
+        val (l, handle) = runningLifecycle()
+        l.onShutdownObserved()
+        handle.fireTerminated(exitCode = 0, tail = "")
+        assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), l.state)
     }
 
     @Test fun processExitWithoutIntentIsUnexpected() {
-        val lifecycle = lifecycle()
-        lifecycle.onReady("http://127.0.0.1:1234")
-
-        lifecycle.onProcessTerminated(exitCode = 137, outputTail = "Killed")
-
-        assertEquals(
-            MarimoNotebookState.Stopped(StopCause.Unexpected(137, "Killed")),
-            lifecycle.state,
-        )
+        val (l, handle) = runningLifecycle()
+        handle.fireTerminated(exitCode = 137, tail = "Killed")
+        assertEquals(MarimoNotebookState.Stopped(StopCause.Unexpected(137, "Killed")), l.state)
     }
 
     @Test fun watchdogResolvesStoppingEvenWithProcessAlive() {
         val watchdog = ManualWatchdog()
-        val lifecycle = lifecycle(watchdog)
-        lifecycle.onReady("http://127.0.0.1:1234")
-        lifecycle.onShutdownObserved()
-
+        val l = lifecycle(watchdog)
+        val handle = ScriptedHandle()
+        l.attach(handle)
+        handle.becomeReady("http://127.0.0.1:1234")
+        l.onShutdownObserved()
         watchdog.fireAll()
-
-        assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), lifecycle.state)
+        assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), l.state)
     }
 
     @Test fun watchdogDoesNothingAfterRevert() {
         val watchdog = ManualWatchdog()
-        val lifecycle = lifecycle(watchdog)
-        lifecycle.onReady("http://127.0.0.1:1234")
-        lifecycle.onShutdownObserved()
-        lifecycle.onShutdownRejected()
+        val l = lifecycle(watchdog)
+        val handle = ScriptedHandle()
+        l.attach(handle)
+        handle.becomeReady("http://127.0.0.1:1234")
+        l.onShutdownObserved()
+        l.onShutdownRejected()
+        watchdog.fireAll()
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), l.state)
+    }
+
+    /** The headline regression: a late exit event from launch A must not stop launch B. */
+    @Test fun lateTerminationFromAReleasedLaunchCannotStopTheReplacement() {
+        val l = lifecycle()
+        val a = ScriptedHandle()
+        l.attach(a)
+        a.becomeReady("http://127.0.0.1:1111")
+
+        l.release()
+        val b = ScriptedHandle()
+        val seen = mutableListOf<MarimoNotebookState>()
+        l.attach(b)
+        b.becomeReady("http://127.0.0.1:2222")
+        l.addListener { seen.add(it) }
+
+        a.fireTerminated(exitCode = 143, tail = "terminated")
+
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
+        assertTrue("stale exit must not notify listeners: $seen", seen.isEmpty())
+    }
+
+    @Test fun lateReadinessFromAReleasedLaunchCannotOverrideTheReplacement() {
+        val l = lifecycle()
+        val a = ScriptedHandle()
+        l.attach(a)
+        l.release()
+        val b = ScriptedHandle()
+        l.attach(b)
+        b.becomeReady("http://127.0.0.1:2222")
+
+        a.becomeReady("http://127.0.0.1:1111")
+
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
+    }
+
+    @Test fun staleWatchdogFromAReleasedLaunchCannotStopTheReplacement() {
+        val watchdog = ManualWatchdog()
+        val l = lifecycle(watchdog)
+        val a = ScriptedHandle()
+        l.attach(a)
+        a.becomeReady("http://127.0.0.1:1111")
+        l.onShutdownObserved()
+
+        l.release()
+        val b = ScriptedHandle()
+        l.attach(b)
+        b.becomeReady("http://127.0.0.1:2222")
 
         watchdog.fireAll()
 
-        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), lifecycle.state)
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
+    }
+
+    @Test fun stopShowsDeliberateAndIgnoresTheExitItCauses() {
+        val (l, handle) = runningLifecycle()
+        val seen = mutableListOf<MarimoNotebookState>()
+        l.addListener { seen.add(it) }
+
+        l.stop()
+        handle.fireTerminated(exitCode = 137, tail = "Killed")
+
+        assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), l.state)
+        assertEquals(listOf<MarimoNotebookState>(MarimoNotebookState.Stopped(StopCause.Deliberate)), seen)
     }
 
     @Test fun releaseSuppressesTheStopNotification() {
-        val lifecycle = lifecycle()
+        val (l, handle) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-        lifecycle.onReady("http://127.0.0.1:1234")
-        lifecycle.addListener { seen.add(it) }
-
-        lifecycle.release()
-        lifecycle.onProcessTerminated(exitCode = 0, outputTail = "")
-
+        l.addListener { seen.add(it) }
+        l.release()
+        handle.fireTerminated(exitCode = 0, tail = "")
         assertTrue("plugin-initiated teardown must not surface an error panel: $seen", seen.isEmpty())
     }
 
+    @Test fun releaseDisposesTheHandle() {
+        val (l, handle) = runningLifecycle()
+        l.release()
+        assertTrue("release must kill the process", !handle.isAlive)
+        assertEquals("no live handle may remain", null, l.liveHandle())
+    }
+
     @Test fun terminalStateIsReportedOnlyOnce() {
-        val lifecycle = lifecycle()
+        val (l, handle) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-        lifecycle.onReady("http://127.0.0.1:1234")
-        lifecycle.addListener { seen.add(it) }
-
-        lifecycle.onProcessTerminated(exitCode = 1, outputTail = "first")
-        lifecycle.onProcessTerminated(exitCode = 2, outputTail = "second")
-
-        assertEquals(listOf(MarimoNotebookState.Stopped(StopCause.Unexpected(1, "first"))), seen)
+        l.addListener { seen.add(it) }
+        handle.fireTerminated(exitCode = 1, tail = "first")
+        handle.fireTerminated(exitCode = 2, tail = "second")
+        assertEquals(listOf<MarimoNotebookState>(MarimoNotebookState.Stopped(StopCause.Unexpected(1, "first"))), seen)
     }
 
     @Test fun listenerReceivesCurrentStateOnSubscribe() {
-        val lifecycle = lifecycle()
-        lifecycle.onReady("http://127.0.0.1:1234")
+        val (l, _) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-
-        lifecycle.addListener(notifyImmediately = true) { seen.add(it) }
-
-        assertEquals(listOf(MarimoNotebookState.Running("http://127.0.0.1:1234")), seen)
-    }
-
-    @Test fun attachForwardsReadinessAndTerminationFromTheHandle() {
-        val lifecycle = lifecycle()
-        val handle = FakeHandle()
-
-        lifecycle.attach(handle)
-        handle.becomeReady("http://127.0.0.1:1234")
-        handle.terminate(exitCode = 9, outputTail = "crashed")
-
-        assertEquals(
-            MarimoNotebookState.Stopped(StopCause.Unexpected(9, "crashed")),
-            lifecycle.state,
-        )
-        assertNull(lifecycle.liveHandle())
-    }
-
-    @Test fun attachedLiveHandleIsAvailableForReuse() {
-        val lifecycle = lifecycle()
-        val handle = FakeHandle()
-
-        lifecycle.attach(handle)
-
-        assertSame(handle, lifecycle.liveHandle())
+        l.addListener(notifyImmediately = true) { seen.add(it) }
+        assertEquals(listOf<MarimoNotebookState>(MarimoNotebookState.Running("http://127.0.0.1:1234")), seen)
     }
 }
