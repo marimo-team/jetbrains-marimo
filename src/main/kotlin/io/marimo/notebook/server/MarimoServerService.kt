@@ -31,9 +31,10 @@ class MarimoServerService(private val project: Project) : Disposable {
     private class NotebookServerState {
         val lifecycle = MarimoNotebookLifecycle()
         val sandboxEnabled = AtomicBoolean(false)
+        val launchLock = Any()
     }
 
-    private val planner = LaunchPlanner(SdkLauncher(), UvLauncher())
+    internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
     private val notebookServers = ConcurrentHashMap<String, NotebookServerState>()
     private val views = ConcurrentHashMap<String, MarimoNotebookView>()
 
@@ -51,34 +52,36 @@ class MarimoServerService(private val project: Project) : Disposable {
 
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
         val state = stateFor(file)
-        state.lifecycle.liveHandle()?.let { return it.awaitReady() }
+        return synchronized(state.launchLock) {
+            state.lifecycle.liveHandle()?.let { return@synchronized it.awaitReady() }
 
-        val request = LaunchRequest(
-            project = project,
-            notebook = file,
-            port = NetUtils.findAvailableSocketPort(),
-            sandbox = state.sandboxEnabled.get(),
-        )
-        val launcher = when (val decision = planner.plan(request)) {
-            is LaunchDecision.Launch -> decision.launcher
-            is LaunchDecision.NoInterpreter ->
-                return CompletableFuture.failedFuture(NoInterpreterException(decision.message))
-            is LaunchDecision.NeedsUv ->
-                return CompletableFuture.failedFuture(UvUnavailableException(decision.message))
+            val request = LaunchRequest(
+                project = project,
+                notebook = file,
+                port = NetUtils.findAvailableSocketPort(),
+                sandbox = state.sandboxEnabled.get(),
+            )
+            val launcher = when (val decision = planner.plan(request)) {
+                is LaunchDecision.Launch -> decision.launcher
+                is LaunchDecision.NoInterpreter ->
+                    return@synchronized CompletableFuture.failedFuture(NoInterpreterException(decision.message))
+                is LaunchDecision.NeedsUv ->
+                    return@synchronized CompletableFuture.failedFuture(UvUnavailableException(decision.message))
+            }
+            // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into a
+            // failed future so it reaches the editor's error panel instead of escaping as an IDE
+            // internal-error balloon with a raw stack trace.
+            val handle = try {
+                launcher.launch(request)
+            } catch (e: ProcessCanceledException) {
+                throw e
+            } catch (e: Exception) {
+                return@synchronized CompletableFuture.failedFuture(e)
+            }
+            Disposer.register(state.lifecycle, handle)
+            state.lifecycle.attach(handle)
+            handle.awaitReady()
         }
-        // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into a
-        // failed future so it reaches the editor's error panel instead of escaping as an IDE
-        // internal-error balloon with a raw stack trace.
-        val handle = try {
-            launcher.launch(request)
-        } catch (e: ProcessCanceledException) {
-            throw e
-        } catch (e: Exception) {
-            return CompletableFuture.failedFuture(e)
-        }
-        Disposer.register(state.lifecycle, handle)
-        state.lifecycle.attach(handle)
-        return handle.awaitReady()
     }
 
     /** marimo CLI prefix for [file] on the planned launcher. Null when no interpreter is configured. */
@@ -99,7 +102,9 @@ class MarimoServerService(private val project: Project) : Disposable {
     fun isSandbox(file: VirtualFile): Boolean = notebookServers[file.url]?.sandboxEnabled?.get() ?: false
 
     fun release(file: VirtualFile) {
-        notebookServers[file.url]?.lifecycle?.release()
+        notebookServers[file.url]?.let { state ->
+            synchronized(state.launchLock) { state.lifecycle.release() }
+        }
     }
 
     override fun dispose() {

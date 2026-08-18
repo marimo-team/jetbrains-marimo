@@ -139,12 +139,38 @@ class MarimoNotebookLifecycleTest {
         val seen = mutableListOf<MarimoNotebookState>()
         l.attach(b)
         b.becomeReady("http://127.0.0.1:2222")
-        l.addListener { seen.add(it) }
+        l.addListener { seen.add(it.state) }
 
         a.fireTerminated(exitCode = 143, tail = "terminated")
 
         assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
         assertTrue("stale exit must not notify listeners: $seen", seen.isEmpty())
+    }
+
+    @Test fun delayedStoppedUpdateFromAIsRejectedAfterBStarts() {
+        val l = lifecycle()
+        val a = ScriptedHandle()
+        l.attach(a)
+        a.becomeReady("http://127.0.0.1:1111")
+
+        val rendered = mutableListOf<MarimoNotebookState>()
+        var delayedRender: (() -> Unit)? = null
+        l.addListener { update ->
+            if (update.state is MarimoNotebookState.Stopped) {
+                delayedRender = { if (l.isCurrent(update)) rendered.add(update.state) }
+            }
+        }
+
+        a.fireTerminated(exitCode = 143, tail = "terminated")
+        l.release()
+        val b = ScriptedHandle()
+        l.attach(b)
+        b.becomeReady("http://127.0.0.1:2222")
+
+        delayedRender!!.invoke()
+
+        assertTrue("A's delayed stopped panel must not render over B: $rendered", rendered.isEmpty())
+        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
     }
 
     @Test fun lateReadinessFromAReleasedLaunchCannotOverrideTheReplacement() {
@@ -182,7 +208,7 @@ class MarimoNotebookLifecycleTest {
     @Test fun stopShowsDeliberateAndIgnoresTheExitItCauses() {
         val (l, handle) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-        l.addListener { seen.add(it) }
+        l.addListener { seen.add(it.state) }
 
         l.stop()
         handle.fireTerminated(exitCode = 137, tail = "Killed")
@@ -194,7 +220,7 @@ class MarimoNotebookLifecycleTest {
     @Test fun releaseSuppressesTheStopNotification() {
         val (l, handle) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-        l.addListener { seen.add(it) }
+        l.addListener { seen.add(it.state) }
         l.release()
         handle.fireTerminated(exitCode = 0, tail = "")
         assertTrue("plugin-initiated teardown must not surface an error panel: $seen", seen.isEmpty())
@@ -210,7 +236,7 @@ class MarimoNotebookLifecycleTest {
     @Test fun terminalStateIsReportedOnlyOnce() {
         val (l, handle) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-        l.addListener { seen.add(it) }
+        l.addListener { seen.add(it.state) }
         handle.fireTerminated(exitCode = 1, tail = "first")
         handle.fireTerminated(exitCode = 2, tail = "second")
         assertEquals(listOf<MarimoNotebookState>(MarimoNotebookState.Stopped(StopCause.Unexpected(1, "first"))), seen)
@@ -219,7 +245,7 @@ class MarimoNotebookLifecycleTest {
     @Test fun listenerReceivesCurrentStateOnSubscribe() {
         val (l, _) = runningLifecycle()
         val seen = mutableListOf<MarimoNotebookState>()
-        l.addListener(notifyImmediately = true) { seen.add(it) }
+        l.addListener(notifyImmediately = true) { seen.add(it.state) }
         assertEquals(listOf<MarimoNotebookState>(MarimoNotebookState.Running("http://127.0.0.1:1234")), seen)
     }
 }

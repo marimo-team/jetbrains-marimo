@@ -8,6 +8,9 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 
+/** A lifecycle transition identified by its launch generation and resulting state. */
+data class LifecycleStateUpdate(val generation: Long, val state: MarimoNotebookState)
+
 /**
  * The state of one notebook's marimo server, and the only place allowed to change it.
  *
@@ -33,11 +36,19 @@ class MarimoNotebookLifecycle(
     private var generation = 0L
     private var handle: MarimoServerHandle? = null
 
-    private val listeners = CopyOnWriteArrayList<(MarimoNotebookState) -> Unit>()
+    private val listeners = CopyOnWriteArrayList<(LifecycleStateUpdate) -> Unit>()
 
-    fun addListener(notifyImmediately: Boolean = false, listener: (MarimoNotebookState) -> Unit) {
-        listeners.add(listener)
-        if (notifyImmediately) listener(state)
+    fun addListener(notifyImmediately: Boolean = false, listener: (LifecycleStateUpdate) -> Unit) {
+        val immediate = synchronized(lock) {
+            listeners.add(listener)
+            if (notifyImmediately) LifecycleStateUpdate(generation, state) else null
+        }
+        immediate?.let(listener)
+    }
+
+    /** True when [update] is still the lifecycle's latest transition. */
+    fun isCurrent(update: LifecycleStateUpdate): Boolean = synchronized(lock) {
+        generation == update.generation && state == update.state
     }
 
     /** The handle to reuse, or null when there is nothing usable and a fresh launch is needed. */
@@ -135,13 +146,13 @@ class MarimoNotebookLifecycle(
      * means "no transition from the current state".
      */
     private fun setState(gen: Long, next: () -> MarimoNotebookState?): Boolean {
-        val applied = synchronized(lock) {
+        val update = synchronized(lock) {
             if (gen != generation) return false
             val value = next() ?: return false
             state = value
-            value
+            LifecycleStateUpdate(gen, value)
         }
-        listeners.forEach { it(applied) }
+        listeners.forEach { it(update) }
         return true
     }
 

@@ -62,9 +62,12 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
 
     private fun command(port: Int, exitCode: Int): GeneralCommandLine {
         val javaBin = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
+        val classpath = System.getProperty("java.class.path")
+        val argFile = File.createTempFile("marimo-process-cp", ".txt")
+        argFile.deleteOnExit()
+        argFile.writeText("-cp \"${classpath.replace("\\", "\\\\")}\"")
         return GeneralCommandLine(javaBin).withParameters(
-            "-cp",
-            System.getProperty("java.class.path"),
+            "@${argFile.absolutePath}",
             ServeThenExitProcess::class.java.name,
             port.toString(),
             exitCode.toString(),
