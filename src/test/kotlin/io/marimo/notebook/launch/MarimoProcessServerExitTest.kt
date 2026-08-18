@@ -2,21 +2,25 @@
 
 package io.marimo.notebook.launch
 
+import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-/** Serves one HTTP response so readiness completes, then exits with the requested code. */
+/** Prints a marimo-style banner, serves one HTTP response, then exits with the requested code. */
 object ServeThenExitProcess {
     @JvmStatic
     fun main(args: Array<String>) {
         val port = args[0].toInt()
         val exitCode = args[1].toInt()
+        println("        ➜  URL: http://127.0.0.1:$port?access_token=SECRETTOKEN")
+        System.out.flush()
         ServerSocket(port).use { server ->
             val socket = server.accept()
             socket.getOutputStream().apply {
@@ -32,11 +36,16 @@ object ServeThenExitProcess {
 }
 
 class MarimoProcessServerExitTest : BasePlatformTestCase() {
+
     override fun runInDispatchThread(): Boolean = false
 
-    fun testExitAfterReadinessIsReportedOnceWithExitCode() {
+    fun testExitAfterReadinessIsReportedOnceWithRedactedTail() {
         val port = ServerSocket(0).use { it.localPort }
-        val handle = startMarimoServer(command(port, exitCode = 3), "127.0.0.1", port, readinessTimeoutSeconds = 15)
+        val authUrl = "http://127.0.0.1:$port?access_token=SECRETTOKEN"
+        val handle = startMarimoServer(
+            command(port, exitCode = 3), "127.0.0.1", port,
+            readinessTimeoutSeconds = 15, authenticatedUrl = authUrl,
+        )
 
         val reported = CountDownLatch(1)
         val calls = AtomicInteger()
@@ -49,7 +58,13 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             reported.countDown()
         }
 
-        handle.awaitReady().get(15, TimeUnit.SECONDS)
+        val readyUrl = handle.awaitReady().get(15, TimeUnit.SECONDS)
+        assertEquals(
+            "readiness must deliver the plugin-supplied authenticated URL",
+            authUrl,
+            readyUrl,
+        )
+        assertTrue("handle should be alive while serving", handle.isAlive)
 
         assertTrue("process exit was never reported", reported.await(15, TimeUnit.SECONDS))
         Thread.sleep(300)
@@ -57,9 +72,20 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
         assertEquals(1, calls.get())
         assertEquals(3, code.get())
         assertTrue("output tail should carry process output, was '$tail'", tail.contains("shutting down"))
+        assertFalse("retained output must never carry the token: '$tail'", tail.contains("SECRETTOKEN"))
+        assertTrue(tail.contains("access_token=<redacted>"))
         assertFalse("handle must report dead after exit", handle.isAlive)
     }
 
-    private fun command(port: Int, exitCode: Int) =
+    private fun command(port: Int, exitCode: Int): GeneralCommandLine =
         javaProcess(ServeThenExitProcess::class.java.name, port.toString(), exitCode.toString())
+
+    private fun javaProcess(vararg args: String): GeneralCommandLine {
+        val javaBin = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
+        val classpath = System.getProperty("java.class.path")
+        val argFile = File.createTempFile("marimo-process-cp", ".txt")
+        argFile.deleteOnExit()
+        argFile.writeText("-cp \"${classpath.replace("\\", "\\\\")}\"")
+        return GeneralCommandLine(javaBin).withParameters("@${argFile.absolutePath}", *args)
+    }
 }

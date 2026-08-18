@@ -15,6 +15,8 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -41,9 +43,11 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         val handles = CopyOnWriteArrayList<FakeHandle>()
         val secondLaunch = CountDownLatch(1)
         var canLaunch = true
+        var launchFailure: Exception? = null
         override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
+            launchFailure?.let { throw it }
             val authUrl = request.authenticatedUrl
                 ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
             val handle = FakeHandle(authUrl)
@@ -297,5 +301,43 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         } finally {
             settings.state.tokenAuthEnabled = before
         }
+    }
+
+    fun testPlanFailureDoesNotCreateATokenPasswordFile() {
+        sdk.canLaunch = false
+        uv.canLaunch = false
+        var tokenFileWriterCalled = false
+        manager.tokenPasswordFileWriter = {
+            tokenFileWriterCalled = true
+            File.createTempFile("marimo-token-test-", ".txt")
+        }
+
+        val url = manager.urlFor(notebook("no_interpreter_token_nb.py"))
+
+        assertTrue(url.isCompletedExceptionally)
+        assertFalse("planning must finish before a password file is created", tokenFileWriterCalled)
+    }
+
+    fun testSynchronousLauncherFailureDeletesTheTokenPasswordFile() {
+        val tokenFile = File.createTempFile("marimo-token-test-", ".txt")
+        manager.tokenPasswordFileWriter = { tokenFile }
+        sdk.launchFailure = IOException("launcher failed")
+        val file = notebook("sync_launcher_failure_nb.py")
+
+        val url = manager.urlFor(file)
+
+        assertTrue(url.isCompletedExceptionally)
+        assertFalse("a pre-handle token file must be cleaned up", tokenFile.exists())
+        assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
+    }
+
+    fun testTokenPasswordFileWriterFailureCompletesTheLaunchFutureExceptionally() {
+        manager.tokenPasswordFileWriter = { throw IOException("cannot write token") }
+        val file = notebook("token_write_failure_nb.py")
+
+        val url = manager.urlFor(file)
+
+        assertTrue(url.isCompletedExceptionally)
+        assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
     }
 }

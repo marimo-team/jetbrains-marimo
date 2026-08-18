@@ -23,7 +23,12 @@ fun authenticatedMarimoUrl(host: String, port: Int, token: String): String =
  * succession never collide.
  */
 fun writeTokenPasswordFile(token: String): File {
-    val file = FileUtil.createTempFile("marimo-token-", ".txt", true)
-    file.writeText(token)
-    return file
+    val file = FileUtil.createTempFile("marimo-token-", ".txt", false)
+    try {
+        file.writeText(token)
+        return file
+    } catch (e: Exception) {
+        file.delete()
+        throw e
+    }
 }

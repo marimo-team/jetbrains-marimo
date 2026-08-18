@@ -26,6 +26,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
+import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -42,6 +43,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MarimoServerService(private val project: Project) : Disposable {
 
     internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
+
+    internal var tokenPasswordFileWriter: (String) -> File = ::writeTokenPasswordFile
 
     internal var ttlScheduler = TtlScheduler { delayMillis, task ->
         val future = AppExecutorUtil.getAppScheduledExecutorService()
@@ -86,52 +89,53 @@ class MarimoServerService(private val project: Project) : Disposable {
 
             val port = NetUtils.findAvailableSocketPort()
             val host = "127.0.0.1"
-            val tokenAuth = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
-            val tokenPasswordFile: String?
-            val authenticatedUrl: String?
-            if (tokenAuth) {
-                val token = generateAccessToken()
-                val tokenFile = writeTokenPasswordFile(token)
-                tokenPasswordFile = tokenFile.absolutePath
-                authenticatedUrl = authenticatedMarimoUrl(host, port, token)
-            } else {
-                tokenPasswordFile = null
-                authenticatedUrl = null
-            }
-            val request = LaunchRequest(
+            val baseRequest = LaunchRequest(
                 project = project,
                 notebook = file,
                 port = port,
                 host = host,
                 sandbox = session.sandboxEnabled.get(),
-                tokenPasswordFile = tokenPasswordFile,
-                authenticatedUrl = authenticatedUrl,
             )
-            val launcher = when (val decision = planner.plan(request)) {
-                is LaunchDecision.Launch -> decision.launcher
-                is LaunchDecision.NoInterpreter ->
-                    return launchPlanFailure(session, NoInterpreterException(decision.message))
-                is LaunchDecision.NeedsUv ->
-                    return launchPlanFailure(session, UvUnavailableException(decision.message))
-            }
-            // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into
-            // a failed future so it reaches the editor's error panel instead of escaping as an IDE
-            // internal-error balloon with a raw stack trace.
-            val handle = try {
-                launcher.launch(request)
+            val launcher = try {
+                when (val decision = planner.plan(baseRequest)) {
+                    is LaunchDecision.Launch -> decision.launcher
+                    is LaunchDecision.NoInterpreter ->
+                        return launchPlanFailure(session, NoInterpreterException(decision.message))
+                    is LaunchDecision.NeedsUv ->
+                        return launchPlanFailure(session, UvUnavailableException(decision.message))
+                }
             } catch (e: ProcessCanceledException) {
                 throw e
             } catch (e: Exception) {
                 return launchPlanFailure(session, e)
             }
-            session.launchContext = MarimoLaunchContext(
-                port = request.port,
-                launcherId = launcher.id,
-                sandbox = request.sandbox,
-            )
-            Disposer.register(session.lifecycle, handle)
-            session.lifecycle.attach(handle)
-            return handle.awaitReady()
+
+            var tokenFile: File? = null
+            try {
+                val token = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+                    .takeIf { it }
+                    ?.let { generateAccessToken() }
+                tokenFile = token?.let(tokenPasswordFileWriter)
+                val request = baseRequest.copy(
+                    tokenPasswordFile = tokenFile?.absolutePath,
+                    authenticatedUrl = token?.let { authenticatedMarimoUrl(host, port, it) },
+                )
+                val handle = launcher.launch(request)
+                session.launchContext = MarimoLaunchContext(
+                    port = request.port,
+                    launcherId = launcher.id,
+                    sandbox = request.sandbox,
+                )
+                Disposer.register(session.lifecycle, handle)
+                session.lifecycle.attach(handle)
+                return handle.awaitReady()
+            } catch (e: ProcessCanceledException) {
+                tokenFile?.delete()
+                throw e
+            } catch (e: Exception) {
+                tokenFile?.delete()
+                return launchPlanFailure(session, e)
+            }
         }
     }
 
