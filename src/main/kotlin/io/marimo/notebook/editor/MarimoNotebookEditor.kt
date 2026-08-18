@@ -22,8 +22,13 @@ import javax.swing.JComponent
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
-    private val view = project.service<MarimoServerService>().viewFor(file)
+    private val server = project.service<MarimoServerService>()
+    private val view = server.viewFor(file)
     private val propertyChangeSupport = PropertyChangeSupport(this)
+
+    init {
+        server.attach(file)
+    }
 
     /** Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox). */
     fun reload() = view.reload()
@@ -50,9 +55,11 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
         propertyChangeSupport.removePropertyChangeListener(listener)
 
     /**
-     * Intentionally leaves the view untouched: the browser and marimo server it owns are keyed by
-     * file in [MarimoServerService] and must survive a tab move, which disposes this editor before
-     * building the replacement.
+     * Detaches this tab from the session. The view, browser, and server survive in the project's
+     * session manager: a tab move or a quick reopen reattaches to the same live notebook, and only
+     * the manager's background TTL (or an explicit Stop) tears it down.
      */
-    override fun dispose() {}
+    override fun dispose() {
+        server.detach(file)
+    }
 }

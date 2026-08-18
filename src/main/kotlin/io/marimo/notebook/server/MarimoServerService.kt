@@ -27,6 +27,7 @@ import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 /**
  * The project's notebook session manager. One [MarimoNotebookSession] per file owns that notebook's
@@ -49,6 +50,7 @@ class MarimoServerService(private val project: Project) : Disposable {
 
     private val sessions = ConcurrentHashMap<String, MarimoNotebookSession>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    private val projectViewRefreshQueued = AtomicBoolean(false)
 
     /**
      * The per-file view (browser + panel) that editor tabs render. One per notebook, shared across
@@ -130,11 +132,15 @@ class MarimoServerService(private val project: Project) : Disposable {
         notifySessionsChanged()
     }
 
-    /** An editor tab showing [file] closed. The final detach arms the background TTL (Task 9). */
+    /** An editor tab showing [file] closed. The final detach arms the background TTL: the session
+     * (process, browser, kernel state) stays alive so a reopen within the window reconnects
+     * instantly, and the timer bounds how long an abandoned notebook holds a Python process.
+     */
     fun detach(file: VirtualFile) {
         val session = sessions[file.url] ?: return
         synchronized(session) {
             if (session.attachedTabs > 0) session.attachedTabs--
+            if (session.attachedTabs == 0) armTtlLocked(file.url, session)
         }
         notifySessionsChanged()
     }
@@ -174,18 +180,20 @@ class MarimoServerService(private val project: Project) : Disposable {
     /**
      * Stops the old server and starts a fresh one. The relaunch builds a new [LaunchRequest], so the
      * port, the interpreter decision, the sandbox mode, and the working directory are recomputed,
-     * and marimo generates a new token.
+     * and marimo generates a new token. A background session keeps its background nature: the TTL
+     * is re-armed for the fresh process.
      */
     fun restart(file: VirtualFile) {
         val session = sessions[file.url] ?: return
         val view = synchronized(session) { session.view }
-        onEdt {
-            if (view != null) {
-                view.reload()
-            } else {
-                session.lifecycle.release()
-                urlFor(file)
-            }
+        if (view != null) {
+            onEdt { view.reload() }
+        } else {
+            session.lifecycle.release()
+            ApplicationManager.getApplication().executeOnPooledThread { urlFor(file) }
+        }
+        synchronized(session) {
+            if (session.attachedTabs == 0) armTtlLocked(file.url, session)
         }
         notifySessionsChanged()
     }
@@ -235,8 +243,37 @@ class MarimoServerService(private val project: Project) : Disposable {
         session.expiresAtMillis = null
     }
 
+    private fun armTtlLocked(url: String, session: MarimoNotebookSession) {
+        cancelTtlLocked(session)
+        val generation = ++session.ttlGeneration
+        session.expiresAtMillis = clock() + BACKGROUND_TTL_MILLIS
+        session.ttl = ttlScheduler.schedule(BACKGROUND_TTL_MILLIS) { onTtlExpired(url, session, generation) }
+    }
+
+    /**
+     * Runs on the scheduler thread. Everything is re-validated under the session lock: the timer
+     * may have been cancelled after firing, a tab may have reattached, or Stop may have removed the
+     * session already. `remove(url, session)` makes the disposal single-shot.
+     */
+    private fun onTtlExpired(url: String, session: MarimoNotebookSession, generation: Long) {
+        val expired = synchronized(session) {
+            session.ttlGeneration == generation &&
+                session.attachedTabs == 0 &&
+                sessions.remove(url, session)
+        }
+        if (!expired) return
+        session.lifecycle.release()
+        disposeSessionOnEdt(session)
+        notifySessionsChanged()
+    }
+
     private fun disposeSessionOnEdt(session: MarimoNotebookSession) {
-        onEdt { Disposer.dispose(session) }
+        val application = ApplicationManager.getApplication()
+        if (application.isDispatchThread || application.isUnitTestMode) {
+            Disposer.dispose(session)
+        } else {
+            application.invokeLater { Disposer.dispose(session) }
+        }
     }
 
     private fun sessionFor(file: VirtualFile): MarimoNotebookSession =
@@ -250,7 +287,9 @@ class MarimoServerService(private val project: Project) : Disposable {
     private fun notifySessionsChanged() {
         listeners.forEach { it() }
         if (ApplicationManager.getApplication().isUnitTestMode) return
+        if (!projectViewRefreshQueued.compareAndSet(false, true)) return
         onEdt {
+            projectViewRefreshQueued.set(false)
             if (!project.isDisposed) ProjectView.getInstance(project).refresh()
         }
     }
@@ -261,5 +300,10 @@ class MarimoServerService(private val project: Project) : Disposable {
         if (application.isDispatchThread) block() else application.invokeLater {
             if (!project.isDisposed) block()
         }
+    }
+
+    companion object {
+        /** How long a session survives after its final editor tab closes. */
+        const val BACKGROUND_TTL_MILLIS: Long = 30L * 60 * 1000
     }
 }

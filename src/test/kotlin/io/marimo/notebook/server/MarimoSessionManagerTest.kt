@@ -11,6 +11,9 @@ import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoServerHandle
 import java.util.concurrent.CompletableFuture
+import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class MarimoSessionManagerTest : BasePlatformTestCase() {
 
@@ -29,21 +32,38 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
     }
 
     class FakeLauncher(override val id: String = "fake") : MarimoLauncher {
-        val requests = mutableListOf<LaunchRequest>()
-        val handles = mutableListOf<FakeHandle>()
+        val requests = CopyOnWriteArrayList<LaunchRequest>()
+        val handles = CopyOnWriteArrayList<FakeHandle>()
+        val secondLaunch = CountDownLatch(1)
         var canLaunch = true
         override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
             val handle = FakeHandle("http://127.0.0.1:${request.port}?access_token=secret${handles.size}")
             handles.add(handle)
+            if (requests.size == 2) secondLaunch.countDown()
             return handle
         }
         override fun marimoCliPrefix(request: LaunchRequest): List<String> = listOf("fake", "marimo")
     }
 
+    private class ManualTtl(private val honorCancel: Boolean = true) : TtlScheduler {
+        val pending = mutableListOf<Pair<Long, Runnable>>()
+        override fun schedule(delayMillis: Long, task: Runnable): TtlCancellable {
+            val entry = delayMillis to task
+            pending.add(entry)
+            return TtlCancellable { if (honorCancel) pending.remove(entry) }
+        }
+        fun fireAll() {
+            val due = pending.toList()
+            pending.clear()
+            due.forEach { it.second.run() }
+        }
+    }
+
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
+    private lateinit var ttl: ManualTtl
 
     private val manager: MarimoServerService get() = project.service<MarimoServerService>()
 
@@ -55,6 +75,8 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         sdk = FakeLauncher("fake-sdk")
         uv = FakeLauncher("fake-uv")
         manager.planner = LaunchPlanner(sdk, uv)
+        ttl = ManualTtl()
+        manager.ttlScheduler = ttl
     }
 
     // Light platform projects are reused across tests, and the project-level service survives with
@@ -172,6 +194,7 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
 
         manager.restart(file)
 
+        assertTrue("restart must schedule a second process", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
         assertEquals("restart must launch a second process", 2, sdk.handles.size)
         assertFalse("restart must kill the first process", sdk.handles[0].isAlive)
         sdk.handles[1].becomeReady()
@@ -196,5 +219,64 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         sdk.handles.single().becomeReady()
         manager.stop(file)
         assertFalse(sdk.handles.single().isAlive)
+    }
+
+    private fun runningNotebook(name: String): VirtualFile {
+        val file = notebook(name)
+        manager.urlFor(file)
+        sdk.handles.last().becomeReady()
+        return file
+    }
+
+    fun testFinalDetachArmsTheThirtyMinuteTtl() {
+        val file = runningNotebook("ttl_nb.py")
+        manager.attach(file)
+
+        manager.detach(file)
+
+        assertEquals(1, ttl.pending.size)
+        assertEquals(MarimoServerService.BACKGROUND_TTL_MILLIS, ttl.pending.single().first)
+        assertNotNull("the panel needs a deadline to render", manager.statusFor(file)!!.expiresAtMillis)
+        assertTrue("the process must stay alive in the background", sdk.handles.single().isAlive)
+    }
+
+    fun testReopenBeforeExpiryCancelsTheTtlAndReusesTheProcess() {
+        val file = runningNotebook("reopen_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+
+        manager.attach(file)
+
+        assertTrue(ttl.pending.isEmpty())
+        assertNull(manager.statusFor(file)!!.expiresAtMillis)
+        manager.urlFor(file)
+        assertEquals("reattach must reuse the live process, not relaunch", 1, sdk.handles.size)
+    }
+
+    fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
+        val file = runningNotebook("expire_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+
+        ttl.fireAll()
+
+        assertFalse("expiry must stop the process", sdk.handles.single().isAlive)
+        assertNull("expiry must remove the registry entry", manager.statusFor(file))
+        ttl.fireAll()
+        assertNull(manager.statusFor(file))
+    }
+
+    fun testAStaleExpiryTaskCannotKillAReattachedSession() {
+        val sticky = ManualTtl(honorCancel = false)
+        manager.ttlScheduler = sticky
+        val file = runningNotebook("stale_ttl_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.attach(file)
+
+        sticky.fireAll()
+
+        assertTrue("a cancelled-but-fired task must be ignored by generation", sdk.handles.single().isAlive)
+        assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
     }
 }

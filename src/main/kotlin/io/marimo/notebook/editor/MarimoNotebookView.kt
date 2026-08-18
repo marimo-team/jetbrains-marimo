@@ -65,7 +65,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         override fun getData(dataId: String): Any? =
             if (CommonDataKeys.VIRTUAL_FILE.`is`(dataId)) file else null
     }
-    private val browser = if (JBCefApp.isSupported()) JBCefBrowser() else null
+    private val browser =
+        if (JBCefApp.isSupported() && !ApplicationManager.getApplication().isUnitTestMode) JBCefBrowser() else null
     private val server = project.service<MarimoServerService>()
     private val lifecycle = server.lifecycleFor(file)
 
@@ -405,6 +406,5 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     override fun dispose() {
         disposed = true
         browser?.dispose()
-        server.release(file)
     }
 }
