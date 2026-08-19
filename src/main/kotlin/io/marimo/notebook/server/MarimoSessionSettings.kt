@@ -20,6 +20,9 @@ class MarimoSessionSettings : PersistentStateComponent<MarimoSessionSettings.Sta
          * `--no-token` as an escape hatch.
          */
         var tokenAuthEnabled: Boolean = true
+
+        /** Minutes a notebook's server keeps running after its last editor tab closes. */
+        var backgroundTtlMinutes: Int = DEFAULT_BACKGROUND_TTL_MINUTES
     }
 
     private var current = State()
@@ -30,7 +33,13 @@ class MarimoSessionSettings : PersistentStateComponent<MarimoSessionSettings.Sta
         current = state
     }
 
+    /** The TTL in milliseconds, clamped so a hand-edited config file cannot disable the reaper. */
+    fun backgroundTtlMillis(): Long = current.backgroundTtlMinutes.coerceIn(MIN_BACKGROUND_TTL_MINUTES, 720) * 60_000L
+
     companion object {
+        const val DEFAULT_BACKGROUND_TTL_MINUTES: Int = 30
+        const val MIN_BACKGROUND_TTL_MINUTES: Int = 1
+
         fun getInstance(): MarimoSessionSettings =
             ApplicationManager.getApplication().getService(MarimoSessionSettings::class.java)
     }

@@ -232,64 +232,6 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.stop(file)
         assertFalse(sdk.handles.single().isAlive)
     }
-    private fun runningNotebook(name: String): VirtualFile {
-        val file = notebook(name)
-        manager.urlFor(file)
-        sdk.handles.last().becomeReady()
-        return file
-    }
-
-    fun testFinalDetachArmsTheThirtyMinuteTtl() {
-        val file = runningNotebook("ttl_nb.py")
-        manager.attach(file)
-
-        manager.detach(file)
-
-        assertEquals(1, ttl.pending.size)
-        assertEquals(MarimoServerService.BACKGROUND_TTL_MILLIS, ttl.pending.single().first)
-        assertNotNull("the panel needs a deadline to render", manager.statusFor(file)!!.expiresAtMillis)
-        assertTrue("the process must stay alive in the background", sdk.handles.single().isAlive)
-    }
-
-    fun testReopenBeforeExpiryCancelsTheTtlAndReusesTheProcess() {
-        val file = runningNotebook("reopen_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-
-        manager.attach(file)
-
-        assertTrue(ttl.pending.isEmpty())
-        assertNull(manager.statusFor(file)!!.expiresAtMillis)
-        manager.urlFor(file)
-        assertEquals("reattach must reuse the live process, not relaunch", 1, sdk.handles.size)
-    }
-
-    fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
-        val file = runningNotebook("expire_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-
-        ttl.fireAll()
-
-        assertFalse("expiry must stop the process", sdk.handles.single().isAlive)
-        assertNull("expiry must remove the registry entry", manager.statusFor(file))
-        ttl.fireAll()
-        assertNull(manager.statusFor(file))
-    }
-
-    fun testAStaleExpiryTaskCannotKillAReattachedSession() {
-        val sticky = ManualTtl(honorCancel = false)
-        manager.ttlScheduler = sticky
-        val file = runningNotebook("stale_ttl_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-        manager.attach(file)
-
-        sticky.fireAll()
-
-        assertTrue("a cancelled-but-fired task must be ignored by generation", sdk.handles.single().isAlive)
-        assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
-    }
 
     fun testTheTokenSettingReachesTheLaunchRequest() {
         val settings = MarimoSessionSettings.getInstance()
@@ -348,5 +290,97 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         assertEquals(NotebookWorkDir.resolve(project, file), request.workDir)
         assertEquals(request.workDir, manager.statusFor(file)!!.launch!!.workDir)
         assertFalse(request.workDir!!.endsWith("deep/nested"))
+    }
+
+    private fun runningNotebook(name: String): VirtualFile {
+        val file = notebook(name)
+        manager.urlFor(file)
+        sdk.handles.last().becomeReady()
+        return file
+    }
+
+    fun testAnAttachedTabKeepsTheSessionWithoutAnyTimer() {
+        val file = runningNotebook("keep_nb.py")
+        manager.attach(file)
+        assertTrue("an open tab must never race a timer", ttl.pending.isEmpty())
+        assertNull(manager.statusFor(file)!!.expiresAtMillis)
+    }
+
+    fun testFinalDetachArmsTheThirtyMinuteTtl() {
+        val file = runningNotebook("ttl_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        assertEquals(1, ttl.pending.size)
+        assertEquals(MarimoServerService.BACKGROUND_TTL_MILLIS, ttl.pending.single().first)
+        assertNotNull("the panel needs a deadline to render", manager.statusFor(file)!!.expiresAtMillis)
+        assertTrue("the process must stay alive in the background", sdk.handles.single().isAlive)
+    }
+
+    fun testReopenBeforeExpiryCancelsTheTtlAndReusesTheProcess() {
+        val file = runningNotebook("reopen_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.attach(file)
+        assertTrue(ttl.pending.isEmpty())
+        assertNull(manager.statusFor(file)!!.expiresAtMillis)
+        manager.urlFor(file)
+        assertEquals("reattach must reuse the live process, not relaunch", 1, sdk.handles.size)
+    }
+
+    fun testTabMovePreservesTheSessionInEitherEventOrder() {
+        val file = runningNotebook("move_nb.py")
+        manager.attach(file)
+        manager.attach(file)
+        manager.detach(file)
+        assertTrue("attach-then-detach never reaches zero", ttl.pending.isEmpty())
+
+        manager.detach(file)
+        manager.attach(file)
+        assertTrue("detach-then-attach cancels the armed timer", ttl.pending.isEmpty())
+        assertEquals(1, sdk.handles.size)
+        assertTrue(sdk.handles.single().isAlive)
+    }
+
+    fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
+        val file = runningNotebook("expire_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        ttl.fireAll()
+        assertFalse("expiry must stop the process", sdk.handles.single().isAlive)
+        assertNull("expiry must remove the registry entry", manager.statusFor(file))
+        ttl.fireAll()
+        assertNull(manager.statusFor(file))
+    }
+
+    fun testAStaleExpiryTaskCannotKillAReattachedSession() {
+        val sticky = ManualTtl(honorCancel = false)
+        manager.ttlScheduler = sticky
+        val file = runningNotebook("stale_ttl_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.attach(file)
+        sticky.fireAll()
+        assertTrue("a cancelled-but-fired task must be ignored by generation", sdk.handles.single().isAlive)
+        assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
+    }
+
+    fun testStopCancelsTheArmedTtl() {
+        val file = runningNotebook("stop_ttl_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.stop(file)
+        assertNull(manager.statusFor(file))
+        ttl.fireAll()
+        assertNull("a fired timer after stop must find nothing", manager.statusFor(file))
+    }
+
+    fun testRestartOfABackgroundSessionRearmsTheTtl() {
+        val file = runningNotebook("restart_bg_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.restart(file)
+        assertTrue("background restart must schedule a second process", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertEquals("the fresh background process needs a fresh deadline", 1, ttl.pending.size)
+        assertEquals(2, sdk.handles.size)
     }
 }

@@ -4,8 +4,11 @@ package io.marimo.notebook.telemetry
 
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
+import com.intellij.ui.JBIntSpinner
+import com.intellij.ui.dsl.builder.bindIntValue
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.panel
+import io.marimo.notebook.server.MarimoSessionSettings.Companion.MIN_BACKGROUND_TTL_MINUTES
 import io.marimo.notebook.MarimoBundle
 import io.marimo.notebook.server.MarimoSessionSettings
 
@@ -27,5 +30,24 @@ class MarimoTelemetryConfigurable : BoundConfigurable(MarimoBundle.message("tele
                 .bindSelected(sessions.state::tokenAuthEnabled)
         }
         row { comment(MarimoBundle.message("sessions.settings.token.note")) }
+        row(MarimoBundle.message("sessions.settings.ttl.label")) {
+            spinner(MIN_BACKGROUND_TTL_MINUTES..720)
+                .bindIntValue(sessions.state::backgroundTtlMinutes)
+                .validationOnInput { spinner ->
+                    if (ttlMinutesValid(spinner)) {
+                        null
+                    } else {
+                        error(MarimoBundle.message("sessions.settings.ttl.validation"))
+                    }
+                }
+        }
+        row { comment(MarimoBundle.message("sessions.settings.ttl.note")) }
+    }
+
+    private fun ttlMinutesValid(spinner: JBIntSpinner): Boolean {
+        val text = (spinner.editor as? javax.swing.JSpinner.NumberEditor)?.textField?.text.orEmpty()
+        if (text.isEmpty()) return true
+        val minutes = text.toIntOrNull() ?: return false
+        return minutes in MIN_BACKGROUND_TTL_MINUTES..720
     }
 }
