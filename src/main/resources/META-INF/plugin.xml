@@ -41,7 +41,6 @@
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoSourceEditorProvider"/>
         <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
-        <projectViewNodeDecorator implementation="io.marimo.notebook.editor.MarimoProjectViewNodeDecorator"/>
         <toolWindow id="Marimo Sessions"
                     anchor="right"
                     icon="io.marimo.notebook.MarimoIcons.FILE"
@@ -82,6 +81,7 @@
         </action>
 
         <group id="Marimo.Session"
+               class="io.marimo.notebook.editor.MarimoSessionActionGroup"
                text="Marimo Session"
                description="Manage the marimo session for this notebook"
                icon="io.marimo.notebook.MarimoIcons.FILE"

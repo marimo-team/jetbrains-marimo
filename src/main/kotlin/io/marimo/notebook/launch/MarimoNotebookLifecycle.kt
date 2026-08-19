@@ -52,7 +52,10 @@ class MarimoNotebookLifecycle(
     }
 
     /** The handle to reuse, or null when there is nothing usable and a fresh launch is needed. */
-    fun liveHandle(): MarimoServerHandle? = synchronized(lock) { handle?.takeIf { it.isAlive } }
+    fun liveHandle(): MarimoServerHandle? = synchronized(lock) {
+        if (state is MarimoNotebookState.Stopped || state is MarimoNotebookState.Failed) return null
+        handle?.takeIf { it.isAlive }
+    }
 
     /** Adopt a freshly launched server and follow it from starting through to a terminal state. */
     fun attach(handle: MarimoServerHandle) {
@@ -109,9 +112,10 @@ class MarimoNotebookLifecycle(
      */
     fun stop() {
         val gen = synchronized(lock) {
+            ++generation
             handle?.let { Disposer.dispose(it) }
             handle = null
-            ++generation
+            generation
         }
         setState(gen) { MarimoNotebookState.Stopped(StopCause.Deliberate) }
     }
@@ -140,7 +144,15 @@ class MarimoNotebookLifecycle(
      * it lingers is safe.
      */
     private fun onStoppingTimedOut(gen: Long) {
-        setState(gen) { if (state is MarimoNotebookState.Stopping) MarimoNotebookState.Stopped(StopCause.Deliberate) else null }
+        val update = synchronized(lock) {
+            if (gen != generation || state !is MarimoNotebookState.Stopping) return
+            handle?.let { Disposer.dispose(it) }
+            handle = null
+            val next = MarimoNotebookState.Stopped(StopCause.Deliberate)
+            state = next
+            LifecycleStateUpdate(gen, next)
+        }
+        listeners.forEach { it(update) }
     }
 
     /**

@@ -7,6 +7,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.server.MarimoSessionSettings
 import io.marimo.notebook.server.MarimoSessionManagerTest.FakeLauncher
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
@@ -29,15 +30,22 @@ class MarimoFileIconProviderTest : BasePlatformTestCase() {
         service.planner = LaunchPlanner(sdk, sdk)
         val file = myFixture.addFileToProject("icon_nb.py", "import marimo\napp = marimo.App()\n").virtualFile
         val provider = MarimoFileIconProvider()
+        val settings = MarimoSessionSettings.getInstance()
+        val priorTokenAuth = settings.state.tokenAuthEnabled
 
-        assertSame("no session: the plain file icon", MarimoIcons.FILE, provider.getIcon(file, 0, project))
-        assertNull("painting an icon must never create a session", service.statusFor(file))
+        settings.state.tokenAuthEnabled = false
+        try {
+            assertSame("no session: the plain file icon", MarimoIcons.FILE, provider.getIcon(file, 0, project))
+            assertNull("painting an icon must never create a session", service.statusFor(file))
 
-        service.urlFor(file)
-        sdk.handles.single().becomeReady()
-        assertNotSame("a live session must show a badge", MarimoIcons.FILE, provider.getIcon(file, 0, project))
+            service.urlFor(file)
+            sdk.handles.single().becomeReady()
+            assertNotSame("a live session must show a badge", MarimoIcons.FILE, provider.getIcon(file, 0, project))
 
-        service.stop(file)
-        assertSame("a removed session goes back to the plain icon", MarimoIcons.FILE, provider.getIcon(file, 0, project))
+            service.stop(file)
+            assertSame("a removed session goes back to the plain icon", MarimoIcons.FILE, provider.getIcon(file, 0, project))
+        } finally {
+            settings.state.tokenAuthEnabled = priorTokenAuth
+        }
     }
 }

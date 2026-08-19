@@ -19,11 +19,14 @@ class MarimoAccessTokenTest {
     @Test fun tokenPasswordFileIsUniqueAndContainsTheToken() {
         val a = writeTokenPasswordFile("token-a")
         val b = writeTokenPasswordFile("token-b")
-        assertFalse("parallel launches must not share a path", a.absolutePath == b.absolutePath)
-        assertEquals("token-a", a.readText().trim())
-        assertEquals("token-b", b.readText().trim())
-        a.delete()
-        b.delete()
+        try {
+            assertFalse("parallel launches must not share a path", a.absolutePath == b.absolutePath)
+            assertEquals("token-a", a.readText().trim())
+            assertEquals("token-b", b.readText().trim())
+        } finally {
+            a.delete()
+            b.delete()
+        }
     }
 
     @Test fun generatedTokensAreNonEmpty() {

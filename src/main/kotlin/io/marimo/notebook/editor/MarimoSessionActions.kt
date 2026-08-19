@@ -15,6 +15,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.ui.jcef.JBCefApp
 
 /** True when a session exists whose process is alive, so Restart and Stop have a target. */
 internal fun canControlSession(status: MarimoSessionSnapshot?): Boolean = status?.state?.isLive == true
@@ -39,7 +40,7 @@ abstract class MarimoSessionAction(
     final override fun update(e: AnActionEvent) {
         val project = e.project
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
-        if (project == null || file == null || !MarimoDetector.looksLikeMarimo(file)) {
+        if (project == null || file == null || !JBCefApp.isSupported() || !MarimoDetector.looksLikeMarimo(file)) {
             e.presentation.isEnabledAndVisible = false
             return
         }

@@ -4,6 +4,8 @@ package io.marimo.notebook.launch
 
 import com.intellij.openapi.util.io.FileUtil
 import java.io.File
+import java.nio.file.Files
+import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
 import java.util.Base64
 
@@ -26,9 +28,27 @@ fun writeTokenPasswordFile(token: String): File {
     val file = FileUtil.createTempFile("marimo-token-", ".txt", false)
     try {
         file.writeText(token)
+        restrictTokenFilePermissions(file)
         return file
     } catch (e: Exception) {
         file.delete()
         throw e
+    }
+}
+
+private fun restrictTokenFilePermissions(file: File) {
+    val path = file.toPath()
+    try {
+        Files.setPosixFilePermissions(
+            path,
+            setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+        )
+    } catch (_: UnsupportedOperationException) {
+        // Non-POSIX file system; use best-effort owner-only fallback.
+        file.setReadable(false, false)
+        file.setWritable(false, false)
+        file.setExecutable(false, false)
+        file.setReadable(true, true)
+        file.setWritable(true, true)
     }
 }

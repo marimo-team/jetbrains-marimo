@@ -46,7 +46,7 @@ class MarimoTelemetryConfigurable : BoundConfigurable(MarimoBundle.message("tele
 
     private fun ttlMinutesValid(spinner: JBIntSpinner): Boolean {
         val text = (spinner.editor as? javax.swing.JSpinner.NumberEditor)?.textField?.text.orEmpty()
-        if (text.isEmpty()) return true
+        if (text.isEmpty()) return false
         val minutes = text.toIntOrNull() ?: return false
         return minutes in MIN_BACKGROUND_TTL_MINUTES..720
     }

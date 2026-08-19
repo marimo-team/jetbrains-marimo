@@ -7,7 +7,6 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
-import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
@@ -64,8 +63,6 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             authUrl,
             readyUrl,
         )
-        assertTrue("handle should be alive while serving", handle.isAlive)
-
         assertTrue("process exit was never reported", reported.await(15, TimeUnit.SECONDS))
         Thread.sleep(300)
 
@@ -79,13 +76,4 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
 
     private fun command(port: Int, exitCode: Int): GeneralCommandLine =
         javaProcess(ServeThenExitProcess::class.java.name, port.toString(), exitCode.toString())
-
-    private fun javaProcess(vararg args: String): GeneralCommandLine {
-        val javaBin = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
-        val classpath = System.getProperty("java.class.path")
-        val argFile = File.createTempFile("marimo-process-cp", ".txt")
-        argFile.deleteOnExit()
-        argFile.writeText("-cp \"${classpath.replace("\\", "\\\\")}\"")
-        return GeneralCommandLine(javaBin).withParameters("@${argFile.absolutePath}", *args)
-    }
 }

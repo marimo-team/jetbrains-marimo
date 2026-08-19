@@ -32,11 +32,18 @@ internal fun loadErrorIsCurrent(failedUrl: String?, expectedOrigin: String?): Bo
     expectedOrigin != null && serverOrigin(failedUrl) == expectedOrigin
 
 /** The navigation identity a JCEF callback must retain from its originating attempt. */
-internal data class NavigationSnapshot(val generation: Long, val expectedOrigin: String?)
+internal data class NavigationSnapshot(
+    val generation: Long,
+    val expectedOrigin: String?,
+    val expectedUrl: String? = null,
+)
 
 /** The generation for a current load error, or null when the callback belongs to another attempt. */
-internal fun loadErrorGeneration(failedUrl: String?, snapshot: NavigationSnapshot): Long? =
-    snapshot.generation.takeIf { loadErrorIsCurrent(failedUrl, snapshot.expectedOrigin) }
+internal fun loadErrorGeneration(failedUrl: String?, snapshot: NavigationSnapshot): Long? {
+    val expectedUrl = snapshot.expectedUrl
+    if (expectedUrl != null && failedUrl != expectedUrl) return null
+    return snapshot.generation.takeIf { loadErrorIsCurrent(failedUrl, snapshot.expectedOrigin) }
+}
 
 /** A terminal or stopping lifecycle owns the panel instead of a pending browser callback. */
 internal fun canRenderNotebookFor(state: MarimoNotebookState): Boolean =

@@ -225,7 +225,7 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         assertTrue("expected several change notifications, saw $events", events >= 4)
     }
 
-    fun testDisposingASessionKillsItsProcess() {
+    fun testStopKillsItsProcess() {
         val file = notebook("dispose_nb.py")
         manager.urlFor(file)
         sdk.handles.single().becomeReady()
@@ -311,7 +311,7 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.attach(file)
         manager.detach(file)
         assertEquals(1, ttl.pending.size)
-        assertEquals(MarimoServerService.BACKGROUND_TTL_MILLIS, ttl.pending.single().first)
+        assertEquals(MarimoSessionSettings.getInstance().backgroundTtlMillis(), ttl.pending.single().first)
         assertNotNull("the panel needs a deadline to render", manager.statusFor(file)!!.expiresAtMillis)
         assertTrue("the process must stay alive in the background", sdk.handles.single().isAlive)
     }

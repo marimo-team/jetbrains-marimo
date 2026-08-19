@@ -23,11 +23,14 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
     private val server = project.service<MarimoServerService>()
-    private val view = server.viewFor(file)
+    private val sessionUrl: String
+    private val view: MarimoNotebookView
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     init {
-        server.attach(file)
+        val attached = server.attachView(file)
+        sessionUrl = attached.first
+        view = attached.second
     }
 
     /** Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox). */
@@ -60,6 +63,6 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
      * the manager's background TTL (or an explicit Stop) tears it down.
      */
     override fun dispose() {
-        server.detach(file)
+        server.detachUrl(sessionUrl)
     }
 }
