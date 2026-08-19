@@ -41,6 +41,7 @@
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoSourceEditorProvider"/>
         <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
+        <projectViewNodeDecorator implementation="io.marimo.notebook.editor.MarimoProjectViewNodeDecorator"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
         <internalFileTemplate name="marimo Notebook"/>
         <applicationConfigurable
