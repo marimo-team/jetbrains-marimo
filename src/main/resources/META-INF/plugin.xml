@@ -77,6 +77,36 @@
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
         </action>
 
+        <group id="Marimo.Session"
+               text="Marimo Session"
+               description="Manage the marimo session for this notebook"
+               popup="true">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+        </group>
+
+        <action id="Marimo.OpenNotebook"
+                class="io.marimo.notebook.editor.MarimoOpenNotebookAction"
+                text="Open marimo Notebook"
+                description="Open this notebook in the marimo editor"
+                icon="io.marimo.notebook.MarimoIcons.FILE">
+            <add-to-group group-id="Marimo.Session" anchor="first"/>
+        </action>
+
+        <action id="Marimo.RestartNotebook"
+                class="io.marimo.notebook.editor.MarimoRestartNotebookAction"
+                text="Restart marimo Session"
+                description="Stop this notebook's marimo server and start a fresh one">
+            <add-to-group group-id="Marimo.Session" anchor="last"/>
+        </action>
+
+        <action id="Marimo.StopNotebook"
+                class="io.marimo.notebook.editor.MarimoStopNotebookAction"
+                text="Stop marimo Session"
+                description="Stop this notebook's marimo server">
+            <add-to-group group-id="Marimo.Session" anchor="last"/>
+        </action>
+
         <group id="Marimo.Pair"
                class="io.marimo.notebook.pair.MarimoPairActionGroup"
                text="Pair with AI"
