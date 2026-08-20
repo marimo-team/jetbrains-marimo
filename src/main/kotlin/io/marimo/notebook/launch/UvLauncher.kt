@@ -12,7 +12,7 @@ class UvLauncher : MarimoLauncher {
 
     override fun launch(request: LaunchRequest): MarimoServerHandle {
         val uv = findUv() ?: throw NoApplicableLauncherException(request)
-        val workDir = request.notebook.parent?.path ?: System.getProperty("user.dir")
+        val workDir = request.workDir ?: NotebookWorkDir.resolve(request.project, request.notebook)
         fun command(watch: Boolean) =
             buildCommandLine(
                 uv, request.notebook.path, workDir, request.host, request.port,

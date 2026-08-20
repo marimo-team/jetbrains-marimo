@@ -7,10 +7,12 @@ import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
+import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.launch.NotebookWorkDir
 import io.marimo.notebook.launch.authenticatedMarimoUrl
 import io.marimo.notebook.launch.generateAccessToken
 import io.marimo.notebook.launch.writeTokenPasswordFile
@@ -74,6 +76,34 @@ class MarimoServerService(private val project: Project) : Disposable {
         }
     }
 
+    /**
+     * Atomically gets/creates the per-file view and attaches one tab lease to the same session.
+     * This prevents a TTL race where view creation and attach target different entries.
+     */
+    fun attachView(file: VirtualFile): Pair<String, MarimoNotebookView> {
+        while (true) {
+            val session = sessionFor(file)
+            val attachment = synchronized(session) {
+                if (sessions[file.url] !== session) {
+                    null
+                } else {
+                    val existing = session.view
+                    val resolved = existing ?: MarimoNotebookView(project, file).also {
+                        session.view = it
+                        Disposer.register(session, it)
+                    }
+                    session.attachedTabs++
+                    cancelTtlLocked(session)
+                    session.fileUrl to resolved
+                }
+            }
+            if (attachment != null) {
+                notifySessionsChanged()
+                return attachment
+            }
+        }
+    }
+
     /** The server lifecycle retained for this notebook across editor reopenings. Creates a session. */
     fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle = sessionFor(file).lifecycle
 
@@ -89,12 +119,14 @@ class MarimoServerService(private val project: Project) : Disposable {
 
             val port = NetUtils.findAvailableSocketPort()
             val host = "127.0.0.1"
+            val workDir = NotebookWorkDir.resolve(project, file)
             val baseRequest = LaunchRequest(
                 project = project,
                 notebook = file,
                 port = port,
                 host = host,
                 sandbox = session.sandboxEnabled.get(),
+                workDir = workDir,
             )
             val launcher = try {
                 when (val decision = planner.plan(baseRequest)) {
@@ -112,7 +144,8 @@ class MarimoServerService(private val project: Project) : Disposable {
 
             var tokenFile: File? = null
             try {
-                val token = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+                val tokenAuthEnabled = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+                val token = tokenAuthEnabled
                     .takeIf { it }
                     ?.let { generateAccessToken() }
                 tokenFile = token?.let(tokenPasswordFileWriter)
@@ -123,12 +156,16 @@ class MarimoServerService(private val project: Project) : Disposable {
                 val handle = launcher.launch(request)
                 session.launchContext = MarimoLaunchContext(
                     port = request.port,
+                    workDir = workDir,
                     launcherId = launcher.id,
                     sandbox = request.sandbox,
+                    tokenAuthEnabled = tokenAuthEnabled,
                 )
                 Disposer.register(session.lifecycle, handle)
                 session.lifecycle.attach(handle)
-                return handle.awaitReady()
+                return handle.awaitReady().whenComplete { _, error ->
+                    if (error != null) Disposer.dispose(handle)
+                }
             } catch (e: ProcessCanceledException) {
                 tokenFile?.delete()
                 throw e
@@ -162,9 +199,14 @@ class MarimoServerService(private val project: Project) : Disposable {
      */
     fun detach(file: VirtualFile) {
         val session = sessions[file.url] ?: return
+        detachUrl(session.fileUrl)
+    }
+
+    fun detachUrl(url: String) {
+        val session = sessions[url] ?: return
         synchronized(session) {
             if (session.attachedTabs > 0) session.attachedTabs--
-            if (session.attachedTabs == 0) armTtlLocked(file.url, session)
+            if (session.attachedTabs == 0) armTtlLocked(url, session)
         }
         notifySessionsChanged()
     }
@@ -268,10 +310,11 @@ class MarimoServerService(private val project: Project) : Disposable {
     }
 
     private fun armTtlLocked(url: String, session: MarimoNotebookSession) {
+        val ttlMillis = MarimoSessionSettings.getInstance().backgroundTtlMillis()
         cancelTtlLocked(session)
         val generation = ++session.ttlGeneration
-        session.expiresAtMillis = clock() + BACKGROUND_TTL_MILLIS
-        session.ttl = ttlScheduler.schedule(BACKGROUND_TTL_MILLIS) { onTtlExpired(url, session, generation) }
+        session.expiresAtMillis = clock() + ttlMillis
+        session.ttl = ttlScheduler.schedule(ttlMillis) { onTtlExpired(url, session, generation) }
     }
 
     /**
@@ -304,7 +347,14 @@ class MarimoServerService(private val project: Project) : Disposable {
         sessions.computeIfAbsent(file.url) {
             MarimoNotebookSession(file.url, file.name).also { session ->
                 Disposer.register(this, session)
-                session.lifecycle.addListener { notifySessionsChanged() }
+                session.lifecycle.addListener { update ->
+                    synchronized(session) {
+                        if (update.state !is MarimoNotebookState.Starting && update.state !is MarimoNotebookState.Running) {
+                            session.launchContext = null
+                        }
+                    }
+                    notifySessionsChanged()
+                }
             }
         }
 
@@ -324,10 +374,5 @@ class MarimoServerService(private val project: Project) : Disposable {
         if (application.isDispatchThread) block() else application.invokeLater {
             if (!project.isDisposed) block()
         }
-    }
-
-    companion object {
-        /** How long a session survives after its final editor tab closes. */
-        const val BACKGROUND_TTL_MILLIS: Long = 30L * 60 * 1000
     }
 }

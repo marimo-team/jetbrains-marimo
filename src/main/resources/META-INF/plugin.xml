@@ -41,6 +41,10 @@
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoSourceEditorProvider"/>
         <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
+        <toolWindow id="Marimo Sessions"
+                    anchor="right"
+                    icon="io.marimo.notebook.MarimoIcons.FILE"
+                    factoryClass="io.marimo.notebook.editor.MarimoSessionsToolWindowFactory"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
         <internalFileTemplate name="marimo Notebook"/>
         <applicationConfigurable
@@ -74,6 +78,40 @@
                 icon="io.marimo.notebook.MarimoIcons.FILE">
             <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
             <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+        </action>
+
+        <group id="Marimo.Session"
+               class="io.marimo.notebook.editor.MarimoSessionActionGroup"
+               text="Marimo Session"
+               description="Manage the marimo session for this notebook"
+               icon="io.marimo.notebook.MarimoIcons.FILE"
+               popup="true">
+            <add-to-group group-id="ProjectViewPopupMenu" anchor="last"/>
+            <add-to-group group-id="EditorTabPopupMenu" anchor="last"/>
+        </group>
+
+        <action id="Marimo.OpenNotebook"
+                class="io.marimo.notebook.editor.MarimoOpenNotebookAction"
+                text="Open marimo Notebook"
+                description="Open this notebook in the marimo editor"
+                icon="AllIcons.Actions.Forward">
+            <add-to-group group-id="Marimo.Session" anchor="first"/>
+        </action>
+
+        <action id="Marimo.RestartNotebook"
+                class="io.marimo.notebook.editor.MarimoRestartNotebookAction"
+                text="Restart marimo Session"
+                description="Stop this notebook's marimo server and start a fresh one"
+                icon="AllIcons.Actions.Restart">
+            <add-to-group group-id="Marimo.Session" anchor="last"/>
+        </action>
+
+        <action id="Marimo.StopNotebook"
+                class="io.marimo.notebook.editor.MarimoStopNotebookAction"
+                text="Stop marimo Session"
+                description="Stop this notebook's marimo server"
+                icon="AllIcons.Actions.Suspend">
+            <add-to-group group-id="Marimo.Session" anchor="last"/>
         </action>
 
         <group id="Marimo.Pair"

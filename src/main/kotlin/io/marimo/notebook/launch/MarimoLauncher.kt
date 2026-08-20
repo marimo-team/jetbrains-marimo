@@ -22,6 +22,8 @@ data class LaunchRequest(
     val tokenPasswordFile: String? = null,
     /** Plugin-built URL with access token when token auth is on; null for plain readiness URL. */
     val authenticatedUrl: String? = null,
+    /** Working directory for the server process; the service resolves and records it per launch. */
+    val workDir: String? = null,
 )
 
 /** Owns a spawned marimo process; the lifecycle service drives readiness and disposal. */

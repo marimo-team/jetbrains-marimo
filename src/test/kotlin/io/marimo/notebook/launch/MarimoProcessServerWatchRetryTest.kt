@@ -5,7 +5,6 @@ package io.marimo.notebook.launch
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import org.junit.Assert.assertEquals
-import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
 
@@ -55,13 +54,8 @@ class MarimoProcessServerWatchRetryTest : BasePlatformTestCase() {
     }
 
     private fun command(port: Int, watch: Boolean): GeneralCommandLine {
-        val javaBin = File(File(System.getProperty("java.home"), "bin"), "java").absolutePath
-        val classpath = System.getProperty("java.class.path")
-        val argFile = File.createTempFile("marimo-watch-cp", ".txt")
-        argFile.deleteOnExit()
-        argFile.writeText("-cp \"${classpath.replace("\\", "\\\\")}\"")
         val args = mutableListOf(WatchPickyProcess::class.java.name, port.toString())
         if (watch) args.add("watch")
-        return GeneralCommandLine(javaBin).withParameters("@${argFile.absolutePath}", *args.toTypedArray())
+        return javaProcess(*args.toTypedArray())
     }
 }

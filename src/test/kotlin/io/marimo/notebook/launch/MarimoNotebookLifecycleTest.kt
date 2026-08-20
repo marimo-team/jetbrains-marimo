@@ -94,6 +94,27 @@ class MarimoNotebookLifecycleTest {
         assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), l.state)
     }
 
+    @Test fun watchdogReportsStoppedOnceWhenDisposeTerminatesSynchronously() {
+        val watchdog = ManualWatchdog()
+        val l = lifecycle(watchdog)
+        val handle = ScriptedMarimoServerHandle(terminateOnDispose = true)
+        l.attach(handle)
+        handle.becomeReady("http://127.0.0.1:1234")
+        val seen = mutableListOf<MarimoNotebookState>()
+        l.addListener { seen.add(it.state) }
+
+        l.onShutdownObserved()
+        watchdog.fireAll()
+
+        assertEquals(
+            listOf(
+                MarimoNotebookState.Stopping("http://127.0.0.1:1234"),
+                MarimoNotebookState.Stopped(StopCause.Deliberate),
+            ),
+            seen,
+        )
+    }
+
     @Test fun watchdogDoesNothingAfterRevert() {
         val watchdog = ManualWatchdog()
         val l = lifecycle(watchdog)
