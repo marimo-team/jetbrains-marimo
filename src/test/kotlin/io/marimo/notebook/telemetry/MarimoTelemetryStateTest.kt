@@ -7,19 +7,53 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarimoTelemetryStateTest {
-    @Test
-    fun anonymousIdIsStableAcrossReload() {
-        val service = MarimoTelemetry()
-        val id = service.anonymousId()
-        assertTrue(id.isNotBlank())
+    private object NoOpPostHogSink : PostHogSink {
+        override fun capture(distinctId: String, event: String, properties: Map<String, Any>) = Unit
 
-        val restored = MarimoTelemetry()
-        restored.loadState(service.state)
-        assertEquals(id, restored.anonymousId())
+        override fun close() = Unit
+    }
+
+    private object NoOpSentrySink : SentrySink {
+        override fun captureException(throwable: Throwable) = Unit
+
+        override fun startSession() = Unit
+
+        override fun endSession() = Unit
+
+        override fun close() = Unit
     }
 
     @Test
-    fun consentDefaultsToUnset() {
-        assertEquals(Consent.UNSET, MarimoTelemetry().state.consent)
+    fun unsetStateSerializationDoesNotCreateAnonymousId() {
+        val service = MarimoTelemetry()
+
+        assertEquals(Consent.UNSET, service.state.consent)
+        assertTrue(service.state.anonymousId.isBlank())
+    }
+
+    @Test
+    fun deniedStateSerializationDoesNotCreateAnonymousId() {
+        val service = MarimoTelemetry()
+
+        service.deny()
+
+        assertEquals(Consent.DENIED, service.state.consent)
+        assertTrue(service.state.anonymousId.isBlank())
+    }
+
+    @Test
+    fun allowedStateSerializationContainsStableAnonymousId() {
+        val service =
+            MarimoTelemetry().withSinkForTest(NoOpPostHogSink).withSentrySinkForTest(NoOpSentrySink)
+
+        service.allow()
+        val persisted = service.state
+
+        assertEquals(Consent.ALLOWED, persisted.consent)
+        assertTrue(persisted.anonymousId.isNotBlank())
+
+        val restored = MarimoTelemetry()
+        restored.loadState(persisted)
+        assertEquals(persisted.anonymousId, restored.anonymousId())
     }
 }

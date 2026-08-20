@@ -2,8 +2,8 @@
 
 package io.marimo.notebook.telemetry
 
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
@@ -13,22 +13,28 @@ class ConsentTransitionTest {
 
     private class RecordingSink : PostHogSink {
         val events = mutableListOf<RecordedEvent>()
-        var closed = false
+        var closeCalls = 0
+
+        val closed: Boolean
+            get() = closeCalls > 0
 
         override fun capture(distinctId: String, event: String, properties: Map<String, Any>) {
             events += RecordedEvent(event, properties)
         }
 
         override fun close() {
-            closed = true
+            closeCalls++
         }
     }
 
     private class RecordingSentrySink : SentrySink {
         val captured = mutableListOf<Throwable>()
-        var closed = false
+        var closeCalls = 0
         var sessionsStarted = 0
         var sessionsEnded = 0
+
+        val closed: Boolean
+            get() = closeCalls > 0
 
         override fun captureException(throwable: Throwable) {
             captured += throwable
@@ -43,7 +49,7 @@ class ConsentTransitionTest {
         }
 
         override fun close() {
-            closed = true
+            closeCalls++
         }
     }
 
@@ -58,6 +64,19 @@ class ConsentTransitionTest {
                         1,
                     )
                 )
+        }
+
+    private fun restoredAllowedTelemetry(
+        postHog: RecordingSink,
+        sentry: RecordingSentrySink,
+    ): MarimoTelemetry =
+        MarimoTelemetry().withSinkForTest(postHog).withSentrySinkForTest(sentry).also {
+            it.loadState(
+                MarimoTelemetry.PersistedState(
+                    consent = Consent.ALLOWED,
+                    anonymousId = "existing-id",
+                )
+            )
         }
 
     @Test
@@ -81,15 +100,38 @@ class ConsentTransitionTest {
 
     @Test
     fun denyBuildsNoTransport() {
-        val sink = RecordingSink()
-        val telemetry = MarimoTelemetry().withSinkForTest(sink)
+        val telemetry = MarimoTelemetry()
 
         telemetry.deny()
         assertEquals(Consent.DENIED, telemetry.consent)
-        assertFalse(sink.closed)
 
         telemetry.capture(TelemetryEvent.SandboxStarted)
-        assertTrue(sink.events.isEmpty())
+        assertTrue(telemetry.anonymousId().isBlank())
+    }
+
+    @Test
+    fun deniedConsentPreventsStartupBlockedBehindTeardown() {
+        val postHog = RecordingSink()
+        val sentry = RecordingSentrySink()
+        val telemetry =
+            MarimoTelemetry().withSinkForTest(postHog).withSentrySinkForTest(sentry).also {
+                it.setConsentForTest(Consent.ALLOWED)
+            }
+        val capture = Thread { telemetry.captureException(marimoError()) }
+
+        synchronized(telemetry) {
+            capture.start()
+            assertTrue("capture did not reach startup lock", waitUntilBlocked(capture))
+            telemetry.deny()
+            telemetry.withSinkForTest(postHog).withSentrySinkForTest(sentry)
+        }
+        capture.join(TimeUnit.SECONDS.toMillis(5))
+
+        assertTrue("capture thread did not finish", !capture.isAlive)
+        assertTrue(telemetry.anonymousId().isBlank())
+        assertEquals(0, sentry.sessionsStarted)
+        assertTrue(sentry.captured.isEmpty())
+        telemetry.dispose()
     }
 
     @Test
@@ -128,6 +170,31 @@ class ConsentTransitionTest {
     }
 
     @Test
+    fun persistedAllowedUsageCaptureStartsOneSentrySession() {
+        val postHog = RecordingSink()
+        val sentry = RecordingSentrySink()
+        val telemetry = restoredAllowedTelemetry(postHog, sentry)
+
+        telemetry.capture(TelemetryEvent.SandboxStarted)
+        telemetry.capture(TelemetryEvent.SandboxStarted)
+
+        assertEquals(2, postHog.events.size)
+        assertEquals(1, sentry.sessionsStarted)
+    }
+
+    @Test
+    fun persistedAllowedExceptionCaptureStartsOneSentrySession() {
+        val sentry = RecordingSentrySink()
+        val telemetry = restoredAllowedTelemetry(RecordingSink(), sentry)
+
+        telemetry.captureException(marimoError())
+        telemetry.captureException(marimoError())
+
+        assertEquals(2, sentry.captured.size)
+        assertEquals(1, sentry.sessionsStarted)
+    }
+
+    @Test
     fun sentryNoCaptureWhenDenied() {
         val sentry = RecordingSentrySink()
         val telemetry = MarimoTelemetry().withSentrySinkForTest(sentry)
@@ -135,6 +202,32 @@ class ConsentTransitionTest {
         telemetry.deny()
         telemetry.captureException(marimoError())
         assertTrue(sentry.captured.isEmpty())
-        assertFalse(sentry.closed)
+        assertTrue(sentry.closed)
+    }
+
+    @Test
+    fun staleDenyAfterAllowClosesTransportsOnce() {
+        val postHog = RecordingSink()
+        val sentry = RecordingSentrySink()
+        val telemetry = MarimoTelemetry().withSinkForTest(postHog).withSentrySinkForTest(sentry)
+
+        telemetry.allow()
+        telemetry.deny()
+        telemetry.deny()
+        telemetry.revoke()
+
+        assertEquals(Consent.DENIED, telemetry.consent)
+        assertEquals(1, postHog.closeCalls)
+        assertEquals(1, sentry.sessionsEnded)
+        assertEquals(1, sentry.closeCalls)
+    }
+
+    private fun waitUntilBlocked(thread: Thread): Boolean {
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (System.nanoTime() < deadline) {
+            if (thread.state == Thread.State.BLOCKED) return true
+            Thread.onSpinWait()
+        }
+        return false
     }
 }

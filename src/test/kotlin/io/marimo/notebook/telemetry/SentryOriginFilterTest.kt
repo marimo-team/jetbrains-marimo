@@ -34,6 +34,23 @@ class SentryOriginFilterTest {
     }
 
     @Test
+    fun dropsLookalikePackagePrefix() {
+        val e =
+            RuntimeException("boom").apply {
+                stackTrace =
+                    arrayOf(
+                        StackTraceElement(
+                            "io.marimo.notebookevil.ForeignPlugin",
+                            "start",
+                            "ForeignPlugin.kt",
+                            3,
+                        )
+                    )
+            }
+        assertFalse(SentryOriginFilter.isMarimoOrigin(e))
+    }
+
+    @Test
     fun findsMarimoFrameInCauseChain() {
         val root =
             RuntimeException("root").apply {

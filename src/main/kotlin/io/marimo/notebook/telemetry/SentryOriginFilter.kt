@@ -9,7 +9,7 @@ object SentryOriginFilter {
         var current = throwable
         val seen = mutableSetOf<Throwable>()
         while (current != null && seen.add(current)) {
-            if (current.stackTrace.any { it.className.startsWith(MARIMO_PACKAGE) }) return true
+            if (current.stackTrace.any { it.className.startsWith("$MARIMO_PACKAGE.") }) return true
             current = current.cause
         }
         return false

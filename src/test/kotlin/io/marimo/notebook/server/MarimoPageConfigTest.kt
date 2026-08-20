@@ -2,8 +2,11 @@
 
 package io.marimo.notebook.server
 
+import java.io.IOException
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarimoPageConfigTest {
@@ -58,5 +61,19 @@ class MarimoPageConfigTest {
             "{&quot;display&quot;: {&quot;theme&quot;: &quot;dark&quot;}, " +
                 "&quot;custom_css&quot;: [&quot;a &amp; b &lt;c&gt; &#x27;d&#x27;&quot;]}"
         assertEquals("dark", MarimoPageConfig.displayTheme(page(config)))
+    }
+
+    @Test
+    fun readFailureSummaryContainsNoAccessToken() {
+        val url = "http://127.0.0.1:2718?access_token=URL_SECRET"
+        val error = IOException("request failed for $url and access_token=MESSAGE_SECRET")
+
+        val warning = MarimoPageConfig.readFailureSummary(url, error)
+
+        assertFalse(warning.contains("URL_SECRET"))
+        assertFalse(warning.contains("MESSAGE_SECRET"))
+        assertFalse(warning.contains("access_token"))
+        assertTrue(warning.contains("<redacted-token>"))
+        assertTrue(warning.contains(IOException::class.java.name))
     }
 }

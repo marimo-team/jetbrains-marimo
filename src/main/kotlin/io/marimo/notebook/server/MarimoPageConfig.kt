@@ -34,7 +34,7 @@ object MarimoPageConfig {
             try {
                 HttpRequests.request(url).readString()
             } catch (e: IOException) {
-                thisLogger().warn("could not read marimo config from ${redactAccessTokens(url)}", e)
+                thisLogger().warn(readFailureSummary(url, e), e)
                 return null
             }
         return displayTheme(page)
@@ -44,6 +44,12 @@ object MarimoPageConfig {
                 MarimoTelemetry.getInstance().captureException(UnreadableMarimoConfigException())
                 null
             }
+    }
+
+    internal fun readFailureSummary(url: String, error: IOException): String {
+        val exceptionMessage = redactAccessTokens(error.message.orEmpty())
+        return "could not read marimo config from ${redactAccessTokens(url)}: " +
+            "${error.javaClass.name}: $exceptionMessage"
     }
 
     /**

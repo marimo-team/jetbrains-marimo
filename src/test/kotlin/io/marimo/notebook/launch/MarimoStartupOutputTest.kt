@@ -16,7 +16,8 @@ class MarimoStartupOutputTest {
         val redacted = redactAccessTokens(text)
         assertFalse(redacted.contains("SECRET1"))
         assertFalse(redacted.contains("SECRET2"))
-        assertTrue(redacted.contains("access_token=<redacted>"))
+        assertTrue(redacted.contains("<redacted-token>"))
+        assertFalse(redacted.contains("access_token"))
         assertTrue("text after the token must survive", redacted.contains("&x=1"))
     }
 
@@ -33,6 +34,7 @@ class MarimoStartupOutputTest {
                 listOf("URL: http://127.0.0.1:2718?access_token=SECRET", "TOKEN\nprocess exited")
             )
         assertFalse(tail.contains("SECRETTOKEN"))
-        assertTrue(tail.contains("access_token=<redacted>"))
+        assertTrue(tail.contains("<redacted-token>"))
+        assertFalse(tail.contains("access_token"))
     }
 }
