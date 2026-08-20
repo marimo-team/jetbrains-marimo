@@ -16,6 +16,7 @@ import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
+import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.NoInterpreterException
@@ -160,37 +161,7 @@ class MarimoServerService(private val project: Project) : Disposable {
                     return launchPlanFailure(session, e)
                 }
 
-            var tokenFile: File? = null
-            try {
-                val tokenAuthEnabled = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
-                val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
-                tokenFile = token?.let(tokenPasswordFileWriter)
-                val request =
-                    baseRequest.copy(
-                        tokenPasswordFile = tokenFile?.absolutePath,
-                        authenticatedUrl = token?.let { authenticatedMarimoUrl(host, port, it) },
-                    )
-                val handle = launcher.launch(request)
-                session.launchContext =
-                    MarimoLaunchContext(
-                        port = request.port,
-                        workDir = workDir,
-                        launcherId = launcher.id,
-                        sandbox = request.sandbox,
-                        tokenAuthEnabled = tokenAuthEnabled,
-                    )
-                Disposer.register(session.lifecycle, handle)
-                session.lifecycle.attach(handle)
-                return handle.awaitReady().whenComplete { _, error ->
-                    if (error != null) Disposer.dispose(handle)
-                }
-            } catch (e: ProcessCanceledException) {
-                tokenFile?.delete()
-                throw e
-            } catch (e: Exception) {
-                tokenFile?.delete()
-                return launchPlanFailure(session, e)
-            }
+            return launchSessionLocked(session, baseRequest, launcher, workDir)
         }
     }
 
@@ -323,6 +294,48 @@ class MarimoServerService(private val project: Project) : Disposable {
     ): CompletableFuture<String> {
         session.lifecycle.onLaunchPlanFailed(error)
         return CompletableFuture.failedFuture(error)
+    }
+
+    private fun launchSessionLocked(
+        session: MarimoNotebookSession,
+        baseRequest: LaunchRequest,
+        launcher: MarimoLauncher,
+        workDir: String,
+    ): CompletableFuture<String> {
+        var tokenFile: File? = null
+        try {
+            val tokenAuthEnabled = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+            val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
+            tokenFile = token?.let(tokenPasswordFileWriter)
+            val request =
+                baseRequest.copy(
+                    tokenPasswordFile = tokenFile?.absolutePath,
+                    authenticatedUrl =
+                        token?.let {
+                            authenticatedMarimoUrl(baseRequest.host, baseRequest.port, it)
+                        },
+                )
+            val handle = launcher.launch(request)
+            session.launchContext =
+                MarimoLaunchContext(
+                    port = request.port,
+                    workDir = workDir,
+                    launcherId = launcher.id,
+                    sandbox = request.sandbox,
+                    tokenAuthEnabled = tokenAuthEnabled,
+                )
+            Disposer.register(session.lifecycle, handle)
+            session.lifecycle.attach(handle)
+            return handle.awaitReady().whenComplete { _, error ->
+                if (error != null) Disposer.dispose(handle)
+            }
+        } catch (e: ProcessCanceledException) {
+            tokenFile?.delete()
+            throw e
+        } catch (e: Exception) {
+            tokenFile?.delete()
+            return launchPlanFailure(session, e)
+        }
     }
 
     private fun cancelTtlLocked(session: MarimoNotebookSession) {

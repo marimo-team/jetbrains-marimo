@@ -37,6 +37,14 @@ local marimo checkout, set `MARIMO_CMD` before launching:
 MARIMO_CMD="uv run --project /path/to/marimo marimo" ./gradlew runIde
 ```
 
+Configure Git to ignore format-only revisions in blame output:
+
+```bash
+git config blame.ignoreRevsFile .git-blame-ignore-revs
+```
+
+This setting keeps `git blame` focused on changes that affect behavior.
+
 ## Useful Gradle tasks
 
 | Task | What it does |

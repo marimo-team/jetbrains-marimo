@@ -1,3 +1,4 @@
+import dev.detekt.gradle.extensions.FailOnSeverity
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
@@ -9,13 +10,26 @@ plugins {
     id("org.jetbrains.intellij.platform")
     id("org.jetbrains.changelog")
     id("com.diffplug.spotless") version "8.10.0"
+    id("dev.detekt") version "2.0.0-alpha.6"
 }
 
 spotless {
     kotlin {
         target("src/**/*.kt")
+        ktfmt("0.64").kotlinlangStyle()
         licenseHeader("/* Copyright \$YEAR Marimo. All rights reserved. */\n\n")
     }
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktfmt("0.64").kotlinlangStyle()
+    }
+}
+
+detekt {
+    config.setFrom("detekt.yml")
+    buildUponDefaultConfig = false
+    ignoreFailures = false
+    failOnSeverity = FailOnSeverity.Error
 }
 
 // The telemetry environment is fixed when the artifact is built: only the release workflow passes
