@@ -10,6 +10,14 @@ import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoServerHandle
+import io.marimo.notebook.launch.NotebookWorkDir
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import java.io.File
+import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
@@ -36,10 +44,14 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         val handles = CopyOnWriteArrayList<FakeHandle>()
         val secondLaunch = CountDownLatch(1)
         var canLaunch = true
+        var launchFailure: Exception? = null
         override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
-            val handle = FakeHandle("http://127.0.0.1:${request.port}?access_token=secret${handles.size}")
+            launchFailure?.let { throw it }
+            val authUrl = request.authenticatedUrl
+                ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
+            val handle = FakeHandle(authUrl)
             handles.add(handle)
             if (requests.size == 2) secondLaunch.countDown()
             return handle
@@ -113,6 +125,22 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         assertEquals(sdk.requests.single().port, manager.statusFor(file)!!.launch!!.port)
         assertEquals("fake-sdk", manager.statusFor(file)!!.launch!!.launcherId)
         assertEquals(sdk.handles.single().authUrl, url.get())
+    }
+
+    fun testLaunchContextRetainsTheTokenAuthModeFromItsLaunch() {
+        val settings = MarimoSessionSettings.getInstance()
+        val before = settings.state.tokenAuthEnabled
+        try {
+            settings.state.tokenAuthEnabled = true
+            val file = notebook("token_auth_snapshot_nb.py")
+            manager.urlFor(file)
+
+            settings.state.tokenAuthEnabled = false
+
+            assertTrue(manager.statusFor(file)!!.launch!!.tokenAuthEnabled)
+        } finally {
+            settings.state.tokenAuthEnabled = before
+        }
     }
 
     fun testSnapshotsNeverCarryTheToken() {
@@ -213,12 +241,71 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         assertTrue("expected several change notifications, saw $events", events >= 4)
     }
 
-    fun testDisposingASessionKillsItsProcess() {
+    fun testStopKillsItsProcess() {
         val file = notebook("dispose_nb.py")
         manager.urlFor(file)
         sdk.handles.single().becomeReady()
         manager.stop(file)
         assertFalse(sdk.handles.single().isAlive)
+    }
+
+    fun testTheTokenSettingReachesTheLaunchRequest() {
+        val settings = MarimoSessionSettings.getInstance()
+        val before = settings.state.tokenAuthEnabled
+        try {
+            settings.state.tokenAuthEnabled = false
+            val file = notebook("token_toggle_nb.py")
+            manager.urlFor(file)
+            assertNull("the escape hatch must omit the password file", sdk.requests.single().tokenPasswordFile)
+        } finally {
+            settings.state.tokenAuthEnabled = before
+        }
+    }
+    fun testPlanFailureDoesNotCreateATokenPasswordFile() {
+        sdk.canLaunch = false
+        uv.canLaunch = false
+        var tokenFileWriterCalled = false
+        manager.tokenPasswordFileWriter = {
+            tokenFileWriterCalled = true
+            File.createTempFile("marimo-token-test-", ".txt")
+        }
+
+        val url = manager.urlFor(notebook("no_interpreter_token_nb.py"))
+
+        assertTrue(url.isCompletedExceptionally)
+        assertFalse("planning must finish before a password file is created", tokenFileWriterCalled)
+    }
+
+    fun testSynchronousLauncherFailureDeletesTheTokenPasswordFile() {
+        val tokenFile = File.createTempFile("marimo-token-test-", ".txt")
+        manager.tokenPasswordFileWriter = { tokenFile }
+        sdk.launchFailure = IOException("launcher failed")
+        val file = notebook("sync_launcher_failure_nb.py")
+
+        val url = manager.urlFor(file)
+
+        assertTrue(url.isCompletedExceptionally)
+        assertFalse("a pre-handle token file must be cleaned up", tokenFile.exists())
+        assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
+    }
+
+    fun testTokenPasswordFileWriterFailureCompletesTheLaunchFutureExceptionally() {
+        manager.tokenPasswordFileWriter = { throw IOException("cannot write token") }
+        val file = notebook("token_write_failure_nb.py")
+
+        val url = manager.urlFor(file)
+
+        assertTrue(url.isCompletedExceptionally)
+        assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
+    }
+
+    fun testLaunchRunsFromTheContentRootAndRecordsIt() {
+        val file = myFixture.addFileToProject("deep/nested/wd_nb.py", "import marimo\n").virtualFile
+        manager.urlFor(file)
+        val request = sdk.requests.single()
+        assertEquals(NotebookWorkDir.resolve(project, file), request.workDir)
+        assertEquals(request.workDir, manager.statusFor(file)!!.launch!!.workDir)
+        assertFalse(request.workDir!!.endsWith("deep/nested"))
     }
 
     private fun runningNotebook(name: String): VirtualFile {
@@ -228,14 +315,19 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         return file
     }
 
+    fun testAnAttachedTabKeepsTheSessionWithoutAnyTimer() {
+        val file = runningNotebook("keep_nb.py")
+        manager.attach(file)
+        assertTrue("an open tab must never race a timer", ttl.pending.isEmpty())
+        assertNull(manager.statusFor(file)!!.expiresAtMillis)
+    }
+
     fun testFinalDetachArmsTheThirtyMinuteTtl() {
         val file = runningNotebook("ttl_nb.py")
         manager.attach(file)
-
         manager.detach(file)
-
         assertEquals(1, ttl.pending.size)
-        assertEquals(MarimoServerService.BACKGROUND_TTL_MILLIS, ttl.pending.single().first)
+        assertEquals(MarimoSessionSettings.getInstance().backgroundTtlMillis(), ttl.pending.single().first)
         assertNotNull("the panel needs a deadline to render", manager.statusFor(file)!!.expiresAtMillis)
         assertTrue("the process must stay alive in the background", sdk.handles.single().isAlive)
     }
@@ -244,22 +336,32 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         val file = runningNotebook("reopen_nb.py")
         manager.attach(file)
         manager.detach(file)
-
         manager.attach(file)
-
         assertTrue(ttl.pending.isEmpty())
         assertNull(manager.statusFor(file)!!.expiresAtMillis)
         manager.urlFor(file)
         assertEquals("reattach must reuse the live process, not relaunch", 1, sdk.handles.size)
     }
 
+    fun testTabMovePreservesTheSessionInEitherEventOrder() {
+        val file = runningNotebook("move_nb.py")
+        manager.attach(file)
+        manager.attach(file)
+        manager.detach(file)
+        assertTrue("attach-then-detach never reaches zero", ttl.pending.isEmpty())
+
+        manager.detach(file)
+        manager.attach(file)
+        assertTrue("detach-then-attach cancels the armed timer", ttl.pending.isEmpty())
+        assertEquals(1, sdk.handles.size)
+        assertTrue(sdk.handles.single().isAlive)
+    }
+
     fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
         val file = runningNotebook("expire_nb.py")
         manager.attach(file)
         manager.detach(file)
-
         ttl.fireAll()
-
         assertFalse("expiry must stop the process", sdk.handles.single().isAlive)
         assertNull("expiry must remove the registry entry", manager.statusFor(file))
         ttl.fireAll()
@@ -273,10 +375,28 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.attach(file)
         manager.detach(file)
         manager.attach(file)
-
         sticky.fireAll()
-
         assertTrue("a cancelled-but-fired task must be ignored by generation", sdk.handles.single().isAlive)
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
+    }
+
+    fun testStopCancelsTheArmedTtl() {
+        val file = runningNotebook("stop_ttl_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.stop(file)
+        assertNull(manager.statusFor(file))
+        ttl.fireAll()
+        assertNull("a fired timer after stop must find nothing", manager.statusFor(file))
+    }
+
+    fun testRestartOfABackgroundSessionRearmsTheTtl() {
+        val file = runningNotebook("restart_bg_nb.py")
+        manager.attach(file)
+        manager.detach(file)
+        manager.restart(file)
+        assertTrue("background restart must schedule a second process", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertEquals("the fresh background process needs a fresh deadline", 1, ttl.pending.size)
+        assertEquals(2, sdk.handles.size)
     }
 }

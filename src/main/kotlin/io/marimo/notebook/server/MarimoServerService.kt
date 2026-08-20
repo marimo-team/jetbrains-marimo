@@ -7,10 +7,15 @@ import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
+import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.launch.NotebookWorkDir
+import io.marimo.notebook.launch.authenticatedMarimoUrl
+import io.marimo.notebook.launch.generateAccessToken
+import io.marimo.notebook.launch.writeTokenPasswordFile
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.ide.projectView.ProjectView
@@ -23,6 +28,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
+import java.io.File
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -39,6 +45,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 class MarimoServerService(private val project: Project) : Disposable {
 
     internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
+
+    internal var tokenPasswordFileWriter: (String) -> File = ::writeTokenPasswordFile
 
     internal var ttlScheduler = TtlScheduler { delayMillis, task ->
         val future = AppExecutorUtil.getAppScheduledExecutorService()
@@ -68,6 +76,34 @@ class MarimoServerService(private val project: Project) : Disposable {
         }
     }
 
+    /**
+     * Atomically gets/creates the per-file view and attaches one tab lease to the same session.
+     * This prevents a TTL race where view creation and attach target different entries.
+     */
+    fun attachView(file: VirtualFile): Pair<String, MarimoNotebookView> {
+        while (true) {
+            val session = sessionFor(file)
+            val attachment = synchronized(session) {
+                if (sessions[file.url] !== session) {
+                    null
+                } else {
+                    val existing = session.view
+                    val resolved = existing ?: MarimoNotebookView(project, file).also {
+                        session.view = it
+                        Disposer.register(session, it)
+                    }
+                    session.attachedTabs++
+                    cancelTtlLocked(session)
+                    session.fileUrl to resolved
+                }
+            }
+            if (attachment != null) {
+                notifySessionsChanged()
+                return attachment
+            }
+        }
+    }
+
     /** The server lifecycle retained for this notebook across editor reopenings. Creates a session. */
     fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle = sessionFor(file).lifecycle
 
@@ -81,37 +117,62 @@ class MarimoServerService(private val project: Project) : Disposable {
         synchronized(session) {
             session.lifecycle.liveHandle()?.let { return it.awaitReady() }
 
-            val request = LaunchRequest(
+            val port = NetUtils.findAvailableSocketPort()
+            val host = "127.0.0.1"
+            val workDir = NotebookWorkDir.resolve(project, file)
+            val baseRequest = LaunchRequest(
                 project = project,
                 notebook = file,
-                port = NetUtils.findAvailableSocketPort(),
+                port = port,
+                host = host,
                 sandbox = session.sandboxEnabled.get(),
+                workDir = workDir,
             )
-            val launcher = when (val decision = planner.plan(request)) {
-                is LaunchDecision.Launch -> decision.launcher
-                is LaunchDecision.NoInterpreter ->
-                    return launchPlanFailure(session, NoInterpreterException(decision.message))
-                is LaunchDecision.NeedsUv ->
-                    return launchPlanFailure(session, UvUnavailableException(decision.message))
-            }
-            // A launcher can fail synchronously (e.g. the process can't be spawned). Turn that into
-            // a failed future so it reaches the editor's error panel instead of escaping as an IDE
-            // internal-error balloon with a raw stack trace.
-            val handle = try {
-                launcher.launch(request)
+            val launcher = try {
+                when (val decision = planner.plan(baseRequest)) {
+                    is LaunchDecision.Launch -> decision.launcher
+                    is LaunchDecision.NoInterpreter ->
+                        return launchPlanFailure(session, NoInterpreterException(decision.message))
+                    is LaunchDecision.NeedsUv ->
+                        return launchPlanFailure(session, UvUnavailableException(decision.message))
+                }
             } catch (e: ProcessCanceledException) {
                 throw e
             } catch (e: Exception) {
                 return launchPlanFailure(session, e)
             }
-            session.launchContext = MarimoLaunchContext(
-                port = request.port,
-                launcherId = launcher.id,
-                sandbox = request.sandbox,
-            )
-            Disposer.register(session.lifecycle, handle)
-            session.lifecycle.attach(handle)
-            return handle.awaitReady()
+
+            var tokenFile: File? = null
+            try {
+                val tokenAuthEnabled = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+                val token = tokenAuthEnabled
+                    .takeIf { it }
+                    ?.let { generateAccessToken() }
+                tokenFile = token?.let(tokenPasswordFileWriter)
+                val request = baseRequest.copy(
+                    tokenPasswordFile = tokenFile?.absolutePath,
+                    authenticatedUrl = token?.let { authenticatedMarimoUrl(host, port, it) },
+                )
+                val handle = launcher.launch(request)
+                session.launchContext = MarimoLaunchContext(
+                    port = request.port,
+                    workDir = workDir,
+                    launcherId = launcher.id,
+                    sandbox = request.sandbox,
+                    tokenAuthEnabled = tokenAuthEnabled,
+                )
+                Disposer.register(session.lifecycle, handle)
+                session.lifecycle.attach(handle)
+                return handle.awaitReady().whenComplete { _, error ->
+                    if (error != null) Disposer.dispose(handle)
+                }
+            } catch (e: ProcessCanceledException) {
+                tokenFile?.delete()
+                throw e
+            } catch (e: Exception) {
+                tokenFile?.delete()
+                return launchPlanFailure(session, e)
+            }
         }
     }
 
@@ -138,9 +199,14 @@ class MarimoServerService(private val project: Project) : Disposable {
      */
     fun detach(file: VirtualFile) {
         val session = sessions[file.url] ?: return
+        detachUrl(session.fileUrl)
+    }
+
+    fun detachUrl(url: String) {
+        val session = sessions[url] ?: return
         synchronized(session) {
             if (session.attachedTabs > 0) session.attachedTabs--
-            if (session.attachedTabs == 0) armTtlLocked(file.url, session)
+            if (session.attachedTabs == 0) armTtlLocked(url, session)
         }
         notifySessionsChanged()
     }
@@ -244,10 +310,11 @@ class MarimoServerService(private val project: Project) : Disposable {
     }
 
     private fun armTtlLocked(url: String, session: MarimoNotebookSession) {
+        val ttlMillis = MarimoSessionSettings.getInstance().backgroundTtlMillis()
         cancelTtlLocked(session)
         val generation = ++session.ttlGeneration
-        session.expiresAtMillis = clock() + BACKGROUND_TTL_MILLIS
-        session.ttl = ttlScheduler.schedule(BACKGROUND_TTL_MILLIS) { onTtlExpired(url, session, generation) }
+        session.expiresAtMillis = clock() + ttlMillis
+        session.ttl = ttlScheduler.schedule(ttlMillis) { onTtlExpired(url, session, generation) }
     }
 
     /**
@@ -280,7 +347,14 @@ class MarimoServerService(private val project: Project) : Disposable {
         sessions.computeIfAbsent(file.url) {
             MarimoNotebookSession(file.url, file.name).also { session ->
                 Disposer.register(this, session)
-                session.lifecycle.addListener { notifySessionsChanged() }
+                session.lifecycle.addListener { update ->
+                    synchronized(session) {
+                        if (update.state !is MarimoNotebookState.Starting && update.state !is MarimoNotebookState.Running) {
+                            session.launchContext = null
+                        }
+                    }
+                    notifySessionsChanged()
+                }
             }
         }
 
@@ -300,10 +374,5 @@ class MarimoServerService(private val project: Project) : Disposable {
         if (application.isDispatchThread) block() else application.invokeLater {
             if (!project.isDisposed) block()
         }
-    }
-
-    companion object {
-        /** How long a session survives after its final editor tab closes. */
-        const val BACKGROUND_TTL_MILLIS: Long = 30L * 60 * 1000
     }
 }

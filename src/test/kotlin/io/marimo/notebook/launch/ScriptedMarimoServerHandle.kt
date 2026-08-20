@@ -6,7 +6,9 @@ import com.intellij.execution.process.ProcessHandler
 import java.util.concurrent.CompletableFuture
 
 /** A [MarimoServerHandle] whose readiness and termination tests drive explicitly. */
-class ScriptedMarimoServerHandle : MarimoServerHandle {
+class ScriptedMarimoServerHandle(
+    private val terminateOnDispose: Boolean = false,
+) : MarimoServerHandle {
     private val ready = CompletableFuture<String>()
     private var terminationListener: ((Int, String) -> Unit)? = null
 
@@ -32,5 +34,6 @@ class ScriptedMarimoServerHandle : MarimoServerHandle {
 
     override fun dispose() {
         isAlive = false
+        if (terminateOnDispose) terminationListener?.invoke(0, "disposed")
     }
 }

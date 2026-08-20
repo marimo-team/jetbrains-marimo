@@ -18,6 +18,12 @@ data class LaunchRequest(
     val mode: MarimoMode = MarimoMode.EDIT,
     /** Run the notebook in marimo's isolated uv environment (PEP 723 deps); requires uv. */
     val sandbox: Boolean = false,
+    /** Absolute path passed to `--token-password-file`, or null for `--no-token`. */
+    val tokenPasswordFile: String? = null,
+    /** Plugin-built URL with access token when token auth is on; null for plain readiness URL. */
+    val authenticatedUrl: String? = null,
+    /** Working directory for the server process; the service resolves and records it per launch. */
+    val workDir: String? = null,
 )
 
 /** Owns a spawned marimo process; the lifecycle service drives readiness and disposal. */

@@ -5,6 +5,7 @@ package io.marimo.notebook.server
 import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.util.io.HttpRequests
+import io.marimo.notebook.launch.redactAccessTokens
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import java.io.IOException
 
@@ -31,11 +32,11 @@ object MarimoPageConfig {
         val page = try {
             HttpRequests.request(url).readString()
         } catch (e: IOException) {
-            thisLogger().warn("could not read marimo config from $url", e)
+            thisLogger().warn("could not read marimo config from ${redactAccessTokens(url)}", e)
             return null
         }
         return displayTheme(page) ?: run {
-            thisLogger().warn("no display.theme in the page served at $url")
+            thisLogger().warn("no display.theme in the page served at ${redactAccessTokens(url)}")
             MarimoTelemetry.getInstance().captureException(UnreadableMarimoConfigException())
             null
         }

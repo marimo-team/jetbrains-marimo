@@ -19,8 +19,11 @@ enum class MarimoSessionState {
 /** The launch settings one server process was started with. Carries no credentials. */
 data class MarimoLaunchContext(
     val port: Int,
+    val workDir: String,
     val launcherId: String,
     val sandbox: Boolean,
+    /** True when this launched server requires an access token. */
+    val tokenAuthEnabled: Boolean,
 )
 
 /**
