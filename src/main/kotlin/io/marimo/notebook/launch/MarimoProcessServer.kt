@@ -59,8 +59,13 @@ fun startMarimoServer(
             // the full poll timeout (e.g. `python -m marimo` exiting on a missing module). Fail fast and
             // surface the process output so the error panel explains why.
             override fun processTerminated(event: ProcessEvent) {
-                if (ready.isDone) return
                 val full = synchronized(output) { output.toString() }
+
+                if (ready.isDone) {
+                    handle.notifyTerminated(event.exitCode, full.trim().takeLast(500))
+                    return
+                }
+
                 if (fallback != null && indicatesUnsupportedWatch(full)) {
                     runAttempt(fallback(), fallback = null)
                     return
@@ -97,14 +102,40 @@ private class ProcessMarimoServerHandle(
     private val ready: CompletableFuture<String>,
 ) : MarimoServerHandle {
     @Volatile private lateinit var handler: OSProcessHandler
+    private val terminationLock = Any()
+    private var terminationListener: ((Int, String) -> Unit)? = null
+    private var termination: Termination? = null
+
+    private data class Termination(val exitCode: Int, val outputTail: String)
+
+    override val isAlive: Boolean
+        get() = !handler.isProcessTerminated
+
+
+    override val processHandle: ProcessHandler get() = handler
+    override fun awaitReady(): CompletableFuture<String> = ready
+    override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
+        val previousTermination = synchronized(terminationLock) {
+            terminationListener = listener
+            termination
+        }
+        previousTermination?.let { listener(it.exitCode, it.outputTail) }
+    }
+
+    fun notifyTerminated(exitCode: Int, outputTail: String) {
+        val listener = synchronized(terminationLock) {
+            if (termination != null) return
+            termination = Termination(exitCode, outputTail)
+            terminationListener
+        }
+        listener?.invoke(exitCode, outputTail)
+    }
 
     /** Points the handle at the live process; called again when a fallback attempt is spawned. */
     fun attach(handler: OSProcessHandler) {
         this.handler = handler
     }
 
-    override val processHandle: ProcessHandler get() = handler
-    override fun awaitReady(): CompletableFuture<String> = ready
     override fun dispose() {
         handler.destroyProcess()
     }

@@ -4,8 +4,12 @@ package io.marimo.notebook.editor
 
 import io.marimo.notebook.launch.MarimoEnvProbe
 import io.marimo.notebook.launch.MarimoInstaller
+import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.MarimoPresence
+import io.marimo.notebook.launch.LifecycleStateUpdate
+import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvLauncher
+import io.marimo.notebook.launch.redactAccessTokens
 import io.marimo.notebook.server.MarimoPageConfig
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.telemetry.MarimoConsentPrompt
@@ -32,6 +36,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.jcef.JBCefApp
 import com.intellij.ui.jcef.JBCefBrowser
+import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import org.cef.browser.CefBrowser
@@ -62,6 +67,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     }
     private val browser = if (JBCefApp.isSupported()) JBCefBrowser() else null
     private val server = project.service<MarimoServerService>()
+    private val lifecycle = server.lifecycleFor(file)
 
     /** Theme state for the loaded page; read and written on the EDT only. */
     private var loadedUrl: String? = null
@@ -72,11 +78,16 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     @Volatile
     private var disposed = false
 
+    /** Identity of the navigation the browser currently renders, or begins rendering. */
+    @Volatile
+    private var navigationSnapshot = NavigationSnapshot(0, null)
+
     init {
         browser?.let(::installLoadErrorHandler)
         browser?.let(::installPopupHandler)
         browser?.let(::installEditorFontZoom)
         browser?.let(::installIdeThemeSync)
+        lifecycle.addListener { onStateChanged(it) }
         loadNotebook()
     }
 
@@ -191,11 +202,16 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                     if (frame?.isMain != true) return
                     if (errorCode == null || errorCode == CefLoadHandler.ErrorCode.ERR_NONE) return
                     if (errorCode == CefLoadHandler.ErrorCode.ERR_ABORTED) return
+                    val navigation = navigationSnapshot
+                    val generation = loadErrorGeneration(failedUrl, navigation) ?: return
                     val detail = errorText?.takeIf { it.isNotBlank() } ?: errorCode.name
                     val model = MarimoErrorModel.of(
                         MarimoFailure.EditorLoadFailed(detail), MarimoPresence.Unknown, uvAvailable = false,
                     )
-                    onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
+                    onEdt(generation) {
+                        if (!canRenderNotebookFor(lifecycle.state)) return@onEdt
+                        showContent(MarimoErrorPanel(model, ::onErrorAction))
+                    }
                 }
             },
             browser.cefBrowser,
@@ -203,38 +219,45 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     }
 
     /**
-     * Theme state is cleared up front so that a look-and-feel change arriving while the server is starting
-     * can't reload the previous page — that URL belongs to a server that may already have been released.
-     * Theme sync resumes once [showNotebook] records the page it actually loaded.
+     * Theme state is cleared up front so that a look-and-feel change arriving while the server is
+     * starting can't reload the previous page. The navigation generation makes every continuation
+     * of an older call a no-op: a Restart that begins while an old readiness future or load error
+     * is still in flight must own the panel exclusively.
      */
     private fun loadNotebook() {
+        ThreadingAssertions.assertEventDispatchThread()
+        val navigation = NavigationSnapshot(navigationSnapshot.generation + 1, null)
+        navigationSnapshot = navigation
         loadedUrl = null
         appliedTheme = null
         followsIdeTheme = false
         showContent(JLabel("Starting marimo…", SwingConstants.CENTER))
         server.urlFor(file).whenComplete { url, err ->
             when {
-                err != null -> showServerError(err)
-                browser == null -> onEdt {
+                navigation.generation != navigationSnapshot.generation -> Unit
+                err != null -> showServerError(navigation.generation, err)
+                browser == null -> onEdt(navigation.generation) {
                     showContent(JLabel("The embedded browser isn't available in this IDE.", SwingConstants.CENTER))
                 }
-                else -> showNotebook(browser, url)
+                else -> showNotebook(navigation.generation, browser, url)
             }
         }
     }
 
     /**
-     * Ask the server which theme the notebook resolves to before rendering it, so the IDE's theme is only
-     * applied when marimo leaves the choice to the host. The request blocks, and completing a ready server
-     * URL can happen on the caller's thread, so keep it off the EDT.
+     * Ask the server which theme the notebook resolves to before rendering it, so the IDE's theme is
+     * only applied when marimo leaves the choice to the host. The request blocks, and completing a
+     * ready server URL can happen on the caller's thread, so keep it off the EDT.
      */
-    private fun showNotebook(browser: JBCefBrowser, url: String) {
+    private fun showNotebook(navigation: Long, browser: JBCefBrowser, url: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
             val resolvedTheme = MarimoPageConfig.fetchDisplayTheme(url)
-            onEdt {
+            onEdt(navigation) {
+                if (!canRenderNotebookFor(lifecycle.state)) return@onEdt
                 followsIdeTheme = MarimoThemedUrl.followsIdeTheme(resolvedTheme)
                 appliedTheme = MarimoThemedUrl.ideTheme()
                 loadedUrl = url
+                navigationSnapshot = NavigationSnapshot(navigation, serverOrigin(url))
                 browser.loadURL(MarimoThemedUrl.of(url, resolvedTheme, appliedTheme!!))
                 showContent(browser.component)
                 MarimoConsentPrompt.maybePrompt(project)
@@ -244,8 +267,38 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         }
     }
 
+    /**
+     * The page can die while the tab stays mounted — marimo's shutdown exits the whole server, and
+     * `window.close()` does nothing inside JCEF. Without this the tab keeps showing a notebook that
+     * cannot answer, which is indistinguishable from a hang.
+     */
+    private fun onStateChanged(update: LifecycleStateUpdate) {
+        val state = update.state
+        val navigation = navigationSnapshot.generation
+        when (state) {
+            is MarimoNotebookState.Stopping -> onEdt(navigation) {
+                if (!lifecycle.isCurrent(update)) return@onEdt
+                showContent(JLabel("Shutting down marimo…", SwingConstants.CENTER))
+            }
+            is MarimoNotebookState.Stopped -> onEdt(navigation) {
+                if (!lifecycle.isCurrent(update)) return@onEdt
+                val cause = state.cause
+                if (cause is StopCause.Unexpected) {
+                    thisLogger().warn(
+                        "marimo stopped unexpectedly (exit ${cause.exitCode}):\n${redactAccessTokens(cause.outputTail)}",
+                    )
+                }
+                val model = MarimoErrorModel.of(
+                    MarimoFailure.ServerStopped(state.cause), MarimoPresence.Unknown, uvAvailable = false,
+                )
+                showContent(MarimoErrorPanel(model, ::onErrorAction))
+            }
+            else -> Unit
+        }
+    }
+
     /** Probe off the EDT — detection may run a subprocess — then render the matching error panel. */
-    private fun showServerError(err: Throwable?) {
+    private fun showServerError(navigation: Long, err: Throwable?) {
         thisLogger().warn("marimo failed to start for ${file.name}", err)
         ApplicationManager.getApplication().executeOnPooledThread {
             val probe = project.service<MarimoEnvProbe>()
@@ -263,7 +316,10 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             val model = MarimoErrorModel.of(
                 MarimoFailure.ServerNotStarted(err), presence, uvAvailable = uvAvailable,
             )
-            onEdt { showContent(MarimoErrorPanel(model, ::onErrorAction)) }
+            onEdt(navigation) {
+                if (lifecycle.state is MarimoNotebookState.Stopped) return@onEdt
+                showContent(MarimoErrorPanel(model, ::onErrorAction))
+            }
         }
     }
 
@@ -280,6 +336,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             }
             MarimoErrorAction.OPEN_AS_PYTHON ->
                 FileEditorManager.getInstance(project).setSelectedEditor(file, MARIMO_SOURCE_EDITOR_TYPE)
+            MarimoErrorAction.CLOSE ->
+                FileEditorManager.getInstance(project).closeFile(file)
         }
     }
 
@@ -305,9 +363,13 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     }
 
     /**
-     * Every async continuation lands here, and any of them can be queued while the notebook is still
-     * open and run after it was closed — touching a disposed browser or project. Drop those.
+     * Every async continuation lands here. Any of them can be queued while the notebook is open and
+     * run after it was closed or after a newer navigation started — both must be dropped.
      */
+    private fun onEdt(navigation: Long, block: () -> Unit) = ApplicationManager.getApplication().invokeLater {
+        if (!disposed && navigation == navigationSnapshot.generation) block()
+    }
+
     private fun onEdt(block: () -> Unit) = ApplicationManager.getApplication().invokeLater {
         if (!disposed) block()
     }
