@@ -11,17 +11,17 @@ import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
 import io.marimo.notebook.launch.MarimoServerHandle
 import io.marimo.notebook.launch.NotebookWorkDir
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNotNull
-import org.junit.Assert.assertNull
-import org.junit.Assert.assertTrue
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 
 class MarimoSessionManagerTest : BasePlatformTestCase() {
 
@@ -29,14 +29,27 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         private val ready = CompletableFuture<String>()
         private var terminationListener: ((Int, String) -> Unit)? = null
         override var isAlive = true
-        override val processHandle: ProcessHandler get() = throw UnsupportedOperationException()
+        override val processHandle: ProcessHandler
+            get() = throw UnsupportedOperationException()
+
         override fun awaitReady(): CompletableFuture<String> = ready
+
         override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
             terminationListener = listener
         }
-        fun becomeReady() { ready.complete(authUrl) }
-        fun crash() { isAlive = false; terminationListener?.invoke(1, "crashed") }
-        override fun dispose() { isAlive = false }
+
+        fun becomeReady() {
+            ready.complete(authUrl)
+        }
+
+        fun crash() {
+            isAlive = false
+            terminationListener?.invoke(1, "crashed")
+        }
+
+        override fun dispose() {
+            isAlive = false
+        }
     }
 
     class FakeLauncher(override val id: String = "fake") : MarimoLauncher {
@@ -45,27 +58,34 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         val secondLaunch = CountDownLatch(1)
         var canLaunch = true
         var launchFailure: Exception? = null
+
         override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
+
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
             launchFailure?.let { throw it }
-            val authUrl = request.authenticatedUrl
-                ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
+            val authUrl =
+                request.authenticatedUrl
+                    ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
             val handle = FakeHandle(authUrl)
             handles.add(handle)
             if (requests.size == 2) secondLaunch.countDown()
             return handle
         }
-        override fun marimoCliPrefix(request: LaunchRequest): List<String> = listOf("fake", "marimo")
+
+        override fun marimoCliPrefix(request: LaunchRequest): List<String> =
+            listOf("fake", "marimo")
     }
 
     private class ManualTtl(private val honorCancel: Boolean = true) : TtlScheduler {
         val pending = mutableListOf<Pair<Long, Runnable>>()
+
         override fun schedule(delayMillis: Long, task: Runnable): TtlCancellable {
             val entry = delayMillis to task
             pending.add(entry)
             return TtlCancellable { if (honorCancel) pending.remove(entry) }
         }
+
         fun fireAll() {
             val due = pending.toList()
             pending.clear()
@@ -77,7 +97,8 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
     private lateinit var uv: FakeLauncher
     private lateinit var ttl: ManualTtl
 
-    private val manager: MarimoServerService get() = project.service<MarimoServerService>()
+    private val manager: MarimoServerService
+        get() = project.service<MarimoServerService>()
 
     private fun notebook(name: String = "nb.py"): VirtualFile =
         myFixture.addFileToProject(name, "import marimo\n").virtualFile
@@ -98,7 +119,8 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
             manager.sessions().forEach { snapshot ->
                 repeat(snapshot.attachedTabs) {
                     com.intellij.openapi.vfs.VirtualFileManager.getInstance()
-                        .findFileByUrl(snapshot.fileUrl)?.let(manager::detach)
+                        .findFileByUrl(snapshot.fileUrl)
+                        ?.let(manager::detach)
                 }
                 manager.stopUrl(snapshot.fileUrl)
             }
@@ -148,7 +170,10 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.urlFor(file)
         sdk.handles.single().becomeReady()
         val rendered = manager.statusFor(file).toString()
-        assertFalse("snapshots may be logged and rendered anywhere: $rendered", rendered.contains("access_token"))
+        assertFalse(
+            "snapshots may be logged and rendered anywhere: $rendered",
+            rendered.contains("access_token"),
+        )
         assertFalse(rendered.contains("secret"))
     }
 
@@ -186,7 +211,10 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.urlFor(b)
         sdk.handles.forEach { it.becomeReady() }
         assertEquals(2, manager.sessions().size)
-        assertFalse("each launch must carry its own token URL", sdk.handles[0].authUrl == sdk.handles[1].authUrl)
+        assertFalse(
+            "each launch must carry its own token URL",
+            sdk.handles[0].authUrl == sdk.handles[1].authUrl,
+        )
 
         manager.stop(a)
         assertFalse("stopping a must kill a's process", sdk.handles[0].isAlive)
@@ -222,7 +250,10 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
 
         manager.restart(file)
 
-        assertTrue("restart must schedule a second process", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertTrue(
+            "restart must schedule a second process",
+            sdk.secondLaunch.await(5, TimeUnit.SECONDS),
+        )
         assertEquals("restart must launch a second process", 2, sdk.handles.size)
         assertFalse("restart must kill the first process", sdk.handles[0].isAlive)
         sdk.handles[1].becomeReady()
@@ -256,11 +287,15 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
             settings.state.tokenAuthEnabled = false
             val file = notebook("token_toggle_nb.py")
             manager.urlFor(file)
-            assertNull("the escape hatch must omit the password file", sdk.requests.single().tokenPasswordFile)
+            assertNull(
+                "the escape hatch must omit the password file",
+                sdk.requests.single().tokenPasswordFile,
+            )
         } finally {
             settings.state.tokenAuthEnabled = before
         }
     }
+
     fun testPlanFailureDoesNotCreateATokenPasswordFile() {
         sdk.canLaunch = false
         uv.canLaunch = false
@@ -327,8 +362,14 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.attach(file)
         manager.detach(file)
         assertEquals(1, ttl.pending.size)
-        assertEquals(MarimoSessionSettings.getInstance().backgroundTtlMillis(), ttl.pending.single().first)
-        assertNotNull("the panel needs a deadline to render", manager.statusFor(file)!!.expiresAtMillis)
+        assertEquals(
+            MarimoSessionSettings.getInstance().backgroundTtlMillis(),
+            ttl.pending.single().first,
+        )
+        assertNotNull(
+            "the panel needs a deadline to render",
+            manager.statusFor(file)!!.expiresAtMillis,
+        )
         assertTrue("the process must stay alive in the background", sdk.handles.single().isAlive)
     }
 
@@ -376,7 +417,10 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.detach(file)
         manager.attach(file)
         sticky.fireAll()
-        assertTrue("a cancelled-but-fired task must be ignored by generation", sdk.handles.single().isAlive)
+        assertTrue(
+            "a cancelled-but-fired task must be ignored by generation",
+            sdk.handles.single().isAlive,
+        )
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
     }
 
@@ -395,7 +439,10 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.attach(file)
         manager.detach(file)
         manager.restart(file)
-        assertTrue("background restart must schedule a second process", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertTrue(
+            "background restart must schedule a second process",
+            sdk.secondLaunch.await(5, TimeUnit.SECONDS),
+        )
         assertEquals("the fresh background process needs a fresh deadline", 1, ttl.pending.size)
         assertEquals(2, sdk.handles.size)
     }

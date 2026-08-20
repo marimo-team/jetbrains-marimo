@@ -6,18 +6,27 @@ import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class LaunchPlannerTest : BasePlatformTestCase() {
-    private fun launcher(id: String, can: Boolean) = object : MarimoLauncher {
-        override val id = id
-        override fun canLaunch(request: LaunchRequest) = can
-        override fun launch(request: LaunchRequest) = throw UnsupportedOperationException()
-        override fun marimoCliPrefix(request: LaunchRequest): List<String>? = null
-    }
+    private fun launcher(id: String, can: Boolean) =
+        object : MarimoLauncher {
+            override val id = id
+
+            override fun canLaunch(request: LaunchRequest) = can
+
+            override fun launch(request: LaunchRequest) = throw UnsupportedOperationException()
+
+            override fun marimoCliPrefix(request: LaunchRequest): List<String>? = null
+        }
 
     private fun planner(sdkCan: Boolean, uvCan: Boolean) =
         LaunchPlanner(launcher("sdk", sdkCan), launcher("uv", uvCan))
 
     private fun request(sandbox: Boolean = false): LaunchRequest =
-        LaunchRequest(project = project, notebook = LightVirtualFile("nb.py"), port = 0, sandbox = sandbox)
+        LaunchRequest(
+            project = project,
+            notebook = LightVirtualFile("nb.py"),
+            port = 0,
+            sandbox = sandbox,
+        )
 
     fun testLaunchesOnConfiguredInterpreter() {
         val decision = planner(sdkCan = true, uvCan = false).plan(request())

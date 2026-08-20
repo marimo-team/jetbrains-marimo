@@ -11,16 +11,24 @@ class SdkLauncher : MarimoLauncher {
         SdkPythonResolver.resolvePythonPath(request.project, request.notebook) != null
 
     override fun launch(request: LaunchRequest): MarimoServerHandle {
-        val python = SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
-            ?: throw NoApplicableLauncherException(request)
+        val python =
+            SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
+                ?: throw NoApplicableLauncherException(request)
         val workDir = request.workDir ?: NotebookWorkDir.resolve(request.project, request.notebook)
         fun command(watch: Boolean) =
             buildCommandLine(
-                python, request.notebook.path, workDir, request.host, request.port, watch,
+                python,
+                request.notebook.path,
+                workDir,
+                request.host,
+                request.port,
+                watch,
                 request.tokenPasswordFile,
             )
         return startMarimoServer(
-            command(watch = true), request.host, request.port,
+            command(watch = true),
+            request.host,
+            request.port,
             watchFallbackCmd = { command(watch = false) },
             authenticatedUrl = request.authenticatedUrl,
             tokenPasswordFile = request.tokenPasswordFile,
@@ -28,12 +36,17 @@ class SdkLauncher : MarimoLauncher {
     }
 
     override fun marimoCliPrefix(request: LaunchRequest): List<String>? =
-        SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
-            ?.let { listOf(it, "-m", "marimo") }
+        SdkPythonResolver.resolvePythonPath(request.project, request.notebook)?.let {
+            listOf(it, "-m", "marimo")
+        }
 
     companion object {
         fun buildCommandLine(
-            pythonPath: String, notebookPath: String, workDir: String, host: String, port: Int,
+            pythonPath: String,
+            notebookPath: String,
+            workDir: String,
+            host: String,
+            port: Int,
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
         ): GeneralCommandLine {

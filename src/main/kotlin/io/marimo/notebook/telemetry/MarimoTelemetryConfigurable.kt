@@ -8,11 +8,12 @@ import com.intellij.ui.JBIntSpinner
 import com.intellij.ui.dsl.builder.bindIntValue
 import com.intellij.ui.dsl.builder.bindSelected
 import com.intellij.ui.dsl.builder.panel
-import io.marimo.notebook.server.MarimoSessionSettings.Companion.MIN_BACKGROUND_TTL_MINUTES
 import io.marimo.notebook.MarimoBundle
 import io.marimo.notebook.server.MarimoSessionSettings
+import io.marimo.notebook.server.MarimoSessionSettings.Companion.MIN_BACKGROUND_TTL_MINUTES
 
-class MarimoTelemetryConfigurable : BoundConfigurable(MarimoBundle.message("telemetry.settings.title")) {
+class MarimoTelemetryConfigurable :
+    BoundConfigurable(MarimoBundle.message("telemetry.settings.title")) {
     private val telemetry = MarimoTelemetry.getInstance()
     private val sessions = MarimoSessionSettings.getInstance()
 

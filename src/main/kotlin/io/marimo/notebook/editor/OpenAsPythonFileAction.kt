@@ -2,7 +2,6 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.detect.MarimoDetector
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -12,11 +11,12 @@ import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.jetbrains.python.PythonFileType
+import io.marimo.notebook.detect.MarimoDetector
 
 /**
- * Opens a marimo notebook's raw Python source in a split beside the notebook. A file maps to a single
- * tab per editor window, so the source can't share the notebook's tab; the split gives it its own pane,
- * independent of the notebook's inline Source tab.
+ * Opens a marimo notebook's raw Python source in a split beside the notebook. A file maps to a
+ * single tab per editor window, so the source can't share the notebook's tab; the split gives it
+ * its own pane, independent of the notebook's inline Source tab.
  */
 class OpenAsPythonFileAction : AnAction(), DumbAware {
     init {
@@ -34,13 +34,17 @@ class OpenAsPythonFileAction : AnAction(), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
-        val openInRightSplit = ActionManager.getInstance().getAction(OPEN_IN_RIGHT_SPLIT_ACTION) ?: return
+        val openInRightSplit =
+            ActionManager.getInstance().getAction(OPEN_IN_RIGHT_SPLIT_ACTION) ?: return
         ActionUtil.performAction(openInRightSplit, e)
         FileEditorManager.getInstance(project).setSelectedEditor(file, MARIMO_SOURCE_EDITOR_TYPE)
     }
 
     private companion object {
-        /** Platform action that opens the context file in a vertical split beside the current editor. */
+        /**
+         * Platform action that opens the context file in a vertical split beside the current
+         * editor.
+         */
         const val OPEN_IN_RIGHT_SPLIT_ACTION = "OpenInRightSplit"
     }
 }

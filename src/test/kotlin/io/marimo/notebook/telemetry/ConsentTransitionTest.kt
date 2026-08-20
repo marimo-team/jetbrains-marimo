@@ -49,10 +49,19 @@ class ConsentTransitionTest {
 
     private fun marimoError() =
         RuntimeException("boom").apply {
-            stackTrace = arrayOf(StackTraceElement("io.marimo.notebook.launch.SdkLauncher", "start", "SdkLauncher.kt", 1))
+            stackTrace =
+                arrayOf(
+                    StackTraceElement(
+                        "io.marimo.notebook.launch.SdkLauncher",
+                        "start",
+                        "SdkLauncher.kt",
+                        1,
+                    )
+                )
         }
 
-    @Test fun allowThenRevoke() {
+    @Test
+    fun allowThenRevoke() {
         val sink = RecordingSink()
         val sentry = RecordingSentrySink()
         val telemetry = MarimoTelemetry().withSinkForTest(sink).withSentrySinkForTest(sentry)
@@ -70,7 +79,8 @@ class ConsentTransitionTest {
         assertTrue(sink.events.isEmpty())
     }
 
-    @Test fun denyBuildsNoTransport() {
+    @Test
+    fun denyBuildsNoTransport() {
         val sink = RecordingSink()
         val telemetry = MarimoTelemetry().withSinkForTest(sink)
 
@@ -82,9 +92,11 @@ class ConsentTransitionTest {
         assertTrue(sink.events.isEmpty())
     }
 
-    @Test fun sentryCapturesWhenAllowedAndStopsAfterRevoke() {
+    @Test
+    fun sentryCapturesWhenAllowedAndStopsAfterRevoke() {
         val sentry = RecordingSentrySink()
-        val telemetry = MarimoTelemetry().withSinkForTest(RecordingSink()).withSentrySinkForTest(sentry)
+        val telemetry =
+            MarimoTelemetry().withSinkForTest(RecordingSink()).withSentrySinkForTest(sentry)
 
         telemetry.allow()
         val error = marimoError()
@@ -98,9 +110,11 @@ class ConsentTransitionTest {
         assertEquals(1, sentry.captured.size)
     }
 
-    @Test fun sentrySessionStartsOnAllowAndEndsOnRevoke() {
+    @Test
+    fun sentrySessionStartsOnAllowAndEndsOnRevoke() {
         val sentry = RecordingSentrySink()
-        val telemetry = MarimoTelemetry().withSinkForTest(RecordingSink()).withSentrySinkForTest(sentry)
+        val telemetry =
+            MarimoTelemetry().withSinkForTest(RecordingSink()).withSentrySinkForTest(sentry)
 
         telemetry.allow()
         assertEquals(1, sentry.sessionsStarted)
@@ -113,7 +127,8 @@ class ConsentTransitionTest {
         assertEquals(1, sentry.sessionsEnded)
     }
 
-    @Test fun sentryNoCaptureWhenDenied() {
+    @Test
+    fun sentryNoCaptureWhenDenied() {
         val sentry = RecordingSentrySink()
         val telemetry = MarimoTelemetry().withSentrySinkForTest(sentry)
 

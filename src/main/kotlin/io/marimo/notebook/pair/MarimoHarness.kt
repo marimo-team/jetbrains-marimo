@@ -17,15 +17,17 @@ enum class MarimoHarness(
     OPENCODE("opencode", "opencode", "--opencode", "Install the opencode CLI, then retry.");
 
     /** The executable this harness runs as; looked up on the shell PATH. */
-    val binaryName: String get() = id
+    val binaryName: String
+        get() = id
 
     /** Label used when this harness remains available as an explicit terminal workflow. */
     val terminalActionLabel: String
-        get() = when (this) {
-            CLAUDE -> "Claude Code in Terminal"
-            CODEX -> "Codex CLI in Terminal"
-            OPENCODE -> "opencode in Terminal"
-        }
+        get() =
+            when (this) {
+                CLAUDE -> "Claude Code in Terminal"
+                CODEX -> "Codex CLI in Terminal"
+                OPENCODE -> "opencode in Terminal"
+            }
 
     /** Terminal tab title so a launch reads as a session, e.g. "Claude · stocks.py". */
     fun tabTitle(fileName: String): String = "$label · $fileName"
@@ -43,19 +45,21 @@ enum class MarimoHarness(
     ): Boolean {
         if (pathValue.isNullOrBlank()) return true
         val names = listOf(binaryName) + executableExtensions.map { binaryName + it }
-        return pathValue.split(File.pathSeparatorChar)
+        return pathValue
+            .split(File.pathSeparatorChar)
             .filter { it.isNotBlank() }
             .any { dir -> names.any { name -> exists("$dir${File.separator}$name") } }
     }
 
     /**
-     * Terminal command that starts this harness with the marimo-pair prompt.
-     * [cliPrefix] are the tokens that invoke the marimo CLI (e.g. uv run ... marimo).
+     * Terminal command that starts this harness with the marimo-pair prompt. [cliPrefix] are the
+     * tokens that invoke the marimo CLI (e.g. uv run ... marimo).
      */
     fun terminalCommand(cliPrefix: List<String>, url: String): String {
-        val promptTokens = cliPrefix +
-            listOf("pair", "prompt", "--url", "'$url'") +
-            (agentFlag?.let { listOf(it) } ?: emptyList())
+        val promptTokens =
+            cliPrefix +
+                listOf("pair", "prompt", "--url", "'$url'") +
+                (agentFlag?.let { listOf(it) } ?: emptyList())
         return "$id \"\$(${promptTokens.joinToString(" ")})\""
     }
 
@@ -67,9 +71,13 @@ enum class MarimoHarness(
         fun promptArgs(cliPrefix: List<String>, url: String): List<String> =
             cliPrefix + listOf("pair", "prompt", "--url", url)
 
-        /** Executable name suffixes to try on the current OS (from PATHEXT on Windows; none elsewhere). */
+        /**
+         * Executable name suffixes to try on the current OS (from PATHEXT on Windows; none
+         * elsewhere).
+         */
         private fun pathExecutableExtensions(): List<String> {
-            val isWindows = System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
+            val isWindows =
+                System.getProperty("os.name").orEmpty().startsWith("Windows", ignoreCase = true)
             if (!isWindows) return emptyList()
             val pathext = System.getenv("PATHEXT")
             if (pathext.isNullOrBlank()) return listOf(".EXE", ".CMD", ".BAT", ".COM")

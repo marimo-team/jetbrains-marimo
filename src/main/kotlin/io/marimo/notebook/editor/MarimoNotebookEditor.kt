@@ -2,13 +2,13 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.server.MarimoServerService
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.server.MarimoServerService
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
@@ -33,7 +33,9 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
         view = attached.second
     }
 
-    /** Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox). */
+    /**
+     * Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox).
+     */
     fun reload() = view.reload()
 
     /**
@@ -46,14 +48,22 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     }
 
     override fun getComponent(): JComponent = view.panel
+
     override fun getPreferredFocusedComponent(): JComponent? = view.preferredFocusedComponent
+
     override fun getName(): String = "marimo"
+
     override fun setState(state: FileEditorState) {}
+
     override fun isModified(): Boolean = false
+
     override fun isValid(): Boolean = true
+
     override fun getFile(): VirtualFile = file
+
     override fun addPropertyChangeListener(listener: PropertyChangeListener) =
         propertyChangeSupport.addPropertyChangeListener(listener)
+
     override fun removePropertyChangeListener(listener: PropertyChangeListener) =
         propertyChangeSupport.removePropertyChangeListener(listener)
 

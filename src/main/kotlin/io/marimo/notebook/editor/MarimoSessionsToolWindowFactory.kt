@@ -2,10 +2,6 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.MarimoIcons
-import io.marimo.notebook.server.MarimoServerService
-import io.marimo.notebook.server.MarimoSessionSnapshot
-import io.marimo.notebook.server.MarimoSessionState
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -21,8 +17,11 @@ import com.intellij.ui.components.JBLabel
 import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
+import io.marimo.notebook.MarimoIcons
+import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.server.MarimoSessionSnapshot
+import io.marimo.notebook.server.MarimoSessionState
 import java.awt.BorderLayout
-import java.awt.Component
 import java.awt.Cursor
 import java.awt.Dimension
 import java.awt.FlowLayout
@@ -32,10 +31,10 @@ import java.awt.datatransfer.StringSelection
 import java.awt.event.MouseAdapter
 import java.awt.event.MouseEvent
 import javax.swing.BorderFactory
+import javax.swing.BoxLayout
 import javax.swing.JButton
 import javax.swing.JLabel
 import javax.swing.JPanel
-import javax.swing.BoxLayout
 
 class MarimoSessionsToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
@@ -53,10 +52,11 @@ private class MarimoSessionsPanel(
     private val project: Project,
     private val service: MarimoServerService,
 ) : JPanel(BorderLayout()), Disposable {
-    private val cards = JBPanel<JBPanel<*>>().apply {
-        layout = GridBagLayout()
-        border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
-    }
+    private val cards =
+        JBPanel<JBPanel<*>>().apply {
+            layout = GridBagLayout()
+            border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
+        }
 
     init {
         add(JBScrollPane(cards), BorderLayout.CENTER)
@@ -68,44 +68,56 @@ private class MarimoSessionsPanel(
             val snapshots = service.sessions().sortedBy { it.fileName.lowercase() }
             cards.removeAll()
             if (snapshots.isEmpty()) {
-                cards.add(JBLabel("No active marimo sessions").apply {
-                    foreground = JBColor.GRAY
-                    border = BorderFactory.createEmptyBorder(4, 2, 4, 2)
-                }, GridBagConstraints().apply {
-                    gridx = 0
-                    gridy = 0
-                    weightx = 1.0
-                    anchor = GridBagConstraints.NORTHWEST
-                    fill = GridBagConstraints.HORIZONTAL
-                })
-            } else {
-                snapshots.forEachIndexed { index, snapshot ->
-                    cards.add(SessionCard(project, service, snapshot), GridBagConstraints().apply {
+                cards.add(
+                    JBLabel("No active marimo sessions").apply {
+                        foreground = JBColor.GRAY
+                        border = BorderFactory.createEmptyBorder(4, 2, 4, 2)
+                    },
+                    GridBagConstraints().apply {
                         gridx = 0
-                        gridy = index * 2
+                        gridy = 0
                         weightx = 1.0
                         anchor = GridBagConstraints.NORTHWEST
                         fill = GridBagConstraints.HORIZONTAL
-                        insets = java.awt.Insets(0, 0, 0, 0)
-                    })
-                    if (index != snapshots.lastIndex) {
-                        cards.add(separatorRow(), GridBagConstraints().apply {
+                    },
+                )
+            } else {
+                snapshots.forEachIndexed { index, snapshot ->
+                    cards.add(
+                        SessionCard(project, service, snapshot),
+                        GridBagConstraints().apply {
                             gridx = 0
-                            gridy = index * 2 + 1
+                            gridy = index * 2
                             weightx = 1.0
+                            anchor = GridBagConstraints.NORTHWEST
                             fill = GridBagConstraints.HORIZONTAL
-                            insets = java.awt.Insets(6, 0, 6, 0)
-                        })
+                            insets = java.awt.Insets(0, 0, 0, 0)
+                        },
+                    )
+                    if (index != snapshots.lastIndex) {
+                        cards.add(
+                            separatorRow(),
+                            GridBagConstraints().apply {
+                                gridx = 0
+                                gridy = index * 2 + 1
+                                weightx = 1.0
+                                fill = GridBagConstraints.HORIZONTAL
+                                insets = java.awt.Insets(6, 0, 6, 0)
+                            },
+                        )
                     }
                 }
             }
-            cards.add(JPanel().apply { isOpaque = false }, GridBagConstraints().apply {
-                gridx = 0
-                gridy = snapshots.size * 2 + 1
-                weightx = 1.0
-                weighty = 1.0
-                fill = GridBagConstraints.BOTH
-            })
+            cards.add(
+                JPanel().apply { isOpaque = false },
+                GridBagConstraints().apply {
+                    gridx = 0
+                    gridy = snapshots.size * 2 + 1
+                    weightx = 1.0
+                    weighty = 1.0
+                    fill = GridBagConstraints.BOTH
+                },
+            )
             cards.revalidate()
             cards.repaint()
         }
@@ -125,48 +137,69 @@ private class SessionCard(
         val canControl = snapshot.state.isLive
         val copyUrlAvailable = launch != null && !launch.tokenAuthEnabled
 
-        border = BorderFactory.createCompoundBorder(
-            BorderFactory.createEmptyBorder(6, 8, 6, 8),
-            BorderFactory.createEmptyBorder(),
-        )
-        val header = JPanel(BorderLayout(8, 0)).apply {
-            isOpaque = false
-            add(JLabel(snapshot.fileName, MarimoIcons.FILE, JLabel.LEFT), BorderLayout.CENTER)
-            add(statusBadge(snapshot.state), BorderLayout.EAST)
-        }
+        border =
+            BorderFactory.createCompoundBorder(
+                BorderFactory.createEmptyBorder(6, 8, 6, 8),
+                BorderFactory.createEmptyBorder(),
+            )
+        val header =
+            JPanel(BorderLayout(8, 0)).apply {
+                isOpaque = false
+                add(JLabel(snapshot.fileName, MarimoIcons.FILE, JLabel.LEFT), BorderLayout.CENTER)
+                add(statusBadge(snapshot.state), BorderLayout.EAST)
+            }
 
-        val details = JPanel().apply {
-            layout = BoxLayout(this, BoxLayout.Y_AXIS)
-            isOpaque = false
-            border = BorderFactory.createEmptyBorder(2, 0, 2, 0)
-            add(detailLine("URL", url))
-        }
+        val details =
+            JPanel().apply {
+                layout = BoxLayout(this, BoxLayout.Y_AXIS)
+                isOpaque = false
+                border = BorderFactory.createEmptyBorder(2, 0, 2, 0)
+                add(detailLine("URL", url))
+            }
 
-        val actions = JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
-            isOpaque = false
-            border = BorderFactory.createEmptyBorder(4, 0, 0, 0)
-            add(iconButton(AllIcons.Actions.Forward, "Open notebook").apply {
-                addActionListener {
-                    val file = VirtualFileManager.getInstance().findFileByUrl(snapshot.fileUrl) ?: return@addActionListener
-                    openMarimoNotebook(project, file)
-                }
-            })
-            add(iconButton(AllIcons.Actions.Copy, "Copy URL").apply {
-                isEnabled = copyUrlAvailable
-                addActionListener { launch?.port?.let { CopyPasteManager.getInstance().setContents(StringSelection("http://127.0.0.1:$it/")) } }
-            })
-            add(iconButton(AllIcons.Actions.Restart, "Restart session").apply {
-                isEnabled = canControl
-                addActionListener {
-                    val file = VirtualFileManager.getInstance().findFileByUrl(snapshot.fileUrl) ?: return@addActionListener
-                    service.restart(file)
-                }
-            })
-            add(iconButton(AllIcons.Actions.Suspend, "Stop session").apply {
-                isEnabled = canControl
-                addActionListener { service.stopUrl(snapshot.fileUrl) }
-            })
-        }
+        val actions =
+            JPanel(FlowLayout(FlowLayout.LEFT, 4, 0)).apply {
+                isOpaque = false
+                border = BorderFactory.createEmptyBorder(4, 0, 0, 0)
+                add(
+                    iconButton(AllIcons.Actions.Forward, "Open notebook").apply {
+                        addActionListener {
+                            val file =
+                                VirtualFileManager.getInstance().findFileByUrl(snapshot.fileUrl)
+                                    ?: return@addActionListener
+                            openMarimoNotebook(project, file)
+                        }
+                    }
+                )
+                add(
+                    iconButton(AllIcons.Actions.Copy, "Copy URL").apply {
+                        isEnabled = copyUrlAvailable
+                        addActionListener {
+                            launch?.port?.let {
+                                CopyPasteManager.getInstance()
+                                    .setContents(StringSelection("http://127.0.0.1:$it/"))
+                            }
+                        }
+                    }
+                )
+                add(
+                    iconButton(AllIcons.Actions.Restart, "Restart session").apply {
+                        isEnabled = canControl
+                        addActionListener {
+                            val file =
+                                VirtualFileManager.getInstance().findFileByUrl(snapshot.fileUrl)
+                                    ?: return@addActionListener
+                            service.restart(file)
+                        }
+                    }
+                )
+                add(
+                    iconButton(AllIcons.Actions.Suspend, "Stop session").apply {
+                        isEnabled = canControl
+                        addActionListener { service.stopUrl(snapshot.fileUrl) }
+                    }
+                )
+            }
 
         add(header, BorderLayout.NORTH)
         add(details, BorderLayout.CENTER)
@@ -175,13 +208,14 @@ private class SessionCard(
     }
 
     private fun statusBadge(state: MarimoSessionState): JLabel {
-        val (text, color) = when (state) {
-            MarimoSessionState.RUNNING -> "RUNNING" to JBColor(0x2E7D32, 0x6FBF73)
-            MarimoSessionState.STARTING -> "STARTING" to JBColor(0x1565C0, 0x6EA8FF)
-            MarimoSessionState.STOPPING -> "STOPPING" to JBColor(0xEF6C00, 0xFFB366)
-            MarimoSessionState.FAILED -> "FAILED" to JBColor(0xC62828, 0xFF7B7B)
-            MarimoSessionState.STOPPED -> "STOPPED" to JBColor.GRAY
-        }
+        val (text, color) =
+            when (state) {
+                MarimoSessionState.RUNNING -> "RUNNING" to JBColor(0x2E7D32, 0x6FBF73)
+                MarimoSessionState.STARTING -> "STARTING" to JBColor(0x1565C0, 0x6EA8FF)
+                MarimoSessionState.STOPPING -> "STOPPING" to JBColor(0xEF6C00, 0xFFB366)
+                MarimoSessionState.FAILED -> "FAILED" to JBColor(0xC62828, 0xFF7B7B)
+                MarimoSessionState.STOPPED -> "STOPPED" to JBColor.GRAY
+            }
         return JLabel(text).apply { foreground = color }
     }
 
@@ -202,28 +236,33 @@ private class SessionCard(
             border = BorderFactory.createEmptyBorder(1, 1, 1, 1)
             preferredSize = Dimension(16, 16)
             val hoverBackground = JBColor(0xEAF2FF, 0x3A4758)
-            addMouseListener(object : MouseAdapter() {
-                override fun mouseEntered(e: MouseEvent) {
-                    isOpaque = true
-                    isContentAreaFilled = true
-                    background = hoverBackground
-                }
+            addMouseListener(
+                object : MouseAdapter() {
+                    override fun mouseEntered(e: MouseEvent) {
+                        isOpaque = true
+                        isContentAreaFilled = true
+                        background = hoverBackground
+                    }
 
-                override fun mouseExited(e: MouseEvent) {
-                    isOpaque = false
-                    isContentAreaFilled = false
+                    override fun mouseExited(e: MouseEvent) {
+                        isOpaque = false
+                        isContentAreaFilled = false
+                    }
                 }
-            })
+            )
         }
 }
 
 private fun separatorRow(): JPanel =
     JPanel(BorderLayout()).apply {
         isOpaque = false
-        add(JPanel().apply {
-            background = JBColor(0xE1E4E8, 0x4E5254)
-            preferredSize = Dimension(1, 1)
-            minimumSize = Dimension(1, 1)
-            maximumSize = Dimension(Int.MAX_VALUE, 1)
-        }, BorderLayout.CENTER)
+        add(
+            JPanel().apply {
+                background = JBColor(0xE1E4E8, 0x4E5254)
+                preferredSize = Dimension(1, 1)
+                minimumSize = Dimension(1, 1)
+                maximumSize = Dimension(Int.MAX_VALUE, 1)
+            },
+            BorderLayout.CENTER,
+        )
     }

@@ -12,6 +12,7 @@ import java.util.concurrent.ConcurrentHashMap
 /** Whether marimo is available on the interpreter resolved for a notebook. */
 sealed interface MarimoPresence {
     data class Installed(val version: String) : MarimoPresence
+
     data object Missing : MarimoPresence
 
     /** No interpreter is configured, so presence is undefined. */
@@ -19,11 +20,11 @@ sealed interface MarimoPresence {
 }
 
 /**
- * Reports whether marimo is installed on the interpreter PyCharm resolves for a notebook, cached per
- * interpreter home path. Detection runs `python -m marimo --version`: a clean exit with a parseable
- * version means marimo is present. (The IDE's package-manager snapshot would avoid the subprocess, but
- * its package model is an internal API whose shape shifts between IDE releases, so the plugin relies on
- * the interpreter itself instead.)
+ * Reports whether marimo is installed on the interpreter PyCharm resolves for a notebook, cached
+ * per interpreter home path. Detection runs `python -m marimo --version`: a clean exit with a
+ * parseable version means marimo is present. (The IDE's package-manager snapshot would avoid the
+ * subprocess, but its package model is an internal API whose shape shifts between IDE releases, so
+ * the plugin relies on the interpreter itself instead.)
  *
  * Probing runs a subprocess, so call it off the EDT.
  */
@@ -37,7 +38,10 @@ class MarimoEnvProbe(private val project: Project) {
         return cache.getOrPut(home) { detect(home) }
     }
 
-    /** Drop cached results so the next probe re-detects (e.g. after an install or interpreter change). */
+    /**
+     * Drop cached results so the next probe re-detects (e.g. after an install or interpreter
+     * change).
+     */
     fun invalidate() = cache.clear()
 
     private fun detect(pythonPath: String): MarimoPresence {
@@ -47,7 +51,10 @@ class MarimoEnvProbe(private val project: Project) {
 
     private fun versionViaCli(pythonPath: String): String? {
         val cmd = GeneralCommandLine(pythonPath, "-m", MARIMO, "--version")
-        val output = runCatching { CapturingProcessHandler(cmd).runProcess(CLI_TIMEOUT_MS) }.getOrNull()
+        val output = runCatching {
+            CapturingProcessHandler(cmd).runProcess(CLI_TIMEOUT_MS)
+        }
+            .getOrNull()
         if (output == null || output.exitCode != 0) return null
         return parseVersion(output.stdout.ifBlank { output.stderr })
     }

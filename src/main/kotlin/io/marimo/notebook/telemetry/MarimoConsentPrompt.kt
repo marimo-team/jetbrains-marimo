@@ -15,26 +15,34 @@ object MarimoConsentPrompt {
         val telemetry = MarimoTelemetry.getInstance()
         if (telemetry.consent != Consent.UNSET) return
 
-        val notification = NotificationGroupManager.getInstance()
-            .getNotificationGroup("Marimo")
-            .createNotification(
-                MarimoBundle.message("telemetry.consent.title"),
-                MarimoBundle.message("telemetry.consent.body"),
-                NotificationType.INFORMATION,
-            )
+        val notification =
+            NotificationGroupManager.getInstance()
+                .getNotificationGroup("Marimo")
+                .createNotification(
+                    MarimoBundle.message("telemetry.consent.title"),
+                    MarimoBundle.message("telemetry.consent.body"),
+                    NotificationType.INFORMATION,
+                )
         notification.isImportant = true
         notification.addAction(
-            NotificationAction.createSimpleExpiring(MarimoBundle.message("telemetry.consent.allow")) {
+            NotificationAction.createSimpleExpiring(
+                MarimoBundle.message("telemetry.consent.allow")
+            ) {
                 telemetry.allow()
-            },
+            }
         )
         notification.addAction(
-            NotificationAction.createSimpleExpiring(MarimoBundle.message("telemetry.consent.deny")) {
+            NotificationAction.createSimpleExpiring(
+                MarimoBundle.message("telemetry.consent.deny")
+            ) {
                 telemetry.deny()
-            },
+            }
         )
         notification.addAction(
-            BrowseNotificationAction(MarimoBundle.message("telemetry.consent.privacy"), MarimoTelemetry.PRIVACY_URL),
+            BrowseNotificationAction(
+                MarimoBundle.message("telemetry.consent.privacy"),
+                MarimoTelemetry.PRIVACY_URL,
+            )
         )
         notification.notify(project)
     }

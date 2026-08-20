@@ -6,15 +6,17 @@ import com.intellij.execution.process.ProcessHandler
 import java.util.concurrent.CompletableFuture
 
 /** A [MarimoServerHandle] whose readiness and termination tests drive explicitly. */
-class ScriptedMarimoServerHandle(
-    private val terminateOnDispose: Boolean = false,
-) : MarimoServerHandle {
+class ScriptedMarimoServerHandle(private val terminateOnDispose: Boolean = false) :
+    MarimoServerHandle {
     private val ready = CompletableFuture<String>()
     private var terminationListener: ((Int, String) -> Unit)? = null
 
     override var isAlive: Boolean = true
-    override val processHandle: ProcessHandler get() = throw UnsupportedOperationException()
+    override val processHandle: ProcessHandler
+        get() = throw UnsupportedOperationException()
+
     override fun awaitReady(): CompletableFuture<String> = ready
+
     override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
         terminationListener = listener
     }

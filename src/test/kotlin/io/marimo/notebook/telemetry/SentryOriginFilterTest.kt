@@ -11,7 +11,15 @@ class SentryOriginFilterTest {
     fun keepsMarimoOriginException() {
         val e =
             RuntimeException("boom").apply {
-                stackTrace = arrayOf(StackTraceElement("io.marimo.notebook.launch.SdkLauncher", "start", "SdkLauncher.kt", 12))
+                stackTrace =
+                    arrayOf(
+                        StackTraceElement(
+                            "io.marimo.notebook.launch.SdkLauncher",
+                            "start",
+                            "SdkLauncher.kt",
+                            12,
+                        )
+                    )
             }
         assertTrue(SentryOriginFilter.isMarimoOrigin(e))
     }
@@ -29,7 +37,15 @@ class SentryOriginFilterTest {
     fun findsMarimoFrameInCauseChain() {
         val root =
             RuntimeException("root").apply {
-                stackTrace = arrayOf(StackTraceElement("io.marimo.notebook.launch.SdkLauncher", "start", "SdkLauncher.kt", 12))
+                stackTrace =
+                    arrayOf(
+                        StackTraceElement(
+                            "io.marimo.notebook.launch.SdkLauncher",
+                            "start",
+                            "SdkLauncher.kt",
+                            12,
+                        )
+                    )
             }
         val wrapper =
             RuntimeException("wrapper", root).apply {

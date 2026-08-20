@@ -11,10 +11,10 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.jetbrains.python.sdk.PythonSdkUtil
 
 /**
- * Resolves the Python interpreter PyCharm has configured for [notebook] — the module SDK when the file
- * belongs to a module, else the project SDK. Returns the interpreter executable path (the home path of a
- * Python SDK), or null when no Python interpreter is configured, in which case the registry falls through
- * to the uv launcher.
+ * Resolves the Python interpreter PyCharm has configured for [notebook] — the module SDK when the
+ * file belongs to a module, else the project SDK. Returns the interpreter executable path (the home
+ * path of a Python SDK), or null when no Python interpreter is configured, in which case the
+ * registry falls through to the uv launcher.
  */
 object SdkPythonResolver {
     fun resolvePythonPath(project: Project, notebook: VirtualFile): String? =
@@ -22,8 +22,7 @@ object SdkPythonResolver {
 
     /** The Python [Sdk] PyCharm has configured for [notebook], or null when none is. */
     fun resolveSdk(project: Project, notebook: VirtualFile): Sdk? {
-        val sdk = moduleSdk(project, notebook)
-            ?: ProjectRootManager.getInstance(project).projectSdk
+        val sdk = moduleSdk(project, notebook) ?: ProjectRootManager.getInstance(project).projectSdk
         if (sdk == null || !PythonSdkUtil.isPythonSdk(sdk)) return null
         return sdk
     }

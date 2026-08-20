@@ -14,8 +14,9 @@ object MarimoDetector {
     private const val SNIFF_BYTES = 4096
 
     /**
-     * The file-icon provider asks this for every file the IDE renders (project tree, tabs, nav bar),
-     * so the per-file header read is cached and only repeated when the file's content changes.
+     * The file-icon provider asks this for every file the IDE renders (project tree, tabs, nav
+     * bar), so the per-file header read is cached and only repeated when the file's content
+     * changes.
      */
     private val DETECTION = Key.create<Detection>("marimo.detector.detection")
 
@@ -32,7 +33,8 @@ object MarimoDetector {
         if (file.extension != "py") return false
         val stamp = file.modificationStamp
         file.getUserData(DETECTION)?.let { if (it.modificationStamp == stamp) return it.isMarimo }
-        val head = runCatching { VfsUtilCore.loadText(file, SNIFF_BYTES) }.getOrNull() ?: return false
+        val head =
+            runCatching { VfsUtilCore.loadText(file, SNIFF_BYTES) }.getOrNull() ?: return false
         val result = looksLikeMarimo(head)
         file.putUserData(DETECTION, Detection(stamp, result))
         return result

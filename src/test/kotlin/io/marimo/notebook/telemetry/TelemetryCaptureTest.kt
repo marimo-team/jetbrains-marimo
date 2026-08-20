@@ -23,7 +23,8 @@ class TelemetryCaptureTest {
         }
     }
 
-    @Test fun noCaptureWhenNotAllowed() {
+    @Test
+    fun noCaptureWhenNotAllowed() {
         val sink = RecordingSink()
         val telemetry = MarimoTelemetry().withSinkForTest(sink)
         telemetry.setConsentForTest(Consent.DENIED)
@@ -33,7 +34,8 @@ class TelemetryCaptureTest {
         assertTrue(sink.events.isEmpty())
     }
 
-    @Test fun captureWhenAllowed() {
+    @Test
+    fun captureWhenAllowed() {
         val sink = RecordingSink()
         val telemetry = MarimoTelemetry().withSinkForTest(sink)
         telemetry.setConsentForTest(Consent.ALLOWED)
@@ -45,7 +47,8 @@ class TelemetryCaptureTest {
         assertTrue(sink.events.single().properties.keys.none { it.contains("path") })
     }
 
-    @Test fun everyEventCarriesPluginVersion() {
+    @Test
+    fun everyEventCarriesPluginVersion() {
         val sink = RecordingSink()
         val telemetry = MarimoTelemetry().withSinkForTest(sink)
         telemetry.setConsentForTest(Consent.ALLOWED)

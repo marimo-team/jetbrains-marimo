@@ -8,7 +8,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import java.util.concurrent.CompletableFuture
 
-enum class MarimoMode { EDIT, RUN }
+enum class MarimoMode {
+    EDIT,
+    RUN,
+}
 
 data class LaunchRequest(
     val project: Project,
@@ -30,8 +33,10 @@ data class LaunchRequest(
 interface MarimoServerHandle : Disposable {
     val isAlive: Boolean
     val processHandle: ProcessHandler
+
     /** Completes with the server URL once it accepts connections. */
     fun awaitReady(): CompletableFuture<String>
+
     fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit)
 }
 
@@ -39,15 +44,17 @@ interface MarimoServerHandle : Disposable {
 interface MarimoLauncher {
     /** Stable id for settings / logging, e.g. "uv". */
     val id: String
+
     /** Cheap, side-effect-free: can this launcher serve this request on this machine? */
     fun canLaunch(request: LaunchRequest): Boolean
+
     /** Spawn the server. */
     fun launch(request: LaunchRequest): MarimoServerHandle
 
     /**
      * Tokens that invoke the marimo CLI for this launcher (e.g.
-     * ["uv","run","--with","marimo","marimo"] or ["/path/python","-m","marimo"]).
-     * Null if the CLI cannot be resolved on this machine.
+     * ["uv","run","--with","marimo","marimo"] or ["/path/python","-m","marimo"]). Null if the CLI
+     * cannot be resolved on this machine.
      */
     fun marimoCliPrefix(request: LaunchRequest): List<String>?
 }

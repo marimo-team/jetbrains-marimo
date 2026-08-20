@@ -2,18 +2,23 @@
 
 package io.marimo.notebook.server
 
+import com.intellij.openapi.Disposable
 import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
-import com.intellij.openapi.Disposable
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** What one notebook's server process is doing, reduced to the states the UI presents. */
 enum class MarimoSessionState {
-    STARTING, RUNNING, STOPPING, STOPPED, FAILED;
+    STARTING,
+    RUNNING,
+    STOPPING,
+    STOPPED,
+    FAILED;
 
     /** True while a server process exists for the session. */
-    val isLive: Boolean get() = this == STARTING || this == RUNNING || this == STOPPING
+    val isLive: Boolean
+        get() = this == STARTING || this == RUNNING || this == STOPPING
 }
 
 /** The launch settings one server process was started with. Carries no credentials. */
@@ -74,13 +79,14 @@ internal class MarimoNotebookSession(
         MarimoSessionSnapshot(
             fileUrl = fileUrl,
             fileName = fileName,
-            state = when (lifecycle.state) {
-                is MarimoNotebookState.Starting -> MarimoSessionState.STARTING
-                is MarimoNotebookState.Running -> MarimoSessionState.RUNNING
-                is MarimoNotebookState.Stopping -> MarimoSessionState.STOPPING
-                is MarimoNotebookState.Stopped -> MarimoSessionState.STOPPED
-                is MarimoNotebookState.Failed -> MarimoSessionState.FAILED
-            },
+            state =
+                when (lifecycle.state) {
+                    is MarimoNotebookState.Starting -> MarimoSessionState.STARTING
+                    is MarimoNotebookState.Running -> MarimoSessionState.RUNNING
+                    is MarimoNotebookState.Stopping -> MarimoSessionState.STOPPING
+                    is MarimoNotebookState.Stopped -> MarimoSessionState.STOPPED
+                    is MarimoNotebookState.Failed -> MarimoSessionState.FAILED
+                },
             attachedTabs = attachedTabs,
             expiresAtMillis = expiresAtMillis,
             launch = launchContext,

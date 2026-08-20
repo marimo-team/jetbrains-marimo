@@ -16,7 +16,7 @@ import com.intellij.openapi.vfs.VirtualFile
  * still applied on the EDT, but the (potentially slow, on remote filesystems) disk scan is not.
  */
 internal fun refreshMarimoSourceFromDisk(file: VirtualFile) {
-    file.refresh(/* asynchronous = */ false, /* recursive = */ false)
+    file.refresh(/* asynchronous= */ false, /* recursive= */ false)
 }
 
 /**

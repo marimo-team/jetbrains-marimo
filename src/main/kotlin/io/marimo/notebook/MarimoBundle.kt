@@ -6,8 +6,7 @@ import com.intellij.DynamicBundle
 import org.jetbrains.annotations.NonNls
 import org.jetbrains.annotations.PropertyKey
 
-@NonNls
-private const val BUNDLE = "messages.MarimoBundle"
+@NonNls private const val BUNDLE = "messages.MarimoBundle"
 
 object MarimoBundle : DynamicBundle(BUNDLE) {
 

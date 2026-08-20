@@ -2,7 +2,6 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.detect.MarimoDetector
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorPolicy
@@ -13,9 +12,13 @@ import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.detect.MarimoDetector
 import org.jdom.Element
 
-/** Editor type id of the source tab; also the target FileEditorManager selects for "Open as Python file". */
+/**
+ * Editor type id of the source tab; also the target FileEditorManager selects for "Open as Python
+ * file".
+ */
 const val MARIMO_SOURCE_EDITOR_TYPE = "marimo-source"
 
 /**
@@ -25,7 +28,8 @@ const val MARIMO_SOURCE_EDITOR_TYPE = "marimo-source"
  * text editor provider.
  */
 class MarimoSourceEditorProvider : FileEditorProvider, DumbAware {
-    private val platform get() = TextEditorProvider.getInstance()
+    private val platform
+        get() = TextEditorProvider.getInstance()
 
     override fun accept(project: Project, file: VirtualFile): Boolean =
         MarimoDetector.looksLikeMarimo(file)
@@ -35,7 +39,9 @@ class MarimoSourceEditorProvider : FileEditorProvider, DumbAware {
             override fun getName(): String = "Source"
 
             override fun selectNotify() {
-                ApplicationManager.getApplication().executeOnPooledThread { refreshMarimoSourceFromDisk(file) }
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    refreshMarimoSourceFromDisk(file)
+                }
                 super.selectNotify()
             }
         }

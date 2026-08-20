@@ -28,12 +28,16 @@ internal object MarimoPairPromptService {
                     file.parent?.path?.let { command.withWorkDirectory(it) }
                     val output = ExecUtil.execAndGetOutput(command)
                     PromptCommandResult(output.exitCode, output.stdout)
-                }.getOrNull()
+                }
+                    .getOrNull()
 
                 onEdt {
                     val prompt = promptText(result)
                     if (prompt == null) {
-                        MarimoPairNotifications.warning(project, "Could not generate the marimo pair prompt.")
+                        MarimoPairNotifications.warning(
+                            project,
+                            "Could not generate the marimo pair prompt.",
+                        )
                     } else {
                         onPrompt(prompt)
                     }
@@ -44,18 +48,19 @@ internal object MarimoPairPromptService {
 
     internal data class PromptCommandResult(val exitCode: Int, val stdout: String)
 
-    /** The process result is usable only on a successful exit; stdout is delivered without padding. */
+    /**
+     * The process result is usable only on a successful exit; stdout is delivered without padding.
+     */
     internal fun promptText(result: PromptCommandResult?): String? =
         result?.takeIf { it.exitCode == 0 }?.stdout?.trim()
 
-    private fun onEdt(action: () -> Unit) =
-        ApplicationManager.getApplication().invokeLater(action)
+    private fun onEdt(action: () -> Unit) = ApplicationManager.getApplication().invokeLater(action)
 }
 
 /**
  * Shared entry guard for the pairing workflow: starts (or reuses) the notebook server, resolves the
- * marimo CLI prefix, and delivers both to [onReady] on the EDT. Failures warn the user with the same
- * concise recovery message on every pairing path and log under [logContext].
+ * marimo CLI prefix, and delivers both to [onReady] on the EDT. Failures warn the user with the
+ * same concise recovery message on every pairing path and log under [logContext].
  */
 internal object MarimoPairSession {
 
@@ -90,9 +95,11 @@ internal object MarimoPairSession {
 /** Shared notification formatting for the pairing workflow. */
 internal object MarimoPairNotifications {
 
-    fun warning(project: Project, message: String) = notify(project, message, NotificationType.WARNING)
+    fun warning(project: Project, message: String) =
+        notify(project, message, NotificationType.WARNING)
 
-    fun information(project: Project, message: String) = notify(project, message, NotificationType.INFORMATION)
+    fun information(project: Project, message: String) =
+        notify(project, message, NotificationType.INFORMATION)
 
     private fun notify(project: Project, message: String, type: NotificationType) {
         NotificationGroupManager.getInstance()

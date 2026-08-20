@@ -20,6 +20,5 @@ object NotebookWorkDir {
             ProjectFileIndex.getInstance(project).getContentRootForFile(notebook)?.path
                 ?: project.basePath
                 ?: notebook.parent?.path
-        }
-            ?: System.getProperty("user.dir")
+        } ?: System.getProperty("user.dir")
 }

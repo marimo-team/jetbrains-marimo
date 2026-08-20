@@ -4,13 +4,13 @@ package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import java.net.ServerSocket
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 /** Prints a marimo-style banner, serves one HTTP response, then exits with the requested code. */
 object ServeThenExitProcess {
@@ -41,10 +41,14 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
     fun testExitAfterReadinessIsReportedOnceWithRedactedTail() {
         val port = ServerSocket(0).use { it.localPort }
         val authUrl = "http://127.0.0.1:$port?access_token=SECRETTOKEN"
-        val handle = startMarimoServer(
-            command(port, exitCode = 3), "127.0.0.1", port,
-            readinessTimeoutSeconds = 15, authenticatedUrl = authUrl,
-        )
+        val handle =
+            startMarimoServer(
+                command(port, exitCode = 3),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 15,
+                authenticatedUrl = authUrl,
+            )
 
         val reported = CountDownLatch(1)
         val calls = AtomicInteger()
@@ -68,8 +72,14 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
 
         assertEquals(1, calls.get())
         assertEquals(3, code.get())
-        assertTrue("output tail should carry process output, was '$tail'", tail.contains("shutting down"))
-        assertFalse("retained output must never carry the token: '$tail'", tail.contains("SECRETTOKEN"))
+        assertTrue(
+            "output tail should carry process output, was '$tail'",
+            tail.contains("shutting down"),
+        )
+        assertFalse(
+            "retained output must never carry the token: '$tail'",
+            tail.contains("SECRETTOKEN"),
+        )
         assertTrue(tail.contains("access_token=<redacted>"))
         assertFalse("handle must report dead after exit", handle.isAlive)
     }

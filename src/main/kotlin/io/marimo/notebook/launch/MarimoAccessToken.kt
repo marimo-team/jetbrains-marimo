@@ -22,9 +22,9 @@ fun authenticatedMarimoUrl(host: String, port: Int, token: String): String =
     "http://$host:$port?access_token=$token"
 
 /**
- * Writes [token] for `--token-password-file`. Each launch gets a new file under the IDE system
- * temp (`FileUtil.createTempFile` adds a random suffix) so two notebooks started in quick
- * succession never collide.
+ * Writes [token] for `--token-password-file`. Each launch gets a new file under the IDE system temp
+ * (`FileUtil.createTempFile` adds a random suffix) so two notebooks started in quick succession
+ * never collide.
  */
 fun writeTokenPasswordFile(token: String): File {
     val file = FileUtil.createTempFile("marimo-token-", ".txt", false)
@@ -40,8 +40,11 @@ fun writeTokenPasswordFile(token: String): File {
 
 internal interface TokenFilePermissionOperations {
     fun setPosixFilePermissions(path: Path, permissions: Set<PosixFilePermission>)
+
     fun setReadable(file: File, readable: Boolean, ownerOnly: Boolean): Boolean
+
     fun setWritable(file: File, writable: Boolean, ownerOnly: Boolean): Boolean
+
     fun setExecutable(file: File, executable: Boolean, ownerOnly: Boolean): Boolean
 }
 
@@ -72,13 +75,14 @@ internal fun restrictTokenFilePermissions(
         )
     } catch (_: UnsupportedOperationException) {
         // Non-POSIX file system; reject the file if owner-only fallback cannot be applied.
-        val applied = listOf(
-            operations.setReadable(file, false, false),
-            operations.setWritable(file, false, false),
-            operations.setExecutable(file, false, false),
-            operations.setReadable(file, true, true),
-            operations.setWritable(file, true, true),
-        )
+        val applied =
+            listOf(
+                operations.setReadable(file, false, false),
+                operations.setWritable(file, false, false),
+                operations.setExecutable(file, false, false),
+                operations.setReadable(file, true, true),
+                operations.setWritable(file, true, true),
+            )
         if (applied.any { !it }) throw IOException("Could not restrict token file permissions")
     }
 }

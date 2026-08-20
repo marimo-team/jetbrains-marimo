@@ -8,8 +8,8 @@ import com.intellij.openapi.util.Key
  * Decides whether a "Pair with marimo" launch reuses an existing terminal tab or opens a new one.
  *
  * Tabs are matched to a notebook by its file path rather than the visible tab title: two notebooks
- * that share a file name must not resolve to each other's session. A matched tab is only reused when
- * its shell is still alive — a tab left behind by an exited session is closed and relaunched.
+ * that share a file name must not resolve to each other's session. A matched tab is only reused
+ * when its shell is still alive — a tab left behind by an exited session is closed and relaunched.
  */
 internal object PairTerminalTabs {
 
