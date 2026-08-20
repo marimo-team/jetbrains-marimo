@@ -1,0 +1,68 @@
+name: Dependency verification
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - ".github/workflows/dependency-verification.yml"
+      - "build.gradle.kts"
+      - "buildSrc/**"
+      - "gradle.properties"
+      - "gradle/**"
+      - "scripts/update_dependency_verification.sh"
+      - "settings.gradle.kts"
+  pull_request:
+    paths:
+      - ".github/workflows/dependency-verification.yml"
+      - "build.gradle.kts"
+      - "buildSrc/**"
+      - "gradle.properties"
+      - "gradle/**"
+      - "scripts/update_dependency_verification.sh"
+      - "settings.gradle.kts"
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+permissions: {}
+
+jobs:
+  metadata:
+    name: Verification metadata
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Maximize build space
+        uses: jlumbroso/free-disk-space@54081f138730dfa15788a46383842cd2f914a1be # v1.3.1
+        with:
+          tool-cache: false
+          large-packages: false
+
+      - name: Fetch sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Setup Java
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: zulu
+          java-version: 21
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6
+        with:
+          cache-read-only: true
+
+      - name: Regenerate verification metadata
+        run: ./scripts/update_dependency_verification.sh
+
+      - name: Check verification metadata
+        run: |
+          if ! git diff --quiet -- gradle/verification-metadata.xml; then
+            git diff -- gradle/verification-metadata.xml
+            echo "::error::Dependency verification metadata is stale. Run ./scripts/update_dependency_verification.sh and commit the result."
+            exit 1
+          fi

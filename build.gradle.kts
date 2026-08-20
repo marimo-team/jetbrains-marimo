@@ -2,6 +2,7 @@ import dev.detekt.gradle.extensions.FailOnSeverity
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
@@ -81,6 +82,12 @@ intellijPlatform {
         }
     }
     pluginVerification {
+        ides {
+            // Fixed targets keep dependency verification reproducible as new IDE releases ship.
+            create(IntelliJPlatformType.PyCharm, "2026.1.3")
+            create(IntelliJPlatformType.PyCharm, "2026.2.1")
+        }
+
         // The verifier runs against a backend IDE image that omits the platform's frontend /
         // split-mode modules. Resolving the bundled Python plugin transitively reaches those, so
         // the

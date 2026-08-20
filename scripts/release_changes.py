@@ -115,11 +115,17 @@ def to_pull_request(item: dict) -> PullRequest:
 
 def merged_pull_requests(limit: int) -> dict[int, PullRequest]:
     raw = run(
-        "gh", "pr", "list",
-        "--base", "main",
-        "--state", "merged",
-        "--limit", str(limit),
-        "--json", "number,title,labels,body",
+        "gh",
+        "pr",
+        "list",
+        "--base",
+        "main",
+        "--state",
+        "merged",
+        "--limit",
+        str(limit),
+        "--json",
+        "number,title,labels,body",
     )
     return {item["number"]: to_pull_request(item) for item in json.loads(raw)}
 

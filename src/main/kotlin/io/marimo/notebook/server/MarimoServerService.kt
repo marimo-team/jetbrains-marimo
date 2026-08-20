@@ -161,7 +161,7 @@ class MarimoServerService(private val project: Project) : Disposable {
                     return launchPlanFailure(session, e)
                 }
 
-            return launchSessionLocked(session, baseRequest, launcher, workDir)
+            return launchSessionLocked(session, baseRequest, launcher)
         }
     }
 
@@ -300,7 +300,6 @@ class MarimoServerService(private val project: Project) : Disposable {
         session: MarimoNotebookSession,
         baseRequest: LaunchRequest,
         launcher: MarimoLauncher,
-        workDir: String,
     ): CompletableFuture<String> {
         var tokenFile: File? = null
         try {
@@ -319,7 +318,7 @@ class MarimoServerService(private val project: Project) : Disposable {
             session.launchContext =
                 MarimoLaunchContext(
                     port = request.port,
-                    workDir = workDir,
+                    workDir = requireNotNull(request.workDir),
                     launcherId = launcher.id,
                     sandbox = request.sandbox,
                     tokenAuthEnabled = tokenAuthEnabled,

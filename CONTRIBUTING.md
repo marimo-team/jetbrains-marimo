@@ -45,6 +45,22 @@ git config blame.ignoreRevsFile .git-blame-ignore-revs
 
 This setting keeps `git blame` focused on changes that affect behavior.
 
+### Pre-commit hooks
+
+Install the Git hook to run fast quality checks before each commit:
+
+```bash
+uvx pre-commit install
+```
+
+Run all hooks before you open a pull request:
+
+```bash
+uvx pre-commit run --all-files
+```
+
+CI runs the required checks and remains the authority for pull requests.
+
 ## Useful Gradle tasks
 
 | Task | What it does |
@@ -54,6 +70,18 @@ This setting keeps `git blame` focused on changes that affect behavior.
 | `./gradlew check` | Run tests plus verification checks |
 | `./gradlew buildPlugin` | Build a distributable `.zip` in `build/distributions/` |
 | `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
+
+### Updating Gradle dependencies
+
+After changing a Gradle dependency or plugin version, regenerate the dependency verification
+metadata:
+
+```bash
+./scripts/update_dependency_verification.sh
+```
+
+Review the new checksums in `gradle/verification-metadata.xml` before you commit them. CI runs the
+same command and fails when a dependency change does not include current verification metadata.
 
 ## Submitting a pull request
 
