@@ -11,6 +11,8 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefApp
 
+const val MARIMO_NOTEBOOK_EDITOR_TYPE = "marimo-notebook"
+
 class MarimoFileEditorProvider : FileEditorProvider, DumbAware {
     override fun accept(project: Project, file: VirtualFile): Boolean =
         JBCefApp.isSupported() && MarimoDetector.looksLikeMarimo(file)
@@ -18,7 +20,7 @@ class MarimoFileEditorProvider : FileEditorProvider, DumbAware {
     override fun createEditor(project: Project, file: VirtualFile): FileEditor =
         MarimoNotebookEditor(project, file)
 
-    override fun getEditorTypeId(): String = "marimo-notebook"
+    override fun getEditorTypeId(): String = MARIMO_NOTEBOOK_EDITOR_TYPE
 
     override fun getPolicy(): FileEditorPolicy = FileEditorPolicy.HIDE_DEFAULT_EDITOR
 }

@@ -22,6 +22,8 @@ data class MarimoLaunchContext(
     val workDir: String,
     val launcherId: String,
     val sandbox: Boolean,
+    /** True when this launched server requires an access token. */
+    val tokenAuthEnabled: Boolean,
 )
 
 /**
