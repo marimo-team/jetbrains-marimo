@@ -81,19 +81,27 @@ class MarimoServerService(private val project: Project) : Disposable {
      * This prevents a TTL race where view creation and attach target different entries.
      */
     fun attachView(file: VirtualFile): Pair<String, MarimoNotebookView> {
-        val session = sessionFor(file)
-        val view = synchronized(session) {
-            val existing = session.view
-            val resolved = existing ?: MarimoNotebookView(project, file).also {
-                session.view = it
-                Disposer.register(session, it)
+        while (true) {
+            val session = sessionFor(file)
+            val attachment = synchronized(session) {
+                if (sessions[file.url] !== session) {
+                    null
+                } else {
+                    val existing = session.view
+                    val resolved = existing ?: MarimoNotebookView(project, file).also {
+                        session.view = it
+                        Disposer.register(session, it)
+                    }
+                    session.attachedTabs++
+                    cancelTtlLocked(session)
+                    session.fileUrl to resolved
+                }
             }
-            session.attachedTabs++
-            cancelTtlLocked(session)
-            resolved
+            if (attachment != null) {
+                notifySessionsChanged()
+                return attachment
+            }
         }
-        notifySessionsChanged()
-        return session.fileUrl to view
     }
 
     /** The server lifecycle retained for this notebook across editor reopenings. Creates a session. */
@@ -136,7 +144,8 @@ class MarimoServerService(private val project: Project) : Disposable {
 
             var tokenFile: File? = null
             try {
-                val token = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+                val tokenAuthEnabled = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+                val token = tokenAuthEnabled
                     .takeIf { it }
                     ?.let { generateAccessToken() }
                 tokenFile = token?.let(tokenPasswordFileWriter)
@@ -150,6 +159,7 @@ class MarimoServerService(private val project: Project) : Disposable {
                     workDir = workDir,
                     launcherId = launcher.id,
                     sandbox = request.sandbox,
+                    tokenAuthEnabled = tokenAuthEnabled,
                 )
                 Disposer.register(session.lifecycle, handle)
                 session.lifecycle.attach(handle)

@@ -4,7 +4,9 @@ package io.marimo.notebook.launch
 
 import com.intellij.openapi.util.io.FileUtil
 import java.io.File
+import java.io.IOException
 import java.nio.file.Files
+import java.nio.file.Path
 import java.nio.file.attribute.PosixFilePermission
 import java.security.SecureRandom
 import java.util.Base64
@@ -36,19 +38,47 @@ fun writeTokenPasswordFile(token: String): File {
     }
 }
 
-private fun restrictTokenFilePermissions(file: File) {
+internal interface TokenFilePermissionOperations {
+    fun setPosixFilePermissions(path: Path, permissions: Set<PosixFilePermission>)
+    fun setReadable(file: File, readable: Boolean, ownerOnly: Boolean): Boolean
+    fun setWritable(file: File, writable: Boolean, ownerOnly: Boolean): Boolean
+    fun setExecutable(file: File, executable: Boolean, ownerOnly: Boolean): Boolean
+}
+
+private object DefaultTokenFilePermissionOperations : TokenFilePermissionOperations {
+    override fun setPosixFilePermissions(path: Path, permissions: Set<PosixFilePermission>) {
+        Files.setPosixFilePermissions(path, permissions)
+    }
+
+    override fun setReadable(file: File, readable: Boolean, ownerOnly: Boolean): Boolean =
+        file.setReadable(readable, ownerOnly)
+
+    override fun setWritable(file: File, writable: Boolean, ownerOnly: Boolean): Boolean =
+        file.setWritable(writable, ownerOnly)
+
+    override fun setExecutable(file: File, executable: Boolean, ownerOnly: Boolean): Boolean =
+        file.setExecutable(executable, ownerOnly)
+}
+
+internal fun restrictTokenFilePermissions(
+    file: File,
+    operations: TokenFilePermissionOperations = DefaultTokenFilePermissionOperations,
+) {
     val path = file.toPath()
     try {
-        Files.setPosixFilePermissions(
+        operations.setPosixFilePermissions(
             path,
             setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
         )
     } catch (_: UnsupportedOperationException) {
-        // Non-POSIX file system; use best-effort owner-only fallback.
-        file.setReadable(false, false)
-        file.setWritable(false, false)
-        file.setExecutable(false, false)
-        file.setReadable(true, true)
-        file.setWritable(true, true)
+        // Non-POSIX file system; reject the file if owner-only fallback cannot be applied.
+        val applied = listOf(
+            operations.setReadable(file, false, false),
+            operations.setWritable(file, false, false),
+            operations.setExecutable(file, false, false),
+            operations.setReadable(file, true, true),
+            operations.setWritable(file, true, true),
+        )
+        if (applied.any { !it }) throw IOException("Could not restrict token file permissions")
     }
 }

@@ -6,7 +6,6 @@ import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.server.MarimoSessionSnapshot
 import io.marimo.notebook.server.MarimoSessionState
-import io.marimo.notebook.server.MarimoSessionSettings
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.application.ApplicationManager
@@ -124,7 +123,7 @@ private class SessionCard(
         val launch = snapshot.launch
         val url = launch?.let { "http://127.0.0.1:${it.port}/" } ?: "Not started yet"
         val canControl = snapshot.state.isLive
-        val copyUrlAvailable = launch != null && !MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+        val copyUrlAvailable = launch != null && !launch.tokenAuthEnabled
 
         border = BorderFactory.createCompoundBorder(
             BorderFactory.createEmptyBorder(6, 8, 6, 8),

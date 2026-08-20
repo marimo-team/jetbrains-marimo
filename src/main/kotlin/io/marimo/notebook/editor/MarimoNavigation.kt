@@ -36,7 +36,10 @@ internal data class NavigationSnapshot(
     val generation: Long,
     val expectedOrigin: String?,
     val expectedUrl: String? = null,
-)
+) {
+    /** Keeps the navigation generation while replacing its current main-frame URL. */
+    fun withExpectedUrl(url: String): NavigationSnapshot = copy(expectedUrl = url)
+}
 
 /** The generation for a current load error, or null when the callback belongs to another attempt. */
 internal fun loadErrorGeneration(failedUrl: String?, snapshot: NavigationSnapshot): Long? {

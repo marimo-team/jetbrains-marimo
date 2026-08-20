@@ -69,6 +69,15 @@ class MarimoNavigationTest {
         )
     }
 
+    @Test fun rethemedNavigationAcceptsItsLoadErrorAndRejectsThePriorTheme() {
+        val light = "http://127.0.0.1:2718/?theme=light"
+        val dark = "http://127.0.0.1:2718/?theme=dark"
+        val reloaded = NavigationSnapshot(7, "http://127.0.0.1:2718", light).withExpectedUrl(dark)
+
+        assertEquals(7L, loadErrorGeneration(dark, reloaded))
+        assertEquals(null, loadErrorGeneration(light, reloaded))
+    }
+
     @Test fun stoppingAndStoppedLifecyclesCannotRenderNotebookContent() {
         assertTrue(canRenderNotebookFor(MarimoNotebookState.Running("http://127.0.0.1:2222")))
         assertFalse(canRenderNotebookFor(MarimoNotebookState.Stopping("http://127.0.0.1:2222")))

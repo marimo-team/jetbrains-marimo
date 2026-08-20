@@ -17,7 +17,13 @@ class MarimoSessionActionsTest {
         state = state,
         attachedTabs = 0,
         expiresAtMillis = null,
-        launch = MarimoLaunchContext(port = 2718, workDir = "/proj", launcherId = "sdk", sandbox = false),
+        launch = MarimoLaunchContext(
+            port = 2718,
+            workDir = "/proj",
+            launcherId = "sdk",
+            sandbox = false,
+            tokenAuthEnabled = false,
+        ),
         sandbox = false,
     )
 

@@ -136,7 +136,7 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
         assertEquals(supplied, readyUrl)
         assertTrue(
             "completed after ${elapsedMs}ms; it must not wait for the delayed banner (~750ms)",
-            elapsedMs < 5_000,
+            elapsedMs < 600,
         )
     }
 

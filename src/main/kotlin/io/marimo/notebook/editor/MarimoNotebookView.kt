@@ -138,7 +138,9 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         val theme = MarimoThemedUrl.ideTheme()
         if (theme == appliedTheme) return
         appliedTheme = theme
-        browser.loadURL(MarimoThemedUrl.withTheme(url, theme))
+        val themedUrl = MarimoThemedUrl.withTheme(url, theme)
+        navigationSnapshot = navigationSnapshot.withExpectedUrl(themedUrl)
+        browser.loadURL(themedUrl)
     }
 
     /**

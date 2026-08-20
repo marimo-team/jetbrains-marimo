@@ -144,14 +144,16 @@ class MarimoNotebookLifecycle(
      * it lingers is safe.
      */
     private fun onStoppingTimedOut(gen: Long) {
-        val update = synchronized(lock) {
+        val timedOut = synchronized(lock) {
             if (gen != generation || state !is MarimoNotebookState.Stopping) return
-            handle?.let { Disposer.dispose(it) }
+            val handleToDispose = handle
             handle = null
             val next = MarimoNotebookState.Stopped(StopCause.Deliberate)
             state = next
-            LifecycleStateUpdate(gen, next)
+            handleToDispose to LifecycleStateUpdate(gen, next)
         }
+        val (handleToDispose, update) = timedOut
+        handleToDispose?.let { Disposer.dispose(it) }
         listeners.forEach { it(update) }
     }
 

@@ -127,6 +127,22 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         assertEquals(sdk.handles.single().authUrl, url.get())
     }
 
+    fun testLaunchContextRetainsTheTokenAuthModeFromItsLaunch() {
+        val settings = MarimoSessionSettings.getInstance()
+        val before = settings.state.tokenAuthEnabled
+        try {
+            settings.state.tokenAuthEnabled = true
+            val file = notebook("token_auth_snapshot_nb.py")
+            manager.urlFor(file)
+
+            settings.state.tokenAuthEnabled = false
+
+            assertTrue(manager.statusFor(file)!!.launch!!.tokenAuthEnabled)
+        } finally {
+            settings.state.tokenAuthEnabled = before
+        }
+    }
+
     fun testSnapshotsNeverCarryTheToken() {
         val file = notebook("token_nb.py")
         manager.urlFor(file)
