@@ -9,6 +9,7 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessListener
 import com.intellij.openapi.util.Key
 import com.intellij.util.io.HttpRequests
+import java.io.File
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -23,16 +24,20 @@ fun expectedMarimoUrl(host: String, port: Int): String = "http://$host:$port"
 internal fun indicatesUnsupportedWatch(output: String): Boolean =
     output.contains("No such option") && output.contains("watch")
 
+/** Redacts complete process output before it is retained in a user-visible diagnostic. */
+internal fun diagnosticOutputTail(chunks: Iterable<String>): String =
+    redactAccessTokens(chunks.joinToString(separator = "")).trim().takeLast(500)
+
 /**
- * Spawns a marimo process and completes [MarimoServerHandle.awaitReady] once the server accepts
- * connections. Readiness is driven solely by an HTTP poll: marimo prints its URL banner tens of
- * milliseconds before the socket binds, so completing on the banner would let JCEF navigate into the
- * gap and hit ERR_CONNECTION_REFUSED. Stdout is still collected for process-exit diagnostics. Shared
- * by every process-based launcher (uv, sdk).
+ * Spawns a marimo process and completes [MarimoServerHandle.awaitReady] once BOTH startup signals
+ * arrive: the socket answers HTTP (any status), and the URL JCEF must load is known. When
+ * [authenticatedUrl] is non-null the plugin supplied it (token auth on); when null readiness
+ * delivers the plain [expectedMarimoUrl]. Retained stdout is redacted before it is used for
+ * diagnostics. Banner parsing is not used for readiness.
  *
  * If [watchFallbackCmd] is supplied and the first attempt exits reporting an unsupported `--watch`
- * option, marimo is relaunched once with that command so interpreters carrying an older marimo still
- * open (losing only external-edit watching).
+ * option, marimo is relaunched once with that command. The fallback attempt completes the same
+ * futures and reuses the same [authenticatedUrl].
  */
 fun startMarimoServer(
     cmd: GeneralCommandLine,
@@ -40,10 +45,19 @@ fun startMarimoServer(
     port: Int,
     readinessTimeoutSeconds: Long = 30,
     watchFallbackCmd: (() -> GeneralCommandLine)? = null,
+    authenticatedUrl: String? = null,
+    tokenPasswordFile: String? = null,
 ): MarimoServerHandle {
-    val url = expectedMarimoUrl(host, port)
-    val ready = CompletableFuture<String>()
-    val handle = ProcessMarimoServerHandle(ready)
+    val expectedUrl = expectedMarimoUrl(host, port)
+    val urlFuture = CompletableFuture<String>()
+    if (authenticatedUrl != null) {
+        urlFuture.complete(authenticatedUrl)
+    } else {
+        urlFuture.complete(expectedUrl)
+    }
+    val httpUp = CompletableFuture<Void?>()
+    val ready = urlFuture.thenCombine(httpUp) { url, _ -> url }
+    val handle = ProcessMarimoServerHandle(ready, tokenPasswordFile?.let(::File))
 
     fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
         val handler = OSProcessHandler(command)
@@ -60,9 +74,10 @@ fun startMarimoServer(
             // surface the process output so the error panel explains why.
             override fun processTerminated(event: ProcessEvent) {
                 val full = synchronized(output) { output.toString() }
+                val diagnosticTail = diagnosticOutputTail(listOf(full))
 
                 if (ready.isDone) {
-                    handle.notifyTerminated(event.exitCode, full.trim().takeLast(500))
+                    handle.notifyTerminated(event.exitCode, diagnosticTail)
                     return
                 }
 
@@ -70,36 +85,47 @@ fun startMarimoServer(
                     runAttempt(fallback(), fallback = null)
                     return
                 }
-                ready.completeExceptionally(
-                    IOException("marimo exited (code ${event.exitCode}) before serving $url\n${full.trim().takeLast(500)}"),
+                httpUp.completeExceptionally(
+                    IOException("marimo exited (code ${event.exitCode}) before serving $expectedUrl\n$diagnosticTail"),
                 )
+                handle.notifyTerminated(event.exitCode, diagnosticTail)
             }
         })
         handler.startNotify()
     }
 
-    runAttempt(cmd, watchFallbackCmd)
-    pollUntilUp(url, ready, readinessTimeoutSeconds)
+    try {
+        runAttempt(cmd, watchFallbackCmd)
+    } catch (e: Exception) {
+        handle.dispose()
+        throw e
+    }
+    pollUntilUp(expectedUrl, httpUp, readinessTimeoutSeconds)
     return handle
 }
 
-private fun pollUntilUp(url: String, ready: CompletableFuture<String>, timeoutSeconds: Long) {
+private fun pollUntilUp(url: String, httpUp: CompletableFuture<Void?>, timeoutSeconds: Long) {
     Thread {
         val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-        while (!ready.isDone && System.nanoTime() < deadline) {
+        while (!httpUp.isDone && System.nanoTime() < deadline) {
             try {
                 HttpRequests.head(url).tryConnect()
-                ready.complete(url); return@Thread
+                httpUp.complete(null)
+                return@Thread
+            } catch (_: HttpRequests.HttpStatusException) {
+                httpUp.complete(null)
+                return@Thread
             } catch (_: IOException) {
                 Thread.sleep(200)
             }
         }
-        if (!ready.isDone) ready.completeExceptionally(IOException("marimo server did not start: $url"))
+        if (!httpUp.isDone) httpUp.completeExceptionally(IOException("marimo server did not start: $url"))
     }.apply { isDaemon = true }.start()
 }
 
 private class ProcessMarimoServerHandle(
     private val ready: CompletableFuture<String>,
+    private val tokenPasswordFile: File?,
 ) : MarimoServerHandle {
     @Volatile private lateinit var handler: OSProcessHandler
     private val terminationLock = Any()
@@ -128,7 +154,11 @@ private class ProcessMarimoServerHandle(
             termination = Termination(exitCode, outputTail)
             terminationListener
         }
-        listener?.invoke(exitCode, outputTail)
+        try {
+            listener?.invoke(exitCode, outputTail)
+        } finally {
+            deleteTokenPasswordFile()
+        }
     }
 
     /** Points the handle at the live process; called again when a fallback attempt is spawned. */
@@ -137,6 +167,14 @@ private class ProcessMarimoServerHandle(
     }
 
     override fun dispose() {
-        handler.destroyProcess()
+        try {
+            if (::handler.isInitialized) handler.destroyProcess()
+        } finally {
+            deleteTokenPasswordFile()
+        }
+    }
+
+    private fun deleteTokenPasswordFile() {
+        tokenPasswordFile?.delete()
     }
 }

@@ -65,7 +65,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         override fun getData(dataId: String): Any? =
             if (CommonDataKeys.VIRTUAL_FILE.`is`(dataId)) file else null
     }
-    private val browser = if (JBCefApp.isSupported()) JBCefBrowser() else null
+    private val browser =
+        if (JBCefApp.isSupported() && !ApplicationManager.getApplication().isUnitTestMode) JBCefBrowser() else null
     private val server = project.service<MarimoServerService>()
     private val lifecycle = server.lifecycleFor(file)
 
@@ -137,7 +138,9 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         val theme = MarimoThemedUrl.ideTheme()
         if (theme == appliedTheme) return
         appliedTheme = theme
-        browser.loadURL(MarimoThemedUrl.withTheme(url, theme))
+        val themedUrl = MarimoThemedUrl.withTheme(url, theme)
+        navigationSnapshot = navigationSnapshot.withExpectedUrl(themedUrl)
+        browser.loadURL(themedUrl)
     }
 
     /**
@@ -257,8 +260,9 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                 followsIdeTheme = MarimoThemedUrl.followsIdeTheme(resolvedTheme)
                 appliedTheme = MarimoThemedUrl.ideTheme()
                 loadedUrl = url
-                navigationSnapshot = NavigationSnapshot(navigation, serverOrigin(url))
-                browser.loadURL(MarimoThemedUrl.of(url, resolvedTheme, appliedTheme!!))
+                val themedUrl = MarimoThemedUrl.of(url, resolvedTheme, appliedTheme!!)
+                navigationSnapshot = NavigationSnapshot(navigation, serverOrigin(url), themedUrl)
+                browser.loadURL(themedUrl)
                 showContent(browser.component)
                 MarimoConsentPrompt.maybePrompt(project)
                 val launcher = if (server.isSandbox(file)) "uv-sandbox" else "sdk"
@@ -282,6 +286,9 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             }
             is MarimoNotebookState.Stopped -> onEdt(navigation) {
                 if (!lifecycle.isCurrent(update)) return@onEdt
+                loadedUrl = null
+                appliedTheme = null
+                followsIdeTheme = false
                 val cause = state.cause
                 if (cause is StopCause.Unexpected) {
                     thisLogger().warn(
@@ -405,6 +412,5 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     override fun dispose() {
         disposed = true
         browser?.dispose()
-        server.release(file)
     }
 }

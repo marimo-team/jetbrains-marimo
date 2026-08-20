@@ -39,4 +39,11 @@ class MarimoThemedUrlTest {
             MarimoThemedUrl.of("http://127.0.0.1:2718/?file=%2Ftmp%2Fnb.py", "system", "dark"),
         )
     }
+
+    @Test fun withThemeAppendsToAnExistingQuery() {
+        assertEquals(
+            "http://127.0.0.1:2718?access_token=abc&theme=dark",
+            MarimoThemedUrl.withTheme("http://127.0.0.1:2718?access_token=abc", "dark"),
+        )
+    }
 }

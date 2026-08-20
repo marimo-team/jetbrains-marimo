@@ -41,8 +41,12 @@ class MarimoNavigationTest {
     }
 
     @Test fun loadErrorKeepsTheSnapshotGenerationItWasCapturedWith() {
-        val first = NavigationSnapshot(1, "http://127.0.0.1:1111")
-        assertEquals(1L, loadErrorGeneration("http://127.0.0.1:1111/", first))
+        val first = NavigationSnapshot(
+            generation = 1,
+            expectedOrigin = "http://127.0.0.1:1111",
+            expectedUrl = "http://127.0.0.1:1111/?file=a",
+        )
+        assertEquals(1L, loadErrorGeneration("http://127.0.0.1:1111/?file=a", first))
 
         val retry = NavigationSnapshot(2, null)
         assertEquals(null, loadErrorGeneration("http://127.0.0.1:1111/", retry))
@@ -51,6 +55,27 @@ class MarimoNavigationTest {
     @Test fun loadErrorFromTheCurrentSnapshotUsesItsGeneration() {
         val current = NavigationSnapshot(2, "http://127.0.0.1:2222")
         assertEquals(2L, loadErrorGeneration("http://127.0.0.1:2222/?file=x", current))
+    }
+
+    @Test fun loadErrorFromPriorNavigationOnSameOriginIsStaleWhenUrlDiffers() {
+        val current = NavigationSnapshot(
+            generation = 7,
+            expectedOrigin = "http://127.0.0.1:2718",
+            expectedUrl = "http://127.0.0.1:2718/?access_token=new",
+        )
+        assertEquals(
+            null,
+            loadErrorGeneration("http://127.0.0.1:2718/?access_token=old", current),
+        )
+    }
+
+    @Test fun rethemedNavigationAcceptsItsLoadErrorAndRejectsThePriorTheme() {
+        val light = "http://127.0.0.1:2718/?theme=light"
+        val dark = "http://127.0.0.1:2718/?theme=dark"
+        val reloaded = NavigationSnapshot(7, "http://127.0.0.1:2718", light).withExpectedUrl(dark)
+
+        assertEquals(7L, loadErrorGeneration(dark, reloaded))
+        assertEquals(null, loadErrorGeneration(light, reloaded))
     }
 
     @Test fun stoppingAndStoppedLifecyclesCannotRenderNotebookContent() {
