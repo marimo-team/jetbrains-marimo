@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.editor
 
+import io.marimo.notebook.MarimoLocalhost
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLDecoder
@@ -57,5 +58,5 @@ private fun isInternalTarget(url: String): Boolean {
         } catch (e: URISyntaxException) {
             return false
         } ?: return false
-    return host.equals("localhost", ignoreCase = true) || host == "127.0.0.1" || host == "::1"
+    return MarimoLocalhost.isLoopbackHost(host)
 }

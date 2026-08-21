@@ -71,6 +71,12 @@ class MarimoPopupTest {
     }
 
     @Test
+    fun classifiesIpv6LoopbackFileDeepLinkAsNotebook() {
+        val popup = classifyMarimoPopup("http://[::1]:5123/?file=%2Ftmp%2Fa.py")
+        assertEquals(MarimoPopup.Notebook("/tmp/a.py"), popup)
+    }
+
+    @Test
     fun bareFileParamDoesNotShadowFileWithValue() {
         val popup = classifyMarimoPopup("http://127.0.0.1:5123/?file&file=%2Ftmp%2Fa.py")
         assertEquals(MarimoPopup.Notebook("/tmp/a.py"), popup)

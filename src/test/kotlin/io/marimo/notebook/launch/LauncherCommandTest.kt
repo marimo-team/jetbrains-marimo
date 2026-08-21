@@ -3,6 +3,7 @@
 package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import io.marimo.notebook.MarimoLocalhost
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -168,6 +169,6 @@ class UvLauncherSandboxCommandTest {
 class ExpectedMarimoUrlTest {
     @Test
     fun expectedUrlMatchesHostAndPort() {
-        assertEquals("http://127.0.0.1:2718", expectedMarimoUrl("127.0.0.1", 2718))
+        assertEquals("http://127.0.0.1:2718", MarimoLocalhost.origin("127.0.0.1", 2718))
     }
 }

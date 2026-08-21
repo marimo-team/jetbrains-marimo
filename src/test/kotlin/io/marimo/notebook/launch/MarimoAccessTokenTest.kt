@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.launch
 
+import io.marimo.notebook.MarimoLocalhost
 import java.io.File
 import java.io.IOException
 import java.nio.file.Path
@@ -18,7 +19,7 @@ class MarimoAccessTokenTest {
     fun authenticatedUrlCarriesTheToken() {
         assertEquals(
             "http://127.0.0.1:2718?access_token=abc",
-            authenticatedMarimoUrl("127.0.0.1", 2718, "abc"),
+            MarimoLocalhost.authenticatedUrl("127.0.0.1", 2718, "abc"),
         )
     }
 

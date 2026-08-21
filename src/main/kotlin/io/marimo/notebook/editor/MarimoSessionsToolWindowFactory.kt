@@ -18,6 +18,7 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import io.marimo.notebook.MarimoIcons
+import io.marimo.notebook.MarimoLocalhost
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.server.MarimoSessionSnapshot
 import io.marimo.notebook.server.MarimoSessionState
@@ -116,7 +117,7 @@ private class SessionCard(
 ) : JPanel(BorderLayout()) {
     init {
         val launch = snapshot.launch
-        val url = launch?.let { "http://127.0.0.1:${it.port}/" } ?: "Not started yet"
+        val url = launch?.let { MarimoLocalhost.rootUrl(it.port) } ?: "Not started yet"
         val canControl = snapshot.state.isLive
         val copyUrlAvailable = launch != null && !launch.tokenAuthEnabled
 
@@ -160,7 +161,7 @@ private class SessionCard(
                         addActionListener {
                             launch?.port?.let {
                                 CopyPasteManager.getInstance()
-                                    .setContents(StringSelection("http://127.0.0.1:$it/"))
+                                    .setContents(StringSelection(MarimoLocalhost.rootUrl(it)))
                             }
                         }
                     }

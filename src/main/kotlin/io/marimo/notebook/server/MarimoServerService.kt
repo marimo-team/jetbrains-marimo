@@ -12,6 +12,7 @@ import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
+import io.marimo.notebook.MarimoLocalhost
 import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
@@ -24,7 +25,6 @@ import io.marimo.notebook.launch.NotebookWorkDir
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.UvUnavailableException
-import io.marimo.notebook.launch.authenticatedMarimoUrl
 import io.marimo.notebook.launch.generateAccessToken
 import io.marimo.notebook.launch.writeTokenPasswordFile
 import io.marimo.notebook.telemetry.MarimoTelemetry
@@ -129,7 +129,7 @@ class MarimoServerService(private val project: Project) : Disposable {
             }
 
             val port = NetUtils.findAvailableSocketPort()
-            val host = "127.0.0.1"
+            val host = MarimoLocalhost.HOST
             val workDir = NotebookWorkDir.resolve(project, file)
             val baseRequest =
                 LaunchRequest(
@@ -311,7 +311,7 @@ class MarimoServerService(private val project: Project) : Disposable {
                     tokenPasswordFile = tokenFile?.absolutePath,
                     authenticatedUrl =
                         token?.let {
-                            authenticatedMarimoUrl(baseRequest.host, baseRequest.port, it)
+                            MarimoLocalhost.authenticatedUrl(baseRequest.host, baseRequest.port, it)
                         },
                 )
             val handle = launcher.launch(request)
