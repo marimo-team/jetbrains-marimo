@@ -15,6 +15,13 @@ identifier** (a UUID) stored locally in `marimo-telemetry.xml`. It is used to gr
 same installation and is not derived from your name, email, account, machine name, or the IDE's own
 installation id.
 
+The plugin does not create or store this identifier before the first opt-in. If you later turn
+telemetry off, the identifier remains stored locally so it can be reused if you opt in again, but no
+telemetry is sent while the setting is off.
+
+The plugin does not collect or send your machine's hostname. Automatic hostname attachment is
+disabled for crash reports, and the hostname field is cleared before a report can be sent.
+
 ## Usage events (PostHog)
 
 Sent to PostHog (US region, `https://us.i.posthog.com`). Usage events are **fully path-free** — they

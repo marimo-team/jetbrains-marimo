@@ -80,7 +80,8 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             "retained output must never carry the token: '$tail'",
             tail.contains("SECRETTOKEN"),
         )
-        assertTrue(tail.contains("access_token=<redacted>"))
+        assertTrue(tail.contains("<redacted-token>"))
+        assertFalse(tail.contains("access_token"))
         assertFalse("handle must report dead after exit", handle.isAlive)
     }
 

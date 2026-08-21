@@ -14,6 +14,7 @@ import com.posthog.server.PostHog
 import com.posthog.server.PostHogConfig
 import com.posthog.server.PostHogInterface
 import io.sentry.Sentry
+import io.sentry.SentryOptions
 import io.sentry.protocol.User
 import java.util.Properties
 import java.util.UUID
@@ -51,6 +52,39 @@ interface SentrySink {
     fun close()
 }
 
+internal fun createSentryOptions(
+    dsn: String,
+    release: String,
+    environment: String,
+): SentryOptions = SentryOptions().also { configureSentryOptions(it, dsn, release, environment) }
+
+private fun configureSentryOptions(
+    options: SentryOptions,
+    dsn: String,
+    release: String,
+    environment: String,
+) {
+    options.apply {
+        this.dsn = dsn
+        this.release = release
+        this.environment = environment
+        isAttachServerName = false
+        isSendDefaultPii = false
+        isEnableUncaughtExceptionHandler = false
+        // Sessions are driven from the consent lifecycle (allow/revoke/dispose), not the SDK's
+        // process hooks, so a session maps to one consented run rather than JVM start.
+        isEnableAutoSessionTracking = false
+        setBeforeSend { event, _ ->
+            if (SentryOriginFilter.isMarimoOrigin(event.throwable)) {
+                event.serverName = null
+                event
+            } else {
+                null
+            }
+        }
+    }
+}
+
 @Service(Service.Level.APP)
 @State(name = "MarimoTelemetry", storages = [Storage("marimo-telemetry.xml")])
 class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>, Disposable {
@@ -65,31 +99,30 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
 
     @Volatile private var sentrySessionActive = false
 
-    override fun getState(): PersistedState {
-        if (persisted.anonymousId.isBlank()) persisted.anonymousId = UUID.randomUUID().toString()
-        return persisted
-    }
+    override fun getState(): PersistedState = persisted
 
     override fun loadState(state: PersistedState) {
         persisted = state
     }
 
-    fun anonymousId(): String = state.anonymousId
+    fun anonymousId(): String = persisted.anonymousId
 
     val consent: Consent
         get() = persisted.consent
 
     /** Grants consent, brings up both transports, and records plugin activation. */
     fun allow() {
+        MarimoConsentPrompt.expire()
         persisted.consent = Consent.ALLOWED
-        if (sink == null) sink = buildSink()
-        startSentrySession()
+        ensureStarted()
         capture(TelemetryEvent.PluginActivated(ideName(), ideVersion()))
     }
 
-    /** Declines consent from the unset state; no transport is ever constructed. */
+    /**
+     * Declines consent without constructing a transport and closes any transport already active.
+     */
     fun deny() {
-        persisted.consent = Consent.DENIED
+        transitionToDenied()
     }
 
     /**
@@ -97,12 +130,15 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
      * transports down.
      */
     fun revoke() {
-        persisted.consent = Consent.DENIED
-        sink?.close()
-        sink = null
-        endSentrySession()
-        sentrySink?.close()
-        sentrySink = null
+        transitionToDenied()
+    }
+
+    private fun transitionToDenied() {
+        MarimoConsentPrompt.expire()
+        synchronized(this) {
+            persisted.consent = Consent.DENIED
+            closeTransports()
+        }
     }
 
     /**
@@ -111,7 +147,8 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
      */
     fun capture(event: TelemetryEvent) {
         if (consent != Consent.ALLOWED) return
-        val target = sink ?: buildSink().also { sink = it }
+        ensureStarted()
+        val target = sink ?: return
         val enriched =
             event.properties +
                 mapOf(
@@ -128,21 +165,32 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
      */
     fun captureException(throwable: Throwable) {
         if (consent != Consent.ALLOWED) return
-        val target = startSentrySession() ?: return
+        val target = ensureStarted() ?: return
         target.captureException(throwable)
     }
 
     /**
-     * Builds the Sentry transport on first use and opens exactly one release-health session for the
-     * consented run. Returns the live sink, or null when Sentry is disabled (placeholder DSN).
+     * Builds both transports on first use and opens exactly one release-health session for the
+     * consented run. Returns the live Sentry sink, or null when Sentry is disabled (placeholder
+     * DSN).
      */
-    private fun startSentrySession(): SentrySink? {
+    @Synchronized
+    private fun ensureStarted(): SentrySink? {
+        if (consent != Consent.ALLOWED) return null
+        ensureAnonymousId()
+        if (sink == null) sink = buildSink()
         val target = sentrySink ?: buildSentrySink()?.also { sentrySink = it } ?: return null
         if (!sentrySessionActive) {
             target.startSession()
             sentrySessionActive = true
         }
         return target
+    }
+
+    private fun ensureAnonymousId() {
+        if (persisted.anonymousId.isBlank()) {
+            persisted.anonymousId = UUID.randomUUID().toString()
+        }
     }
 
     private fun endSentrySession() {
@@ -157,11 +205,19 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
      * intact.
      */
     override fun dispose() {
-        endSentrySession()
-        sink?.close()
+        closeTransports()
+    }
+
+    @Synchronized
+    private fun closeTransports() {
+        val postHog = sink
         sink = null
-        sentrySink?.close()
+        postHog?.close()
+
+        endSentrySession()
+        val sentry = sentrySink
         sentrySink = null
+        sentry?.close()
     }
 
     private fun buildSink(): PostHogSink = RealPostHogSink()
@@ -218,23 +274,18 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     private inner class RealSentrySink : SentrySink {
         init {
             Sentry.init { options ->
-                options.dsn = SENTRY_DSN
-                options.release = "jetbrains-marimo@${pluginVersion()}"
-                options.environment = environment()
-                options.isEnableUncaughtExceptionHandler = false
-                // Sessions are driven from the consent lifecycle (allow/revoke/dispose), not the
-                // SDK's process hooks, so a session maps to one consented run rather than JVM
-                // start.
-                options.isEnableAutoSessionTracking = false
-                options.setBeforeSend { event, _ ->
-                    if (SentryOriginFilter.isMarimoOrigin(event.throwable)) event else null
-                }
+                configureSentryOptions(
+                    options,
+                    dsn = SENTRY_DSN,
+                    release = "$SENTRY_RELEASE_PREFIX@${pluginVersion()}",
+                    environment = environment(),
+                )
             }
             Sentry.configureScope { scope ->
                 scope.setTag("ide_name", ideName())
                 scope.setTag("ide_version", ideVersion())
                 scope.setTag("plugin_version", pluginVersion())
-                scope.setUser(User().apply { id = anonymousId() })
+                scope.user = User().apply { id = anonymousId() }
             }
         }
 
@@ -256,6 +307,8 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     }
 
     companion object {
+        private const val SENTRY_RELEASE_PREFIX = "jetbrains-marimo"
+
         const val POSTHOG_HOST = "https://us.i.posthog.com"
 
         // Public, write-only project key (not a secret) — safe to ship in the plugin.
