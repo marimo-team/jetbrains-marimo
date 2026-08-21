@@ -56,8 +56,7 @@ internal fun createSentryOptions(
     dsn: String,
     release: String,
     environment: String,
-): SentryOptions =
-    SentryOptions().also { configureSentryOptions(it, dsn, release, environment) }
+): SentryOptions = SentryOptions().also { configureSentryOptions(it, dsn, release, environment) }
 
 private fun configureSentryOptions(
     options: SentryOptions,
