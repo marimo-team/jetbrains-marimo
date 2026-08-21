@@ -10,7 +10,6 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import io.marimo.notebook.MarimoIcons
-import io.marimo.notebook.detect.MarimoDetector
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.server.MarimoServerService
 
@@ -28,7 +27,7 @@ class RunInSandboxAction : AnAction(), DumbAware {
 
     override fun update(e: AnActionEvent) {
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
-        if (e.project == null || file == null || !MarimoDetector.looksLikeMarimo(file)) {
+        if (e.project == null || file == null || !EditorAvailability.canEmbedNotebook(file)) {
             e.presentation.isEnabledAndVisible = false
             return
         }
