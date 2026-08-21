@@ -91,9 +91,10 @@ class MarimoInstaller(private val project: Project) {
         private const val PIP_CHECK_TIMEOUT_MS = 5_000
 
         fun pipInstallCommand(pythonPath: String): GeneralCommandLine =
-            GeneralCommandLine(pythonPath, "-m", "pip", "install", MARIMO)
+            GeneralCommandLine(pythonPath).withParameters("-m", "pip", "install", MARIMO)
 
         fun uvInstallCommand(uvPath: String, pythonPath: String): GeneralCommandLine =
-            GeneralCommandLine(uvPath, "pip", "install", "--python", pythonPath, MARIMO)
+            GeneralCommandLine(uvPath)
+                .withParameters("pip", "install", "--python", pythonPath, MARIMO)
     }
 }
