@@ -9,8 +9,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import java.util.concurrent.CompletableFuture
 
 enum class MarimoMode {
-    EDIT,
-    RUN,
+    EDIT
 }
 
 data class LaunchRequest(
