@@ -65,48 +65,38 @@ data class MarimoErrorModel(
             cause: Throwable?,
             presence: MarimoPresence,
             uvAvailable: Boolean,
-        ): MarimoErrorModel =
-            when {
-                cause is UvUnavailableException ->
-                    MarimoErrorModel(
-                        message =
-                            "marimo sandbox mode needs uv. Install uv to run in an isolated environment.",
-                        detail = null,
-                        actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
-                    )
-                cause is NoInterpreterException ->
-                    MarimoErrorModel(
-                        message =
-                            "No Python interpreter is configured. Configure one to run marimo on it.",
-                        detail = null,
-                        actions =
+        ): MarimoErrorModel {
+            val (message, actions) =
+                when {
+                    cause is UvUnavailableException ->
+                        "marimo sandbox mode needs uv. Install uv to run in an isolated environment." to
+                            listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON)
+                    cause is NoInterpreterException ->
+                        "No Python interpreter is configured. Configure one to run marimo on it." to
                             listOf(
                                 MarimoErrorAction.RETRY,
                                 MarimoErrorAction.START_IN_SANDBOX,
                                 MarimoErrorAction.OPEN_AS_PYTHON,
-                            ),
-                        sandboxEnabled = uvAvailable,
-                    )
-                presence is MarimoPresence.Missing ->
-                    MarimoErrorModel(
-                        message = "marimo isn't installed in the project interpreter.",
-                        detail = null,
-                        actions =
+                            )
+                    presence is MarimoPresence.Missing ->
+                        "marimo isn't installed in the project interpreter." to
                             listOf(
                                 MarimoErrorAction.INSTALL,
                                 MarimoErrorAction.RETRY,
                                 MarimoErrorAction.START_IN_SANDBOX,
                                 MarimoErrorAction.OPEN_AS_PYTHON,
-                            ),
-                        sandboxEnabled = uvAvailable,
-                    )
-                else ->
-                    MarimoErrorModel(
-                        message = "marimo couldn't be started.",
-                        detail = null,
-                        actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
-                    )
-            }
+                            )
+                    else ->
+                        "marimo couldn't be started." to
+                            listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON)
+                }
+            return MarimoErrorModel(
+                message = message,
+                detail = null,
+                actions = actions,
+                sandboxEnabled = MarimoErrorAction.START_IN_SANDBOX !in actions || uvAvailable,
+            )
+        }
 
         // The process output tail is deliberately dropped: it is a Python traceback that belongs in
         // the IDE log, and the headline already names the cause. Close is offered only for a
