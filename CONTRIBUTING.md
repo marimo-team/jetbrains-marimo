@@ -63,18 +63,6 @@ CI runs the required checks and remains the authority for pull requests.
 See the [common command reference](AGENTS.md#common-commands) for Gradle and
 repository verification commands.
 
-### Updating Gradle dependencies
-
-After changing a Gradle dependency or plugin version, regenerate the dependency verification
-metadata:
-
-```bash
-./scripts/update_dependency_verification.sh
-```
-
-Review the new checksums in `gradle/verification-metadata.xml` before you commit them. CI runs the
-same command and fails when a dependency change does not include current verification metadata.
-
 ## Submitting a pull request
 
 1. Fork the repo and create a branch for your change.

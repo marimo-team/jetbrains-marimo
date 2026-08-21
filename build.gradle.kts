@@ -83,7 +83,7 @@ intellijPlatform {
     }
     pluginVerification {
         ides {
-            // Fixed targets keep dependency verification reproducible as new IDE releases ship.
+            // Fixed targets keep verifier results reproducible as new IDE releases ship.
             create(IntelliJPlatformType.PyCharm, "2026.1.3")
             create(IntelliJPlatformType.PyCharm, "2026.2.1")
         }
