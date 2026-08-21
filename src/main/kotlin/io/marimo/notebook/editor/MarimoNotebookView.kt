@@ -416,14 +416,11 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
      * Every async continuation lands here. Any of them can be queued while the notebook is open and
      * run after it was closed or after a newer navigation started — both must be dropped.
      */
-    private fun onEdt(navigation: Long, block: () -> Unit) =
+    private fun onEdt(navigation: Long? = null, block: () -> Unit) =
         ApplicationManager.getApplication().invokeLater {
-            if (!disposed && navigation == navigationSnapshot.generation) block()
-        }
-
-    private fun onEdt(block: () -> Unit) =
-        ApplicationManager.getApplication().invokeLater {
-            if (!disposed) block()
+            if (!disposed && (navigation == null || navigation == navigationSnapshot.generation)) {
+                block()
+            }
         }
 
     private fun addToolbar() {
