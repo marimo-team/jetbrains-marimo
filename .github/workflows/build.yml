@@ -70,10 +70,10 @@ jobs:
     permissions:
       contents: read
 
-  # Run tests and upload test reports on failure
+  # Run tests and upload test reports on failure. This job compiles from source and
+  # never reads the build job's artifact, so it runs concurrently with that job.
   test:
     name: Test
-    needs: [build]
     runs-on: ubuntu-latest
     steps:
 
@@ -126,10 +126,11 @@ jobs:
     permissions:
       contents: read
 
-  # Run plugin structure verification along with IntelliJ Plugin Verifier
+  # Run plugin structure verification along with IntelliJ Plugin Verifier. This job
+  # compiles from source and never reads the build job's artifact, so it runs
+  # concurrently with that job.
   verify:
     name: Verify plugin
-    needs: [build]
     runs-on: ubuntu-latest
     steps:
 
