@@ -33,9 +33,9 @@ LABEL_DESTINATIONS: list[tuple[str, str]] = [
     ("enhancement", "Added"),
 ]
 
-# Labels that keep a change out of CHANGELOG.md. Checked before the
-# destinations above, so `internal` wins over any other label.
-HARD_EXCLUDED = ("internal", "dependencies")
+# Any update carrying `dependencies` stays out of CHANGELOG.md. `internal` is
+# handled separately because a user-facing label must win when both are present.
+HARD_EXCLUDED = ("dependencies",)
 
 # Excluded only when no destination label applies, so a documentation change
 # that also matters to users can carry `enhancement` and still be listed.
@@ -168,11 +168,28 @@ def classify(entry: Entry) -> str:
         if label in labels:
             return section
 
+    if "internal" in labels:
+        return "excluded"
+
     for label in SOFT_EXCLUDED:
         if label in labels:
             return "excluded"
 
     return "judgment"
+
+
+def warn_on_internal_conflict(entry: Entry, destination: str) -> None:
+    if entry.pr is None or destination not in SECTION_ORDER:
+        return
+    user_facing = [label for label, _ in LABEL_DESTINATIONS if label in entry.pr.labels]
+    if "internal" not in entry.pr.labels or not user_facing:
+        return
+    labels = ", ".join(user_facing)
+    print(
+        f"Warning: PR #{entry.pr.number} has internal and user-facing labels "
+        f"({labels}); including it under {destination}.",
+        file=sys.stderr,
+    )
 
 
 def format_entry(entry: Entry) -> str:
@@ -192,6 +209,7 @@ def render(tag: str, head: str, entries: list[Entry]) -> str:
 
     for entry in entries:
         destination = classify(entry)
+        warn_on_internal_conflict(entry, destination)
         if destination in sections:
             sections[destination].append(entry)
             if entry.pr and "release-highlight" in entry.pr.labels:

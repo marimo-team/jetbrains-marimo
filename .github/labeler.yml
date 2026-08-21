@@ -6,11 +6,8 @@ documentation:
 
 internal:
   - changed-files:
-      - any-glob-to-any-file:
-          - '.github/**'
-          - 'scripts/**'
-          - '.claude/**'
-          - 'src/test/**'
+      - any-glob-to-all-files:
+          - '{.github/**,scripts/**,.claude/**,src/test/**}'
 
 dependencies:
   - changed-files:
