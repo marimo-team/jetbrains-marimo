@@ -12,8 +12,6 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.ui.jcef.JBCefApp
-import io.marimo.notebook.detect.MarimoDetector
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.server.MarimoSessionSnapshot
 
@@ -40,12 +38,7 @@ abstract class MarimoSessionAction(private val enabled: (MarimoSessionSnapshot?)
     final override fun update(e: AnActionEvent) {
         val project = e.project
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE)
-        if (
-            project == null ||
-                file == null ||
-                !JBCefApp.isSupported() ||
-                !MarimoDetector.looksLikeMarimo(file)
-        ) {
+        if (project == null || file == null || !EditorAvailability.canEmbedNotebook(file)) {
             e.presentation.isEnabledAndVisible = false
             return
         }
