@@ -1,8 +1,8 @@
 # marimo for PyCharm — Development Guidelines
 
 A JetBrains plugin that opens and runs [marimo](https://marimo.io) notebooks inside
-PyCharm (and other IntelliJ Platform IDEs). It launches a local marimo server and
-renders the marimo editor in an embedded JCEF browser tab.
+PyCharm. It launches a local marimo server and renders the marimo editor in an
+embedded JCEF browser tab.
 
 This is open source: the public behavior, the code, and the contributor experience are
 the product. Favor changes that benefit the project and all of its users and
@@ -23,10 +23,13 @@ maintainers, not just the immediate task.
 |---|---|
 | `./gradlew runIde` | Launch a sandboxed IDE with the plugin loaded |
 | `./gradlew test` | Run the test suite |
-| `./gradlew check` | Tests + Spotless license-header check |
-| `./gradlew spotlessApply` | Insert/fix license headers |
+| `./gradlew spotlessCheck` | Check Kotlin formatting and license headers |
+| `./gradlew spotlessApply` | Format Kotlin and insert or fix license headers |
+| `./gradlew detekt` | Run Kotlin static analysis |
+| `./gradlew check` | Run tests, Spotless checks, Detekt, and other Gradle verification tasks |
 | `./gradlew buildPlugin` | Build the distributable zip in `build/distributions/` |
 | `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
+| `uvx pre-commit run --all-files` | Run all repository pre-commit checks |
 
 To test against a local marimo checkout, install it into the sandbox IDE's project interpreter in
 editable mode (`pip install -e /path/to/marimo`) and open a notebook.
@@ -38,8 +41,7 @@ Source lives under `src/main/kotlin/io/marimo/notebook/`:
 - `detect/` — decide whether a `.py` file is a marimo notebook.
 - `editor/` — the custom `FileEditorProvider` that opens notebooks in the marimo editor.
 - `launch/` — launch the marimo server (uv vs. SDK Python), build CLI args, manage the process.
-- `server/` — talk to the running marimo server's HTTP API; kernel/variable introspection.
-- `vars/` — the variables tool window.
+- `server/` — manage notebook sessions, server processes, page configuration, and session settings.
 - `pair/` — "Pair with marimo" action that wires an AI harness onto a notebook.
 
 Plugin wiring is in `src/main/resources/META-INF/plugin.xml`. Tests mirror the package
@@ -57,8 +59,9 @@ grouped by the label each one carries.
   `preview`, `dependencies`, `breaking`, `other`), enforced by CI. Release notes are grouped by it.
   PRs do **not** edit `CHANGELOG.md`.
 - Add tests for behavior changes; keep `./gradlew check` green before opening a PR.
-- The local marimo server is launched on `127.0.0.1` with `--no-token` (auth disabled). Keep
-  it bound to localhost; never expose the port.
+- The local marimo server is bound to `127.0.0.1`. Token authentication is enabled by default with
+  a per-launch password file; `--no-token` is available only as an explicit settings opt-out. Never
+  expose the port.
 - **Releasing:** run `uv run scripts/release_changes.py`, bump `version` in `gradle.properties`,
   write the entries under `## [Unreleased]`, run `./gradlew patchChangelog` (it inserts the versioned
   heading — never hand-write one), merge a `release: <version>` PR, then run the **Release**

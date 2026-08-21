@@ -14,7 +14,7 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 - **Full marimo experience** — reactive execution, `mo.ui` widgets, SQL cells, the variables and dependency panels, and the built-in package manager all work as they do in marimo.
 - **Runs on your interpreter** — the plugin launches marimo on your configured project interpreter, and offers to install it when it's missing.
 - **Start in a sandbox** — run a notebook in an isolated [uv](https://docs.astral.sh/uv/) environment.
-- **Pair with AI** — attach an AI harness to a notebook, and open a pairing prompt in JetBrains AI Chat when AI Assistant is available (with a copy-and-paste fallback).
+- **Pair with AI** — start a supported terminal AI harness for a notebook, or copy its pairing prompt.
 - **Clear recovery when a notebook can't start** — Retry, Install, or Open as Python File instead of a stack trace.
 - **New → marimo Notebook** — a file template and notebook icon for marimo `.py` files, plus "Open as Python File" to view the raw source.
 - **Stays in sync** — edits made to a notebook's source in another editor reload the marimo editor automatically, and the editor theme follows the IDE's light/dark theme.
@@ -22,7 +22,7 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 
 ## Requirements
 
-- PyCharm 2026.1 or later (Community or Professional), or IntelliJ IDEA with the Python plugin
+- PyCharm 2026.1 or later (Community or Professional)
 - A project interpreter with marimo installed — the plugin runs marimo on your configured interpreter,
   and offers to install it for you if it's missing
 - [uv](https://docs.astral.sh/uv/) (optional) — only needed to run a notebook in an isolated sandbox
@@ -51,28 +51,16 @@ If a `.py` file isn't a marimo notebook, it opens in the normal Python editor as
 
 ## Development
 
-This plugin is built on the [IntelliJ Platform Plugin Template][template]. You'll need a JDK 21+ (IntelliJ IDEA's bundled JetBrains Runtime works fine); Gradle is provided via the wrapper.
-
-Run the plugin in a sandboxed IDE:
+You need JDK 21 or later; Gradle is provided through the wrapper. To launch a
+sandboxed PyCharm instance with the plugin loaded, run:
 
 ```bash
 ./gradlew runIde
 ```
 
-This launches a separate PyCharm/IDEA instance with the plugin loaded. Open a marimo `.py` file there to try it out. (In IntelliJ IDEA you can also use the **Run Plugin** run configuration.)
-
-Other useful tasks:
-
-| Task | What it does |
-|---|---|
-| `./gradlew runIde` | Sandboxed IDE with the plugin loaded |
-| `./gradlew test` | Run the test suite |
-| `./gradlew buildPlugin` | Build a distributable `.zip` in `build/distributions/` |
-| `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
-
-The plugin runs marimo on the sandbox IDE's configured project interpreter. To try a local marimo
-checkout, install it into that interpreter in editable mode (`pip install -e /path/to/marimo`) and
-open a notebook.
+See the [common command reference](AGENTS.md#common-commands) and the full
+[contributor guide](CONTRIBUTING.md) for setup, testing, and local marimo
+development.
 
 ## Feedback
 

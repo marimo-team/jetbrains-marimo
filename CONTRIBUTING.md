@@ -1,9 +1,8 @@
 # Contributing to marimo for PyCharm
 
 Thanks for your interest in contributing! This plugin brings the
-[marimo](https://marimo.io) notebook experience to PyCharm and other IntelliJ
-Platform IDEs. Contributions of all kinds — bug reports, feature ideas, docs,
-and code — are welcome.
+[marimo](https://marimo.io) notebook experience to PyCharm. Contributions of
+all kinds — bug reports, feature ideas, docs, and code — are welcome.
 
 By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md).
 
@@ -17,8 +16,8 @@ By participating, you agree to abide by our [Code of Conduct](CODE_OF_CONDUCT.md
 
 ## Development setup
 
-You'll need a JDK 21+ (the JetBrains Runtime bundled with IntelliJ IDEA works
-fine). Gradle is provided via the wrapper, so no separate install is needed.
+You'll need a JDK 21+ (the JetBrains Runtime bundled with PyCharm works fine).
+Gradle is provided via the wrapper, so no separate install is needed.
 
 Run the plugin in a sandboxed IDE:
 
@@ -26,16 +25,16 @@ Run the plugin in a sandboxed IDE:
 ./gradlew runIde
 ```
 
-This launches a separate PyCharm/IDEA instance with the plugin loaded. Open a
-marimo `.py` file there to try it out. (In IntelliJ IDEA you can also use the
-**Run Plugin** run configuration.)
+This launches a separate PyCharm instance with the plugin loaded. Open a marimo
+`.py` file there to try it out.
 
-By default the plugin runs released marimo via `uvx marimo`. To test against a
-local marimo checkout, set `MARIMO_CMD` before launching:
+Normal notebook launches use the configured project interpreter and run
+`<python> -m marimo`. The **Start marimo in Sandbox** action instead uses uv to
+run marimo in an isolated environment.
 
-```bash
-MARIMO_CMD="uv run --project /path/to/marimo marimo" ./gradlew runIde
-```
+To test against a local marimo checkout, select the environment you want as the
+sandbox IDE's project interpreter, install the checkout into that environment
+in editable mode (`pip install -e /path/to/marimo`), and open a notebook.
 
 Configure Git to ignore format-only revisions in blame output:
 
@@ -61,15 +60,8 @@ uvx pre-commit run --all-files
 
 CI runs the required checks and remains the authority for pull requests.
 
-## Useful Gradle tasks
-
-| Task | What it does |
-|---|---|
-| `./gradlew runIde` | Sandboxed IDE with the plugin loaded |
-| `./gradlew test` | Run the test suite |
-| `./gradlew check` | Run tests plus verification checks |
-| `./gradlew buildPlugin` | Build a distributable `.zip` in `build/distributions/` |
-| `./gradlew verifyPlugin` | Run the JetBrains Plugin Verifier |
+See the [common command reference](AGENTS.md#common-commands) for Gradle and
+repository verification commands.
 
 ### Updating Gradle dependencies
 

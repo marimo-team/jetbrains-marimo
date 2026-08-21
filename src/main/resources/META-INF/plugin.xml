@@ -5,8 +5,8 @@
     <vendor url="https://marimo.io" email="contact@marimo.io">marimo</vendor>
     <description><![CDATA[
         <p><a href="https://marimo.io">marimo</a> is a reactive Python notebook. This plugin brings
-        the full marimo editor inside PyCharm and other JetBrains IDEs, so you can open, edit, and
-        run notebooks without leaving your IDE.</p>
+        the full marimo editor inside PyCharm, so you can open, edit, and run notebooks without
+        leaving your IDE.</p>
 
         <p>marimo notebooks are stored as plain <code>.py</code> files — no JSON, no hidden output
         state — so they diff cleanly, review like code, and run as scripts. The plugin detects which
@@ -20,13 +20,13 @@
           <li><b>SQL cells, variables, and dependency panels</b> — the full marimo experience.</li>
           <li><b>Runs on your project interpreter</b> — with a one-click offer to install marimo when it's missing.</li>
           <li><b>Isolated sandbox runs</b> — optionally launch a notebook in a one-off <a href="https://docs.astral.sh/uv/">uv</a> environment.</li>
-          <li><b>Pair with marimo</b> — open a pairing prompt in JetBrains AI Chat when available, or attach a terminal harness.</li>
+          <li><b>Pair with marimo</b> — start a supported terminal AI harness, or copy the notebook's pairing prompt.</li>
           <li><b>Theme-aware</b> — notebooks set to marimo's <code>system</code> theme follow your IDE's
               light/dark theme as you switch it; a theme you pin to light or dark is respected.</li>
         </ul>
 
-        <p><b>Requirements:</b> PyCharm 2026.1+ (or another JetBrains IDE with the Python plugin) and
-        a configured project interpreter. uv is optional, used only for sandbox runs.</p>
+        <p><b>Requirements:</b> PyCharm 2026.1+ and a configured project interpreter. uv is optional,
+        used only for sandbox runs.</p>
 
         <p>Open source — <a href="https://github.com/marimo-team/jetbrains-marimo">github.com/marimo-team/jetbrains-marimo</a>.</p>
     ]]></description>
