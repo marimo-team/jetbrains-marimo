@@ -135,8 +135,7 @@ private class ProcessMarimoServerHandle(
     private val ready: CompletableFuture<String>,
     private val tokenPasswordFile: File?,
 ) : MarimoServerHandle {
-    @Volatile
-    private lateinit var handler: OSProcessHandler
+    @Volatile private lateinit var handler: OSProcessHandler
     private val terminationLock = Any()
     private var terminationListener: ((Int, String) -> Unit)? = null
     private var termination: Termination? = null
