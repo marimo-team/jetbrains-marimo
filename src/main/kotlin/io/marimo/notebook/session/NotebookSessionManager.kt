@@ -35,6 +35,7 @@ import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The project's notebook session manager. One [NotebookSession] per file owns that notebook's
@@ -58,7 +59,9 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     internal var clock: () -> Long = System::currentTimeMillis
 
-    private val sessions = ConcurrentHashMap<String, NotebookSession>()
+    private val sessions = ConcurrentHashMap<SessionId, NotebookSession>()
+    private val sessionIds = AtomicLong()
+    private val sessionRegistryLock = Any()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private val projectViewRefreshQueued = AtomicBoolean(false)
 
@@ -84,12 +87,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
      * Atomically gets/creates the per-file view and attaches one tab lease to the same session.
      * This prevents a TTL race where view creation and attach target different entries.
      */
-    fun attachView(file: VirtualFile): Pair<String, MarimoNotebookView> {
+    fun attachView(file: VirtualFile): Pair<SessionId, MarimoNotebookView> {
         while (true) {
             val session = sessionFor(file)
             val attachment =
                 synchronized(session) {
-                    if (sessions[file.url] !== session) {
+                    if (sessions[session.id] !== session) {
                         null
                     } else {
                         val existing = session.view
@@ -101,7 +104,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                                 }
                         session.attachedTabs++
                         cancelTtlLocked(session)
-                        session.fileUrl to resolved
+                        session.id to resolved
                     }
                 }
             if (attachment != null) {
@@ -176,7 +179,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     /** An editor tab now shows [file]. EDT. */
     fun attach(file: VirtualFile) {
-        val session = sessions[file.url] ?: return
+        val session = sessionForUrl(file.url) ?: return
         synchronized(session) {
             session.attachedTabs++
             cancelTtlLocked(session)
@@ -190,15 +193,20 @@ class NotebookSessionManager(private val project: Project) : Disposable {
      * instantly, and the timer bounds how long an abandoned notebook holds a Python process.
      */
     fun detach(file: VirtualFile) {
-        val session = sessions[file.url] ?: return
-        detachUrl(session.fileUrl)
+        val session = sessionForUrl(file.url) ?: return
+        detach(session.id)
     }
 
     fun detachUrl(url: String) {
-        val session = sessions[url] ?: return
+        val session = sessionForUrl(url) ?: return
+        detach(session.id)
+    }
+
+    internal fun detach(sessionId: SessionId) {
+        val session = sessions[sessionId] ?: return
         synchronized(session) {
             if (session.attachedTabs > 0) session.attachedTabs--
-            if (session.attachedTabs == 0) armTtlLocked(url, session)
+            if (session.attachedTabs == 0) armTtlLocked(session.id, session)
         }
         notifySessionsChanged()
     }
@@ -207,7 +215,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     fun statusFor(file: VirtualFile): SessionSnapshot? = statusForUrl(file.url)
 
     fun statusForUrl(url: String): SessionSnapshot? =
-        sessions[url]?.let { synchronized(it) { it.snapshot() } }
+        sessionForUrl(url)?.let { synchronized(it) { it.snapshot() } }
 
     /** All sessions, for the Sessions tool window. */
     fun sessions(): List<SessionSnapshot> =
@@ -220,11 +228,11 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     fun stop(file: VirtualFile) = stopUrl(file.url)
 
     fun stopUrl(url: String) {
-        val session = sessions[url] ?: return
+        val session = sessionForUrl(url) ?: return
         val removed =
             synchronized(session) {
                 cancelTtlLocked(session)
-                if (session.attachedTabs == 0 && sessions.remove(url, session)) {
+                if (session.attachedTabs == 0 && sessions.remove(session.id, session)) {
                     session.lifecycle.release()
                     true
                 } else {
@@ -243,7 +251,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
      * nature: the TTL is re-armed for the fresh process.
      */
     fun restart(file: VirtualFile) {
-        val session = sessions[file.url] ?: return
+        val session = sessionForUrl(file.url) ?: return
         val view = synchronized(session) { session.view }
         if (view != null) {
             onEdt { view.reload() }
@@ -252,7 +260,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             ApplicationManager.getApplication().executeOnPooledThread { urlFor(file) }
         }
         synchronized(session) {
-            if (session.attachedTabs == 0) armTtlLocked(file.url, session)
+            if (session.attachedTabs == 0) armTtlLocked(session.id, session)
         }
         notifySessionsChanged()
     }
@@ -267,11 +275,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     /**
      * Whether [file] is currently routed through marimo's sandbox (uv). Never creates a session.
      */
-    fun isSandbox(file: VirtualFile): Boolean = sessions[file.url]?.sandboxEnabled?.get() ?: false
+    fun isSandbox(file: VirtualFile): Boolean =
+        sessionForUrl(file.url)?.sandboxEnabled?.get() ?: false
 
     /** Internal teardown used by the view's relaunch path: kill the process, keep the session. */
     fun release(file: VirtualFile) {
-        sessions[file.url]?.lifecycle?.release()
+        sessionForUrl(file.url)?.lifecycle?.release()
     }
 
     /** [listener] runs after any session change. It must only schedule work, not block. */
@@ -344,25 +353,26 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         session.expiresAtMillis = null
     }
 
-    private fun armTtlLocked(url: String, session: NotebookSession) {
+    private fun armTtlLocked(sessionId: SessionId, session: NotebookSession) {
         val ttlMillis = SessionSettings.getInstance().backgroundTtlMillis()
         cancelTtlLocked(session)
         val generation = ++session.ttlGeneration
         session.expiresAtMillis = clock() + ttlMillis
-        session.ttl = ttlScheduler.schedule(ttlMillis) { onTtlExpired(url, session, generation) }
+        session.ttl =
+            ttlScheduler.schedule(ttlMillis) { onTtlExpired(sessionId, session, generation) }
     }
 
     /**
      * Runs on the scheduler thread. Everything is re-validated under the session lock: the timer
      * may have been cancelled after firing, a tab may have reattached, or Stop may have removed the
-     * session already. `remove(url, session)` makes the disposal single-shot.
+     * session already. `remove(sessionId, session)` makes the disposal single-shot.
      */
-    private fun onTtlExpired(url: String, session: NotebookSession, generation: Long) {
+    private fun onTtlExpired(sessionId: SessionId, session: NotebookSession, generation: Long) {
         val expired =
             synchronized(session) {
                 session.ttlGeneration == generation &&
                     session.attachedTabs == 0 &&
-                    sessions.remove(url, session)
+                    sessions.remove(sessionId, session)
             }
         if (!expired) return
         session.lifecycle.release()
@@ -380,22 +390,27 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     }
 
     private fun sessionFor(file: VirtualFile): NotebookSession =
-        sessions.computeIfAbsent(file.url) {
-            NotebookSession(file.url, file.name).also { session ->
-                Disposer.register(this, session)
-                session.lifecycle.addListener { update ->
-                    synchronized(session) {
-                        if (
-                            update.state !is MarimoNotebookState.Starting &&
-                                update.state !is MarimoNotebookState.Running
-                        ) {
-                            session.launchContext = null
+        synchronized(sessionRegistryLock) {
+            sessions.values.firstOrNull { session -> session.matches(file) }
+                ?: NotebookSession(SessionId(sessionIds.incrementAndGet()), file).also { session ->
+                    sessions[session.id] = session
+                    Disposer.register(this, session)
+                    session.lifecycle.addListener { update ->
+                        synchronized(session) {
+                            if (
+                                update.state !is MarimoNotebookState.Starting &&
+                                    update.state !is MarimoNotebookState.Running
+                            ) {
+                                session.launchContext = null
+                            }
                         }
+                        notifySessionsChanged()
                     }
-                    notifySessionsChanged()
                 }
-            }
         }
+
+    private fun sessionForUrl(url: String): NotebookSession? =
+        sessions.values.firstOrNull { session -> session.fileUrl == url }
 
     private fun notifySessionsChanged() {
         listeners.forEach { it() }

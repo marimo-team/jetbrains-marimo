@@ -3,6 +3,7 @@
 package io.marimo.notebook.session
 
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -220,6 +221,23 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertFalse("stopping a must kill a's process", sdk.handles[0].isAlive)
         assertTrue("stopping a must not touch b", sdk.handles[1].isAlive)
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(b)!!.state)
+    }
+
+    fun testRenameThenRetryUsesOneSessionAndProcess() {
+        val file = notebook("rename_nb.py")
+        manager.urlFor(file)
+        sdk.handles.single().becomeReady()
+
+        ApplicationManager.getApplication().runWriteAction { file.rename(this, "renamed_nb.py") }
+
+        assertEquals(file.url, manager.sessions().single().fileUrl)
+
+        manager.urlFor(file)
+
+        assertEquals(1, sdk.requests.size)
+        assertEquals(1, sdk.handles.size)
+        assertEquals(1, manager.sessions().size)
+        assertEquals("renamed_nb.py", manager.sessions().single().fileName)
     }
 
     fun testStopWithNoTabsRemovesTheSessionEntry() {

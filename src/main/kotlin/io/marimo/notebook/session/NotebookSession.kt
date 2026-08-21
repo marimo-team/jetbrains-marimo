@@ -3,6 +3,9 @@
 package io.marimo.notebook.session
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.pointers.VirtualFilePointer
+import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager
 import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
@@ -63,9 +66,20 @@ internal fun interface TtlScheduler {
  * [NotebookSessionManager]; mutable fields are guarded by `synchronized(session)` there.
  */
 internal class NotebookSession(
-    val fileUrl: String,
-    val fileName: String,
+    val id: SessionId,
+    file: VirtualFile,
 ) : Disposable {
+    private val filePointer: VirtualFilePointer =
+        VirtualFilePointerManager.getInstance().create(file, this, null)
+
+    val fileUrl: String
+        get() = filePointer.file?.url ?: filePointer.url
+
+    val fileName: String
+        get() = filePointer.file?.name ?: filePointer.fileName
+
+    fun matches(file: VirtualFile): Boolean = filePointer.file === file || fileUrl == file.url
+
     val lifecycle = MarimoNotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
     var view: MarimoNotebookView? = null

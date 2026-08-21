@@ -9,6 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.session.NotebookSessionManager
+import io.marimo.notebook.session.SessionId
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
@@ -23,13 +24,13 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
     private val sessionManager = project.service<NotebookSessionManager>()
-    private val sessionUrl: String
+    private val sessionId: SessionId
     private val view: MarimoNotebookView
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     init {
         val attached = sessionManager.attachView(file)
-        sessionUrl = attached.first
+        sessionId = attached.first
         view = attached.second
     }
 
@@ -73,6 +74,6 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
      * the manager's background TTL (or an explicit Stop) tears it down.
      */
     override fun dispose() {
-        sessionManager.detachUrl(sessionUrl)
+        sessionManager.detach(sessionId)
     }
 }

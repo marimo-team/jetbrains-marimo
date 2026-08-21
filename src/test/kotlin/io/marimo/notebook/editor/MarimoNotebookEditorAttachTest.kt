@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.editor
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
@@ -47,5 +48,19 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
         first.dispose()
         assertEquals(0, service.statusFor(file)!!.attachedTabs)
+    }
+
+    fun testRenamedEditorDetachesTheSession() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("renamed_attach_nb.py", "import marimo\n").virtualFile
+        val editor = MarimoNotebookEditor(project, file)
+
+        ApplicationManager.getApplication().runWriteAction { file.rename(this, "renamed_nb.py") }
+        editor.dispose()
+
+        val status = service.statusFor(file)
+        assertEquals(0, status!!.attachedTabs)
+        assertNotNull("closing a renamed tab must arm the background TTL", status.expiresAtMillis)
     }
 }
