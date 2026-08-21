@@ -40,6 +40,15 @@ jobs:
         with:
           persist-credentials: false
 
+      - name: Assert Current Main Ref
+        env:
+          TRIGGER_REF: ${{ github.ref }}
+        run: |
+          if [ "$TRIGGER_REF" != "refs/heads/main" ]; then
+            echo "::error::Releases must be dispatched from main, not $TRIGGER_REF"
+            exit 1
+          fi
+
       - name: Read Version
         id: version
         run: |
