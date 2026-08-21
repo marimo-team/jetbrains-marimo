@@ -50,17 +50,15 @@ class SdkLauncher : MarimoLauncher {
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
         ): GeneralCommandLine {
-            val params = buildList {
-                addAll(listOf("-m", "marimo", "edit", notebookPath, "--headless"))
-                if (watch) add("--watch")
-                addAll(listOf("--host", host, "--port", port.toString()))
-                if (tokenPasswordFile != null) {
-                    add("--token-password-file")
-                    add(tokenPasswordFile)
-                } else {
-                    add("--no-token")
-                }
-            }
+            val params =
+                MarimoCommandLine.buildEditParams(
+                    cliPrefix = listOf("-m", "marimo"),
+                    notebookPath = notebookPath,
+                    host = host,
+                    port = port,
+                    watch = watch,
+                    tokenPasswordFile = tokenPasswordFile,
+                )
             return GeneralCommandLine(pythonPath).withWorkDirectory(workDir).withParameters(params)
         }
     }
