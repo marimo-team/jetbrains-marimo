@@ -12,12 +12,11 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import io.marimo.notebook.server.MarimoServerService
-import io.marimo.notebook.server.MarimoSessionSnapshot
+import io.marimo.notebook.session.NotebookSessionManager
+import io.marimo.notebook.session.SessionSnapshot
 
 /** True when a session exists whose process is alive, so Restart and Stop have a target. */
-internal fun canControlSession(status: MarimoSessionSnapshot?): Boolean =
-    status?.state?.isLive == true
+internal fun canControlSession(status: SessionSnapshot?): Boolean = status?.state?.isLive == true
 
 /** Opens (or focuses) the notebook and selects the marimo editor over the Source sub-tab. */
 internal fun openMarimoNotebook(project: Project, file: VirtualFile) {
@@ -30,7 +29,7 @@ internal fun openMarimoNotebook(project: Project, file: VirtualFile) {
  * Base for notebook session actions: visible only on marimo notebooks, enabled via [enabled], and
  * updated on BGT because the status probe only reads service state.
  */
-abstract class MarimoSessionAction(private val enabled: (MarimoSessionSnapshot?) -> Boolean) :
+abstract class MarimoSessionAction(private val enabled: (SessionSnapshot?) -> Boolean) :
     AnAction(), DumbAware {
 
     final override fun getActionUpdateThread(): ActionUpdateThread = ActionUpdateThread.BGT
@@ -44,7 +43,7 @@ abstract class MarimoSessionAction(private val enabled: (MarimoSessionSnapshot?)
         }
         e.presentation.isVisible = true
         e.presentation.isEnabled =
-            enabled(project.serviceIfCreated<MarimoServerService>()?.statusFor(file))
+            enabled(project.serviceIfCreated<NotebookSessionManager>()?.statusFor(file))
     }
 
     protected fun target(e: AnActionEvent): Pair<Project, VirtualFile>? {
@@ -64,13 +63,13 @@ class MarimoOpenNotebookAction : MarimoSessionAction(enabled = { true }) {
 class MarimoRestartNotebookAction : MarimoSessionAction(enabled = ::canControlSession) {
     override fun actionPerformed(e: AnActionEvent) {
         val (project, file) = target(e) ?: return
-        project.service<MarimoServerService>().restart(file)
+        project.service<NotebookSessionManager>().restart(file)
     }
 }
 
 class MarimoStopNotebookAction : MarimoSessionAction(enabled = ::canControlSession) {
     override fun actionPerformed(e: AnActionEvent) {
         val (project, file) = target(e) ?: return
-        project.service<MarimoServerService>().stop(file)
+        project.service<NotebookSessionManager>().stop(file)
     }
 }

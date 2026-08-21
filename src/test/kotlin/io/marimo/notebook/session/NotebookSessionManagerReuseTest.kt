@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -17,7 +17,7 @@ import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 
-class MarimoServerReuseTest : BasePlatformTestCase() {
+class NotebookSessionManagerReuseTest : BasePlatformTestCase() {
 
     private class BlockingLauncher : MarimoLauncher {
         override val id = "blocking"
@@ -40,7 +40,7 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
 
     fun testReopenedNotebookKeepsTheStoppedLifecycle() {
         val file = myFixture.addFileToProject("nb.py", "import marimo\n").virtualFile
-        val service = project.service<MarimoServerService>()
+        val service = project.service<NotebookSessionManager>()
         val handle = ScriptedMarimoServerHandle()
 
         val initial = service.lifecycleFor(file)
@@ -59,7 +59,7 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
 
     fun testReleaseStopsTheLifecycleWithoutClearingSandboxMode() {
         val file = myFixture.addFileToProject("nb.py", "import marimo\n").virtualFile
-        val service = project.service<MarimoServerService>()
+        val service = project.service<NotebookSessionManager>()
         val handle = ScriptedMarimoServerHandle()
         val lifecycle = service.lifecycleFor(file)
         lifecycle.attach(handle)
@@ -74,7 +74,7 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
 
     fun testConcurrentUrlRequestsLaunchOnlyOnce() {
         val file = myFixture.addFileToProject("nb.py", "import marimo\n").virtualFile
-        val service = project.service<MarimoServerService>()
+        val service = project.service<NotebookSessionManager>()
         val launcher = BlockingLauncher()
         service.planner = LaunchPlanner(launcher, launcher)
         val executor = Executors.newFixedThreadPool(2)

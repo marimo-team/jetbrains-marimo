@@ -8,27 +8,27 @@ import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
-import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.session.NotebookSessionManager
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
 /**
  * Thin [FileEditor] over a per-file [MarimoNotebookView]. The view — browser, panel, and marimo
- * server — is owned by [MarimoServerService], keyed by file, and outlives this instance. Dragging a
- * notebook to another split disposes this editor and creates a fresh one for the same file; both
- * borrow the same view, so the marimo session is never torn down or reconnected.
+ * server — is owned by [NotebookSessionManager], keyed by file, and outlives this instance.
+ * Dragging a notebook to another split disposes this editor and creates a fresh one for the same
+ * file; both borrow the same view, so the marimo session is never torn down or reconnected.
  */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
-    private val server = project.service<MarimoServerService>()
+    private val sessionManager = project.service<NotebookSessionManager>()
     private val sessionUrl: String
     private val view: MarimoNotebookView
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     init {
-        val attached = server.attachView(file)
+        val attached = sessionManager.attachView(file)
         sessionUrl = attached.first
         view = attached.second
     }
@@ -73,6 +73,6 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
      * the manager's background TTL (or an explicit Stop) tears it down.
      */
     override fun dispose() {
-        server.detachUrl(sessionUrl)
+        sessionManager.detachUrl(sessionUrl)
     }
 }

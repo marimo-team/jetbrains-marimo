@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.openapi.components.service
@@ -23,7 +23,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 
-class MarimoSessionManagerTest : BasePlatformTestCase() {
+class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     class FakeHandle(val authUrl: String) : MarimoServerHandle {
         private val ready = CompletableFuture<String>()
@@ -97,8 +97,8 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
     private lateinit var uv: FakeLauncher
     private lateinit var ttl: ManualTtl
 
-    private val manager: MarimoServerService
-        get() = project.service<MarimoServerService>()
+    private val manager: NotebookSessionManager
+        get() = project.service<NotebookSessionManager>()
 
     private fun notebook(name: String = "nb.py"): VirtualFile =
         myFixture.addFileToProject(name, "import marimo\n").virtualFile
@@ -150,7 +150,7 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
     }
 
     fun testLaunchContextRetainsTheTokenAuthModeFromItsLaunch() {
-        val settings = MarimoSessionSettings.getInstance()
+        val settings = SessionSettings.getInstance()
         val before = settings.state.tokenAuthEnabled
         try {
             settings.state.tokenAuthEnabled = true
@@ -281,7 +281,7 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
     }
 
     fun testTheTokenSettingReachesTheLaunchRequest() {
-        val settings = MarimoSessionSettings.getInstance()
+        val settings = SessionSettings.getInstance()
         val before = settings.state.tokenAuthEnabled
         try {
             settings.state.tokenAuthEnabled = false
@@ -363,7 +363,7 @@ class MarimoSessionManagerTest : BasePlatformTestCase() {
         manager.detach(file)
         assertEquals(1, ttl.pending.size)
         assertEquals(
-            MarimoSessionSettings.getInstance().backgroundTtlMillis(),
+            SessionSettings.getInstance().backgroundTtlMillis(),
             ttl.pending.single().first,
         )
         assertNotNull(

@@ -5,15 +5,15 @@ package io.marimo.notebook.editor
 import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
-import io.marimo.notebook.server.MarimoServerService
-import io.marimo.notebook.server.MarimoSessionManagerTest.FakeLauncher
+import io.marimo.notebook.session.NotebookSessionManager
+import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
 
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
     // Light projects and their services are reused across tests; drain what this class created.
     override fun tearDown() {
         try {
-            val service = project.service<MarimoServerService>()
+            val service = project.service<NotebookSessionManager>()
             service.sessions().forEach { snapshot ->
                 repeat(snapshot.attachedTabs) {
                     com.intellij.openapi.vfs.VirtualFileManager.getInstance()
@@ -28,7 +28,7 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
     }
 
     fun testEditorsAttachAndDetachTheSession() {
-        val service = project.service<MarimoServerService>()
+        val service = project.service<NotebookSessionManager>()
         service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
         val file = myFixture.addFileToProject("attach_nb.py", "import marimo\n").virtualFile
 

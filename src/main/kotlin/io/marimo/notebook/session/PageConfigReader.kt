@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import com.google.gson.JsonParser
 import com.intellij.openapi.diagnostic.thisLogger
@@ -17,7 +17,7 @@ import java.io.IOException
  * inlines the result into the page as `<marimo-user-config data-config="…">`. Asking the server for
  * that answer keeps the plugin from reimplementing (and drifting from) the resolution rules.
  */
-object MarimoPageConfig {
+object PageConfigReader {
 
     /**
      * The effective `display.theme` ("light", "dark", "system", …) for the notebook served at

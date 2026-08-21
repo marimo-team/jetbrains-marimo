@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.PersistentStateComponent
@@ -11,7 +11,7 @@ import com.intellij.openapi.components.Storage
 /** User-facing session settings, shown on the marimo settings page (Settings → Tools → marimo). */
 @Service(Service.Level.APP)
 @State(name = "MarimoSessions", storages = [Storage("marimo.xml")])
-class MarimoSessionSettings : PersistentStateComponent<MarimoSessionSettings.State> {
+class SessionSettings : PersistentStateComponent<SessionSettings.State> {
 
     class State {
         /**
@@ -41,7 +41,7 @@ class MarimoSessionSettings : PersistentStateComponent<MarimoSessionSettings.Sta
         const val DEFAULT_BACKGROUND_TTL_MINUTES: Int = 30
         const val MIN_BACKGROUND_TTL_MINUTES: Int = 1
 
-        fun getInstance(): MarimoSessionSettings =
-            ApplicationManager.getApplication().getService(MarimoSessionSettings::class.java)
+        fun getInstance(): SessionSettings =
+            ApplicationManager.getApplication().getService(SessionSettings::class.java)
     }
 }

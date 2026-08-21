@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import com.intellij.openapi.Disposable
 import io.marimo.notebook.editor.MarimoNotebookView
@@ -36,7 +36,7 @@ data class MarimoLaunchContext(
  * and the Sessions panel. This type must never gain a URL or token field — everything here may be
  * rendered, logged, or copied by UI code.
  */
-data class MarimoSessionSnapshot(
+data class SessionSnapshot(
     val fileUrl: String,
     val fileName: String,
     val state: MarimoSessionState,
@@ -60,9 +60,9 @@ internal fun interface TtlScheduler {
 /**
  * Everything the project keeps for one notebook: the server lifecycle, the shared JCEF view, the
  * launch mode, and the editor-attachment bookkeeping that drives the background TTL. Owned by
- * [MarimoServerService]; mutable fields are guarded by `synchronized(session)` there.
+ * [NotebookSessionManager]; mutable fields are guarded by `synchronized(session)` there.
  */
-internal class MarimoNotebookSession(
+internal class NotebookSession(
     val fileUrl: String,
     val fileName: String,
 ) : Disposable {
@@ -75,8 +75,8 @@ internal class MarimoNotebookSession(
     var ttlGeneration: Long = 0
     var expiresAtMillis: Long? = null
 
-    fun snapshot(): MarimoSessionSnapshot =
-        MarimoSessionSnapshot(
+    fun snapshot(): SessionSnapshot =
+        SessionSnapshot(
             fileUrl = fileUrl,
             fileName = fileName,
             state =

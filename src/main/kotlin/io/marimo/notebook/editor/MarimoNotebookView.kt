@@ -34,8 +34,8 @@ import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.redactAccessTokens
-import io.marimo.notebook.server.MarimoPageConfig
-import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.session.NotebookSessionManager
+import io.marimo.notebook.session.PageConfigReader
 import io.marimo.notebook.telemetry.MarimoConsentPrompt
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
@@ -54,9 +54,9 @@ import org.cef.handler.CefLoadHandlerAdapter
 
 /**
  * The long-lived UI and process state for a single open notebook: the JCEF browser, its content
- * panel, and the marimo server it renders. Owned by [MarimoServerService] and keyed by file, not by
- * any one editor tab. Moving a notebook between splits disposes and recreates the [FileEditor], but
- * the view survives, so the same browser (still connected to the same marimo session) is simply
+ * panel, and the marimo server it renders. Owned by [NotebookSessionManager] and keyed by file, not
+ * by any one editor tab. Moving a notebook between splits disposes and recreates the [FileEditor],
+ * but the view survives, so the same browser (still connected to the same marimo session) is simply
  * reparented into the new tab.
  */
 class MarimoNotebookView(private val project: Project, private val file: VirtualFile) : Disposable {
@@ -70,8 +70,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         if (JBCefApp.isSupported() && !ApplicationManager.getApplication().isUnitTestMode)
             JBCefBrowser()
         else null
-    private val server = project.service<MarimoServerService>()
-    private val lifecycle = server.lifecycleFor(file)
+    private val sessionManager = project.service<NotebookSessionManager>()
+    private val lifecycle = sessionManager.lifecycleFor(file)
 
     /** Theme state for the loaded page; read and written on the EDT only. */
     private var loadedUrl: String? = null
@@ -257,7 +257,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         appliedTheme = null
         followsIdeTheme = false
         showContent(JLabel("Starting marimo…", SwingConstants.CENTER))
-        server.urlFor(file).whenComplete { url, err ->
+        sessionManager.urlFor(file).whenComplete { url, err ->
             when {
                 navigation.generation != navigationSnapshot.generation -> Unit
                 err != null -> showServerError(navigation.generation, err)
@@ -282,7 +282,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
      */
     private fun showNotebook(navigation: Long, browser: JBCefBrowser, url: String) {
         ApplicationManager.getApplication().executeOnPooledThread {
-            val resolvedTheme = MarimoPageConfig.fetchDisplayTheme(url)
+            val resolvedTheme = PageConfigReader.fetchDisplayTheme(url)
             onEdt(navigation) {
                 if (!canRenderNotebookFor(lifecycle.state)) return@onEdt
                 followsIdeTheme = MarimoThemedUrl.followsIdeTheme(resolvedTheme)
@@ -293,7 +293,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                 browser.loadURL(themedUrl)
                 showContent(browser.component)
                 MarimoConsentPrompt.maybePrompt(project)
-                val launcher = if (server.isSandbox(file)) "uv-sandbox" else "sdk"
+                val launcher = if (sessionManager.isSandbox(file)) "uv-sandbox" else "sdk"
                 MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookOpened(launcher))
             }
         }
@@ -379,7 +379,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                 relaunch()
             }
             MarimoErrorAction.START_IN_SANDBOX -> {
-                server.enableSandbox(file)
+                sessionManager.enableSandbox(file)
                 relaunch()
             }
             MarimoErrorAction.OPEN_AS_PYTHON ->
@@ -400,7 +400,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
      * pointing it at the fresh server URL is exactly the restart the user asked for.
      */
     private fun relaunch() {
-        server.release(file)
+        sessionManager.release(file)
         loadNotebook()
     }
 
@@ -426,7 +426,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     private fun addToolbar() {
         val row = JPanel(BorderLayout())
         pairToolbar()?.let { row.add(it, BorderLayout.WEST) }
-        if (server.isSandbox(file)) row.add(sandboxIndicator(), BorderLayout.EAST)
+        if (sessionManager.isSandbox(file)) row.add(sandboxIndicator(), BorderLayout.EAST)
         if (row.componentCount > 0) panel.add(row, BorderLayout.NORTH)
     }
 

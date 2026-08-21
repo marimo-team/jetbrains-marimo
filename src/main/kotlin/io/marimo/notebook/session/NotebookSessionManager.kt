@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import com.intellij.ide.projectView.ProjectView
 import com.intellij.openapi.Disposable
@@ -37,13 +37,13 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
- * The project's notebook session manager. One [MarimoNotebookSession] per file owns that notebook's
+ * The project's notebook session manager. One [NotebookSession] per file owns that notebook's
  * marimo process, JCEF view, launch mode, and editor-attachment count. Editor tabs attach to and
  * detach from sessions; they never own the process. Status reads are side-effect-free, so painting
  * an icon or updating an action can never start a server.
  */
 @Service(Service.Level.PROJECT)
-class MarimoServerService(private val project: Project) : Disposable {
+class NotebookSessionManager(private val project: Project) : Disposable {
 
     internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
 
@@ -58,7 +58,7 @@ class MarimoServerService(private val project: Project) : Disposable {
 
     internal var clock: () -> Long = System::currentTimeMillis
 
-    private val sessions = ConcurrentHashMap<String, MarimoNotebookSession>()
+    private val sessions = ConcurrentHashMap<String, NotebookSession>()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private val projectViewRefreshQueued = AtomicBoolean(false)
 
@@ -204,13 +204,13 @@ class MarimoServerService(private val project: Project) : Disposable {
     }
 
     /** Side-effect-free status: null when the notebook has no session. Never creates one. */
-    fun statusFor(file: VirtualFile): MarimoSessionSnapshot? = statusForUrl(file.url)
+    fun statusFor(file: VirtualFile): SessionSnapshot? = statusForUrl(file.url)
 
-    fun statusForUrl(url: String): MarimoSessionSnapshot? =
+    fun statusForUrl(url: String): SessionSnapshot? =
         sessions[url]?.let { synchronized(it) { it.snapshot() } }
 
     /** All sessions, for the Sessions tool window. */
-    fun sessions(): List<MarimoSessionSnapshot> =
+    fun sessions(): List<SessionSnapshot> =
         sessions.values.map { synchronized(it) { it.snapshot() } }
 
     /**
@@ -289,7 +289,7 @@ class MarimoServerService(private val project: Project) : Disposable {
     }
 
     private fun launchPlanFailure(
-        session: MarimoNotebookSession,
+        session: NotebookSession,
         error: Exception,
     ): CompletableFuture<String> {
         session.lifecycle.onLaunchPlanFailed(error)
@@ -297,13 +297,13 @@ class MarimoServerService(private val project: Project) : Disposable {
     }
 
     private fun launchSessionLocked(
-        session: MarimoNotebookSession,
+        session: NotebookSession,
         baseRequest: LaunchRequest,
         launcher: MarimoLauncher,
     ): CompletableFuture<String> {
         var tokenFile: File? = null
         try {
-            val tokenAuthEnabled = MarimoSessionSettings.getInstance().state.tokenAuthEnabled
+            val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
             val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
             tokenFile = token?.let(tokenPasswordFileWriter)
             val request =
@@ -337,15 +337,15 @@ class MarimoServerService(private val project: Project) : Disposable {
         }
     }
 
-    private fun cancelTtlLocked(session: MarimoNotebookSession) {
+    private fun cancelTtlLocked(session: NotebookSession) {
         session.ttlGeneration++
         session.ttl?.cancel()
         session.ttl = null
         session.expiresAtMillis = null
     }
 
-    private fun armTtlLocked(url: String, session: MarimoNotebookSession) {
-        val ttlMillis = MarimoSessionSettings.getInstance().backgroundTtlMillis()
+    private fun armTtlLocked(url: String, session: NotebookSession) {
+        val ttlMillis = SessionSettings.getInstance().backgroundTtlMillis()
         cancelTtlLocked(session)
         val generation = ++session.ttlGeneration
         session.expiresAtMillis = clock() + ttlMillis
@@ -357,7 +357,7 @@ class MarimoServerService(private val project: Project) : Disposable {
      * may have been cancelled after firing, a tab may have reattached, or Stop may have removed the
      * session already. `remove(url, session)` makes the disposal single-shot.
      */
-    private fun onTtlExpired(url: String, session: MarimoNotebookSession, generation: Long) {
+    private fun onTtlExpired(url: String, session: NotebookSession, generation: Long) {
         val expired =
             synchronized(session) {
                 session.ttlGeneration == generation &&
@@ -370,7 +370,7 @@ class MarimoServerService(private val project: Project) : Disposable {
         notifySessionsChanged()
     }
 
-    private fun disposeSessionOnEdt(session: MarimoNotebookSession) {
+    private fun disposeSessionOnEdt(session: NotebookSession) {
         val application = ApplicationManager.getApplication()
         if (application.isDispatchThread || application.isUnitTestMode) {
             Disposer.dispose(session)
@@ -379,9 +379,9 @@ class MarimoServerService(private val project: Project) : Disposable {
         }
     }
 
-    private fun sessionFor(file: VirtualFile): MarimoNotebookSession =
+    private fun sessionFor(file: VirtualFile): NotebookSession =
         sessions.computeIfAbsent(file.url) {
-            MarimoNotebookSession(file.url, file.name).also { session ->
+            NotebookSession(file.url, file.name).also { session ->
                 Disposer.register(this, session)
                 session.lifecycle.addListener { update ->
                     synchronized(session) {

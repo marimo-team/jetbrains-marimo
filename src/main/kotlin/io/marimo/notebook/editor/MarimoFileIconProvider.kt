@@ -9,7 +9,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.detect.MarimoDetector
-import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.session.NotebookSessionManager
 import javax.swing.Icon
 
 /**
@@ -21,7 +21,7 @@ import javax.swing.Icon
 class MarimoFileIconProvider : FileIconProvider {
     override fun getIcon(file: VirtualFile, flags: Int, project: Project?): Icon? {
         if (!MarimoDetector.looksLikeMarimo(file)) return null
-        val status = project?.serviceIfCreated<MarimoServerService>()?.statusFor(file)
+        val status = project?.serviceIfCreated<NotebookSessionManager>()?.statusFor(file)
         return if (status?.state?.isLive == true) ExecutionUtil.getLiveIndicator(MarimoIcons.FILE)
         else MarimoIcons.FILE
     }

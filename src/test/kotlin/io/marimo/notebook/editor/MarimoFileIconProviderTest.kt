@@ -6,9 +6,9 @@ import com.intellij.openapi.components.service
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.launch.LaunchPlanner
-import io.marimo.notebook.server.MarimoServerService
-import io.marimo.notebook.server.MarimoSessionManagerTest.FakeLauncher
-import io.marimo.notebook.server.MarimoSessionSettings
+import io.marimo.notebook.session.NotebookSessionManager
+import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import io.marimo.notebook.session.SessionSettings
 import org.junit.Assert.assertNotSame
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertSame
@@ -17,7 +17,7 @@ class MarimoFileIconProviderTest : BasePlatformTestCase() {
 
     override fun tearDown() {
         try {
-            val service = project.service<MarimoServerService>()
+            val service = project.service<NotebookSessionManager>()
             service.sessions().forEach { service.stopUrl(it.fileUrl) }
         } finally {
             super.tearDown()
@@ -25,7 +25,7 @@ class MarimoFileIconProviderTest : BasePlatformTestCase() {
     }
 
     fun testLiveSessionBadgesTheIconAndProbingCreatesNothing() {
-        val service = project.service<MarimoServerService>()
+        val service = project.service<NotebookSessionManager>()
         val sdk = FakeLauncher()
         service.planner = LaunchPlanner(sdk, sdk)
         val file =
@@ -33,7 +33,7 @@ class MarimoFileIconProviderTest : BasePlatformTestCase() {
                 .addFileToProject("icon_nb.py", "import marimo\napp = marimo.App()\n")
                 .virtualFile
         val provider = MarimoFileIconProvider()
-        val settings = MarimoSessionSettings.getInstance()
+        val settings = SessionSettings.getInstance()
         val priorTokenAuth = settings.state.tokenAuthEnabled
 
         settings.state.tokenAuthEnabled = false

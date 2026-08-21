@@ -11,7 +11,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.session.NotebookSessionManager
 
 /** Generates the generic marimo pairing prompt without delivering it anywhere. */
 internal object MarimoPairPromptService {
@@ -70,15 +70,15 @@ internal object MarimoPairSession {
         logContext: String,
         onReady: (url: String, prefix: List<String>) -> Unit,
     ) {
-        val server = project.service<MarimoServerService>()
-        server.urlFor(file).whenComplete { url, err ->
+        val sessionManager = project.service<NotebookSessionManager>()
+        sessionManager.urlFor(file).whenComplete { url, err ->
             ApplicationManager.getApplication().invokeLater {
                 if (err != null || url == null) {
                     thisLogger().warn("Could not start the marimo server for a $logContext", err)
                     MarimoPairNotifications.warning(project, "Could not start marimo.")
                     return@invokeLater
                 }
-                val prefix = server.marimoCliPrefixFor(file)
+                val prefix = sessionManager.marimoCliPrefixFor(file)
                 if (prefix == null) {
                     MarimoPairNotifications.warning(
                         project,

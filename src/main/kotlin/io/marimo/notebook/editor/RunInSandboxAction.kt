@@ -11,7 +11,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.launch.UvLauncher
-import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.session.NotebookSessionManager
 
 /**
  * Opens a marimo notebook in marimo's isolated uv environment (PEP 723 deps). Disabled with an
@@ -42,7 +42,7 @@ class RunInSandboxAction : AnAction(), DumbAware {
     override fun actionPerformed(e: AnActionEvent) {
         val project = e.project ?: return
         val file = e.getData(CommonDataKeys.VIRTUAL_FILE) ?: return
-        project.service<MarimoServerService>().enableSandbox(file)
+        project.service<NotebookSessionManager>().enableSandbox(file)
         val editors = FileEditorManager.getInstance(project)
         editors.getEditors(file).filterIsInstance<MarimoNotebookEditor>().forEach { it.reload() }
         editors.openFile(file, true)
