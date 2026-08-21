@@ -18,6 +18,7 @@ import com.intellij.ui.components.JBPanel
 import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import io.marimo.notebook.MarimoIcons
+import io.marimo.notebook.MarimoLocalhost
 import io.marimo.notebook.server.MarimoServerService
 import io.marimo.notebook.server.MarimoSessionSnapshot
 import io.marimo.notebook.server.MarimoSessionState
@@ -73,35 +74,22 @@ private class MarimoSessionsPanel(
                         foreground = JBColor.GRAY
                         border = BorderFactory.createEmptyBorder(4, 2, 4, 2)
                     },
-                    GridBagConstraints().apply {
-                        gridx = 0
-                        gridy = 0
-                        weightx = 1.0
+                    gridConstraint(0, GridBagConstraints.HORIZONTAL).apply {
                         anchor = GridBagConstraints.NORTHWEST
-                        fill = GridBagConstraints.HORIZONTAL
                     },
                 )
             } else {
                 snapshots.forEachIndexed { index, snapshot ->
                     cards.add(
                         SessionCard(project, service, snapshot),
-                        GridBagConstraints().apply {
-                            gridx = 0
-                            gridy = index * 2
-                            weightx = 1.0
+                        gridConstraint(index * 2, GridBagConstraints.HORIZONTAL).apply {
                             anchor = GridBagConstraints.NORTHWEST
-                            fill = GridBagConstraints.HORIZONTAL
-                            insets = java.awt.Insets(0, 0, 0, 0)
                         },
                     )
                     if (index != snapshots.lastIndex) {
                         cards.add(
                             separatorRow(),
-                            GridBagConstraints().apply {
-                                gridx = 0
-                                gridy = index * 2 + 1
-                                weightx = 1.0
-                                fill = GridBagConstraints.HORIZONTAL
+                            gridConstraint(index * 2 + 1, GridBagConstraints.HORIZONTAL).apply {
                                 insets = java.awt.Insets(6, 0, 6, 0)
                             },
                         )
@@ -110,12 +98,8 @@ private class MarimoSessionsPanel(
             }
             cards.add(
                 JPanel().apply { isOpaque = false },
-                GridBagConstraints().apply {
-                    gridx = 0
-                    gridy = snapshots.size * 2 + 1
-                    weightx = 1.0
+                gridConstraint(snapshots.size * 2 + 1, GridBagConstraints.BOTH).apply {
                     weighty = 1.0
-                    fill = GridBagConstraints.BOTH
                 },
             )
             cards.revalidate()
@@ -133,7 +117,7 @@ private class SessionCard(
 ) : JPanel(BorderLayout()) {
     init {
         val launch = snapshot.launch
-        val url = launch?.let { "http://127.0.0.1:${it.port}/" } ?: "Not started yet"
+        val url = launch?.let { MarimoLocalhost.rootUrl(it.port) } ?: "Not started yet"
         val canControl = snapshot.state.isLive
         val copyUrlAvailable = launch != null && !launch.tokenAuthEnabled
 
@@ -177,7 +161,7 @@ private class SessionCard(
                         addActionListener {
                             launch?.port?.let {
                                 CopyPasteManager.getInstance()
-                                    .setContents(StringSelection("http://127.0.0.1:$it/"))
+                                    .setContents(StringSelection(MarimoLocalhost.rootUrl(it)))
                             }
                         }
                     }
@@ -236,21 +220,33 @@ private class SessionCard(
             border = BorderFactory.createEmptyBorder(1, 1, 1, 1)
             preferredSize = Dimension(16, 16)
             val hoverBackground = JBColor(0xEAF2FF, 0x3A4758)
-            addMouseListener(
-                object : MouseAdapter() {
-                    override fun mouseEntered(e: MouseEvent) {
-                        isOpaque = true
-                        isContentAreaFilled = true
-                        background = hoverBackground
-                    }
-
-                    override fun mouseExited(e: MouseEvent) {
-                        isOpaque = false
-                        isContentAreaFilled = false
-                    }
-                }
-            )
+            addHoverListener(hoverBackground)
         }
+}
+
+private fun gridConstraint(gridy: Int, fill: Int): GridBagConstraints =
+    GridBagConstraints().apply {
+        gridx = 0
+        this.gridy = gridy
+        weightx = 1.0
+        this.fill = fill
+    }
+
+private fun JButton.addHoverListener(hoverBackground: JBColor) {
+    addMouseListener(
+        object : MouseAdapter() {
+            override fun mouseEntered(e: MouseEvent) {
+                this@addHoverListener.isOpaque = true
+                this@addHoverListener.isContentAreaFilled = true
+                this@addHoverListener.background = hoverBackground
+            }
+
+            override fun mouseExited(e: MouseEvent) {
+                this@addHoverListener.isOpaque = false
+                this@addHoverListener.isContentAreaFilled = false
+            }
+        }
+    )
 }
 
 private fun separatorRow(): JPanel =

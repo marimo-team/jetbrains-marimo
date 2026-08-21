@@ -9,12 +9,11 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessListener
 import com.intellij.openapi.util.Key
 import com.intellij.util.io.HttpRequests
+import io.marimo.notebook.MarimoLocalhost
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
-
-fun expectedMarimoUrl(host: String, port: Int): String = "http://$host:$port"
 
 /**
  * True when marimo aborted because it does not recognise `--watch`. marimo before 0.10 has no such
@@ -32,8 +31,8 @@ internal fun diagnosticOutputTail(chunks: Iterable<String>): String =
  * Spawns a marimo process and completes [MarimoServerHandle.awaitReady] once BOTH startup signals
  * arrive: the socket answers HTTP (any status), and the URL JCEF must load is known. When
  * [authenticatedUrl] is non-null the plugin supplied it (token auth on); when null readiness
- * delivers the plain [expectedMarimoUrl]. Retained stdout is redacted before it is used for
- * diagnostics. Banner parsing is not used for readiness.
+ * delivers the plain server origin. Retained stdout is redacted before it is used for diagnostics.
+ * Banner parsing is not used for readiness.
  *
  * If [watchFallbackCmd] is supplied and the first attempt exits reporting an unsupported `--watch`
  * option, marimo is relaunched once with that command. The fallback attempt completes the same
@@ -48,7 +47,7 @@ fun startMarimoServer(
     authenticatedUrl: String? = null,
     tokenPasswordFile: String? = null,
 ): MarimoServerHandle {
-    val expectedUrl = expectedMarimoUrl(host, port)
+    val expectedUrl = MarimoLocalhost.origin(host, port)
     val urlFuture = CompletableFuture<String>()
     if (authenticatedUrl != null) {
         urlFuture.complete(authenticatedUrl)

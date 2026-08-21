@@ -50,20 +50,16 @@ class UvLauncher : MarimoLauncher {
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
         ): GeneralCommandLine {
-            val params = buildList {
-                addAll(
-                    listOf("run", "--with", "marimo", "marimo", "edit", notebookPath, "--headless")
+            val params =
+                MarimoCommandLine.buildEditParams(
+                    cliPrefix = listOf("run", "--with", "marimo", "marimo"),
+                    notebookPath = notebookPath,
+                    host = host,
+                    port = port,
+                    watch = watch,
+                    tokenPasswordFile = tokenPasswordFile,
+                    sandbox = sandbox,
                 )
-                if (watch) add("--watch")
-                addAll(listOf("--host", host, "--port", port.toString()))
-                if (tokenPasswordFile != null) {
-                    add("--token-password-file")
-                    add(tokenPasswordFile)
-                } else {
-                    add("--no-token")
-                }
-                if (sandbox) add("--sandbox")
-            }
             return GeneralCommandLine(uvPath).withWorkDirectory(workDir).withParameters(params)
         }
 

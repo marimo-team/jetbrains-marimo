@@ -18,9 +18,6 @@ fun generateAccessToken(): String {
     return Base64.getUrlEncoder().withoutPadding().encodeToString(bytes)
 }
 
-fun authenticatedMarimoUrl(host: String, port: Int, token: String): String =
-    "http://$host:$port?access_token=$token"
-
 /**
  * Writes [token] for `--token-password-file`. Each launch gets a new file under the IDE system temp
  * (`FileUtil.createTempFile` adds a random suffix) so two notebooks started in quick succession

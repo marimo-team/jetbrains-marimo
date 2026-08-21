@@ -6,19 +6,14 @@ import com.intellij.execution.process.ProcessHandler
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.MarimoLocalhost
 import java.util.concurrent.CompletableFuture
-
-enum class MarimoMode {
-    EDIT,
-    RUN,
-}
 
 data class LaunchRequest(
     val project: Project,
     val notebook: VirtualFile,
     val port: Int,
-    val host: String = "127.0.0.1",
-    val mode: MarimoMode = MarimoMode.EDIT,
+    val host: String = MarimoLocalhost.HOST,
     /** Run the notebook in marimo's isolated uv environment (PEP 723 deps); requires uv. */
     val sandbox: Boolean = false,
     /** Absolute path passed to `--token-password-file`, or null for `--no-token`. */

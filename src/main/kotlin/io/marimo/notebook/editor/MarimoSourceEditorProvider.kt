@@ -12,7 +12,6 @@ import com.intellij.openapi.fileEditor.impl.text.TextEditorProvider
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import io.marimo.notebook.detect.MarimoDetector
 import org.jdom.Element
 
 /**
@@ -32,7 +31,7 @@ class MarimoSourceEditorProvider : FileEditorProvider, DumbAware {
         get() = TextEditorProvider.getInstance()
 
     override fun accept(project: Project, file: VirtualFile): Boolean =
-        MarimoDetector.looksLikeMarimo(file)
+        EditorAvailability.isNotebook(file)
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor =
         object : PsiAwareTextEditorImpl(project, file, platform) {

@@ -8,14 +8,12 @@ import com.intellij.openapi.fileEditor.FileEditorProvider
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
-import com.intellij.ui.jcef.JBCefApp
-import io.marimo.notebook.detect.MarimoDetector
 
 const val MARIMO_NOTEBOOK_EDITOR_TYPE = "marimo-notebook"
 
 class MarimoFileEditorProvider : FileEditorProvider, DumbAware {
     override fun accept(project: Project, file: VirtualFile): Boolean =
-        JBCefApp.isSupported() && MarimoDetector.looksLikeMarimo(file)
+        EditorAvailability.canEmbedNotebook(file)
 
     override fun createEditor(project: Project, file: VirtualFile): FileEditor =
         MarimoNotebookEditor(project, file)
