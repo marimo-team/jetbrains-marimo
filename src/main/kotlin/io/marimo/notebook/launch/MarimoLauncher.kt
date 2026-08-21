@@ -9,16 +9,11 @@ import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.MarimoLocalhost
 import java.util.concurrent.CompletableFuture
 
-enum class MarimoMode {
-    EDIT
-}
-
 data class LaunchRequest(
     val project: Project,
     val notebook: VirtualFile,
     val port: Int,
     val host: String = MarimoLocalhost.HOST,
-    val mode: MarimoMode = MarimoMode.EDIT,
     /** Run the notebook in marimo's isolated uv environment (PEP 723 deps); requires uv. */
     val sandbox: Boolean = false,
     /** Absolute path passed to `--token-password-file`, or null for `--no-token`. */

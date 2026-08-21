@@ -11,10 +11,19 @@ import org.junit.runners.Parameterized
 import org.junit.runners.Parameterized.Parameters
 
 @RunWith(Parameterized::class)
-class LauncherCommandTest(private val kind: Kind) {
-    enum class Kind {
-        UV,
-        SDK,
+class LauncherCommandTest(private val launcher: LauncherFixture) {
+    class LauncherFixture(
+        private val displayName: String,
+        val executablePath: String,
+        val expectedPrefix: List<String>,
+        private val buildCommand: (String, Boolean, String?) -> GeneralCommandLine,
+    ) {
+        fun command(
+            watch: Boolean = true,
+            tokenFile: String? = TOKEN_FILE,
+        ): GeneralCommandLine = buildCommand(executablePath, watch, tokenFile)
+
+        override fun toString(): String = displayName
     }
 
     companion object {
@@ -26,55 +35,54 @@ class LauncherCommandTest(private val kind: Kind) {
 
         @JvmStatic
         @Parameters(name = "{0}")
-        fun data(): List<Array<Kind>> = listOf(arrayOf(Kind.UV), arrayOf(Kind.SDK))
+        fun data(): List<Array<LauncherFixture>> =
+            listOf(
+                arrayOf(
+                    LauncherFixture(
+                        displayName = "uv",
+                        executablePath = "/usr/bin/uv",
+                        expectedPrefix = listOf("run", "--with", "marimo", "marimo"),
+                        buildCommand = { executablePath, watch, tokenFile ->
+                            UvLauncher.buildCommandLine(
+                                uvPath = executablePath,
+                                notebookPath = NOTEBOOK,
+                                workDir = WORK_DIR,
+                                host = HOST,
+                                port = PORT,
+                                watch = watch,
+                                tokenPasswordFile = tokenFile,
+                            )
+                        },
+                    )
+                ),
+                arrayOf(
+                    LauncherFixture(
+                        displayName = "SDK Python",
+                        executablePath = "/proj/.venv/bin/python",
+                        expectedPrefix = listOf("-m", "marimo"),
+                        buildCommand = { executablePath, watch, tokenFile ->
+                            SdkLauncher.buildCommandLine(
+                                pythonPath = executablePath,
+                                notebookPath = NOTEBOOK,
+                                workDir = WORK_DIR,
+                                host = HOST,
+                                port = PORT,
+                                watch = watch,
+                                tokenPasswordFile = tokenFile,
+                            )
+                        },
+                    )
+                ),
+            )
     }
-
-    private val exePath =
-        when (kind) {
-            Kind.UV -> "/usr/bin/uv"
-            Kind.SDK -> "/proj/.venv/bin/python"
-        }
-
-    private val prefix =
-        when (kind) {
-            Kind.UV -> listOf("run", "--with", "marimo", "marimo")
-            Kind.SDK -> listOf("-m", "marimo")
-        }
-
-    private fun command(
-        watch: Boolean = true,
-        tokenFile: String? = TOKEN_FILE,
-    ): GeneralCommandLine =
-        when (kind) {
-            Kind.UV ->
-                UvLauncher.buildCommandLine(
-                    uvPath = exePath,
-                    notebookPath = NOTEBOOK,
-                    workDir = WORK_DIR,
-                    host = HOST,
-                    port = PORT,
-                    watch = watch,
-                    tokenPasswordFile = tokenFile,
-                )
-            Kind.SDK ->
-                SdkLauncher.buildCommandLine(
-                    pythonPath = exePath,
-                    notebookPath = NOTEBOOK,
-                    workDir = WORK_DIR,
-                    host = HOST,
-                    port = PORT,
-                    watch = watch,
-                    tokenPasswordFile = tokenFile,
-                )
-        }
 
     @Test
     fun buildsMarimoEditCommand() {
-        val cmd = command()
-        assertEquals(exePath, cmd.exePath)
+        val cmd = launcher.command()
+        assertEquals(launcher.executablePath, cmd.exePath)
         assertEquals(WORK_DIR, cmd.workDirectory?.path)
         assertEquals(
-            prefix +
+            launcher.expectedPrefix +
                 listOf(
                     "edit",
                     NOTEBOOK,
@@ -94,7 +102,7 @@ class LauncherCommandTest(private val kind: Kind) {
     @Test
     fun watchDisabledOmitsWatchFlag() {
         assertEquals(
-            prefix +
+            launcher.expectedPrefix +
                 listOf(
                     "edit",
                     NOTEBOOK,
@@ -106,14 +114,14 @@ class LauncherCommandTest(private val kind: Kind) {
                     "--token-password-file",
                     TOKEN_FILE,
                 ),
-            command(watch = false).parametersList.parameters,
+            launcher.command(watch = false).parametersList.parameters,
         )
     }
 
     @Test
     fun disabledTokenAuthAppendsNoToken() {
         assertEquals(
-            prefix +
+            launcher.expectedPrefix +
                 listOf(
                     "edit",
                     NOTEBOOK,
@@ -125,7 +133,7 @@ class LauncherCommandTest(private val kind: Kind) {
                     PORT.toString(),
                     "--no-token",
                 ),
-            command(tokenFile = null).parametersList.parameters,
+            launcher.command(tokenFile = null).parametersList.parameters,
         )
     }
 }
@@ -166,9 +174,9 @@ class UvLauncherSandboxCommandTest {
     }
 }
 
-class ExpectedMarimoUrlTest {
+class MarimoLocalhostOriginTest {
     @Test
-    fun expectedUrlMatchesHostAndPort() {
+    fun originMatchesHostAndPort() {
         assertEquals("http://127.0.0.1:2718", MarimoLocalhost.origin("127.0.0.1", 2718))
     }
 }

@@ -31,8 +31,8 @@ internal fun diagnosticOutputTail(chunks: Iterable<String>): String =
  * Spawns a marimo process and completes [MarimoServerHandle.awaitReady] once BOTH startup signals
  * arrive: the socket answers HTTP (any status), and the URL JCEF must load is known. When
  * [authenticatedUrl] is non-null the plugin supplied it (token auth on); when null readiness
- * delivers the plain [MarimoLocalhost.origin]. Retained stdout is redacted before it is used for
- * diagnostics. Banner parsing is not used for readiness.
+ * delivers the plain server origin. Retained stdout is redacted before it is used for diagnostics.
+ * Banner parsing is not used for readiness.
  *
  * If [watchFallbackCmd] is supplied and the first attempt exits reporting an unsupported `--watch`
  * option, marimo is relaunched once with that command. The fallback attempt completes the same

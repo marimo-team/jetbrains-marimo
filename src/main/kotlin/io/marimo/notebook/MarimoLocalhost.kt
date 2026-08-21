@@ -14,8 +14,6 @@ object MarimoLocalhost {
 
     fun rootUrl(port: Int): String = "${origin(port)}/"
 
-    fun authenticatedUrl(port: Int, token: String): String = authenticatedUrl(HOST, port, token)
-
     fun authenticatedUrl(host: String, port: Int, token: String): String =
         "${origin(host, port)}?access_token=$token"
 

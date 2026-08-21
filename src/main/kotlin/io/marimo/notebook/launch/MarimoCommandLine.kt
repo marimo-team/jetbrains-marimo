@@ -2,7 +2,7 @@
 
 package io.marimo.notebook.launch
 
-/** Shared `marimo edit` arguments used by every launcher. */
+/** Owns the common `marimo edit` CLI contract across launcher-specific prefixes. */
 object MarimoCommandLine {
     fun buildEditParams(
         cliPrefix: List<String>,

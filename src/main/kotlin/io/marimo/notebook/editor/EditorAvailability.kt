@@ -6,7 +6,7 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.jcef.JBCefApp
 import io.marimo.notebook.detect.MarimoDetector
 
-/** Centralizes whether a file can open in a marimo editor. */
+/** Owns the policy for recognizing notebooks and gating the embedded editor on JCEF. */
 object EditorAvailability {
     fun isNotebook(file: VirtualFile): Boolean = MarimoDetector.looksLikeMarimo(file)
 
