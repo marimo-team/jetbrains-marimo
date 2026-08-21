@@ -1,0 +1,93 @@
+config:
+  validation: true
+  warningsAsErrors: true
+  checkExhaustiveness: false
+  excludes: []
+
+complexity:
+  active: true
+  severity: error
+
+  LargeClass:
+    active: false
+
+  LongMethod:
+    active: true
+    allowedLines: 60
+
+style:
+  active: true
+  severity: error
+
+  UnusedImport:
+    active: true
+
+  UnusedVariable:
+    active: true
+
+potential-bugs:
+  active: true
+  severity: error
+
+  AvoidReferentialEquality:
+    active: true
+
+  DoubleMutabilityForCollection:
+    active: true
+
+  EqualsAlwaysReturnsTrueOrFalse:
+    active: true
+
+  EqualsWithHashCodeExist:
+    active: true
+
+  ExplicitGarbageCollectionCall:
+    active: true
+
+  HasPlatformType:
+    active: true
+
+  IgnoredReturnValue:
+    active: true
+
+  ImplicitDefaultLocale:
+    active: true
+
+  InvalidRange:
+    active: true
+
+  IteratorHasNextCallsNextMethod:
+    active: true
+
+  IteratorNotThrowingNoSuchElementException:
+    active: true
+
+  MapGetWithNotNullAssertionOperator:
+    active: true
+
+  UnnecessaryNotNullOperator:
+    active: true
+
+  UnnecessarySafeCall:
+    active: true
+
+  UnreachableCatchBlock:
+    active: true
+
+  UnreachableCode:
+    active: true
+
+  UnsafeCallOnNullableType:
+    active: true
+
+  UnsafeCast:
+    active: true
+
+  UnusedUnaryOperator:
+    active: true
+
+  UselessPostfixExpression:
+    active: true
+
+  WrongEqualsTypeParameter:
+    active: true

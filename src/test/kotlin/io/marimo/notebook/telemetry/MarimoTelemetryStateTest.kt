@@ -7,7 +7,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarimoTelemetryStateTest {
-    @Test fun anonymousIdIsStableAcrossReload() {
+    @Test
+    fun anonymousIdIsStableAcrossReload() {
         val service = MarimoTelemetry()
         val id = service.anonymousId()
         assertTrue(id.isNotBlank())
@@ -17,7 +18,8 @@ class MarimoTelemetryStateTest {
         assertEquals(id, restored.anonymousId())
     }
 
-    @Test fun consentDefaultsToUnset() {
+    @Test
+    fun consentDefaultsToUnset() {
         assertEquals(Consent.UNSET, MarimoTelemetry().state.consent)
     }
 }

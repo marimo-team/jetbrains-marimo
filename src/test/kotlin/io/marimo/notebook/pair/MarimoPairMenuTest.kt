@@ -11,15 +11,18 @@ import org.junit.Test
 
 class MarimoPairMenuTest {
 
-    @Test fun terminalActionsPrecedeCopyWithSeparator() {
-        val actions = MarimoPairMenu.actions(
-            terminalActions = listOf(
-                TestAction("Claude Code in Terminal"),
-                TestAction("Codex CLI in Terminal"),
-                TestAction("opencode in Terminal"),
-            ),
-            copyAction = TestAction("Copy pairing prompt"),
-        )
+    @Test
+    fun terminalActionsPrecedeCopyWithSeparator() {
+        val actions =
+            MarimoPairMenu.actions(
+                terminalActions =
+                    listOf(
+                        TestAction("Claude Code in Terminal"),
+                        TestAction("Codex CLI in Terminal"),
+                        TestAction("opencode in Terminal"),
+                    ),
+                copyAction = TestAction("Copy pairing prompt"),
+            )
 
         assertEquals(
             listOf(
@@ -34,11 +37,13 @@ class MarimoPairMenuTest {
         assertTrue(actions[3] is Separator)
     }
 
-    @Test fun copyOnlyProducesNoSeparator() {
-        val actions = MarimoPairMenu.actions(
-            terminalActions = emptyList(),
-            copyAction = TestAction("Copy pairing prompt"),
-        )
+    @Test
+    fun copyOnlyProducesNoSeparator() {
+        val actions =
+            MarimoPairMenu.actions(
+                terminalActions = emptyList(),
+                copyAction = TestAction("Copy pairing prompt"),
+            )
 
         assertEquals(
             listOf("Copy pairing prompt"),

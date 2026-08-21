@@ -19,6 +19,6 @@ sealed interface StopCause {
 
     data class Unexpected(
         val exitCode: Int,
-        val outputTail: String
+        val outputTail: String,
     ) : StopCause
 }

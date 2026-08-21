@@ -9,18 +9,19 @@ import java.net.URISyntaxException
 /**
  * Identity checks for the view's asynchronous callbacks. Every loadNotebook call starts a new
  * navigation generation, and JCEF load errors additionally must match the server origin the view
- * currently renders — CEF delivers errors for whatever the browser was doing, including a page
- * that a Restart already replaced.
+ * currently renders — CEF delivers errors for whatever the browser was doing, including a page that
+ * a Restart already replaced.
  */
 
 /** The scheme://host:port prefix that identifies one server. Credentials and paths are dropped. */
 internal fun serverOrigin(url: String?): String? {
     if (url.isNullOrBlank()) return null
-    val uri = try {
-        URI(url)
-    } catch (_: URISyntaxException) {
-        return null
-    }
+    val uri =
+        try {
+            URI(url)
+        } catch (_: URISyntaxException) {
+            return null
+        }
     val scheme = uri.scheme ?: return null
     if (scheme != "http" && scheme != "https") return null
     val host = uri.host ?: return null
@@ -41,7 +42,9 @@ internal data class NavigationSnapshot(
     fun withExpectedUrl(url: String): NavigationSnapshot = copy(expectedUrl = url)
 }
 
-/** The generation for a current load error, or null when the callback belongs to another attempt. */
+/**
+ * The generation for a current load error, or null when the callback belongs to another attempt.
+ */
 internal fun loadErrorGeneration(failedUrl: String?, snapshot: NavigationSnapshot): Long? {
     val expectedUrl = snapshot.expectedUrl
     if (expectedUrl != null && failedUrl != expectedUrl) return null

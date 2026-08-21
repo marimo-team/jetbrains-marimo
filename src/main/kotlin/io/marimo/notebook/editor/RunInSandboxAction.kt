@@ -2,10 +2,6 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.MarimoIcons
-import io.marimo.notebook.detect.MarimoDetector
-import io.marimo.notebook.launch.UvLauncher
-import io.marimo.notebook.server.MarimoServerService
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
 import com.intellij.openapi.actionSystem.AnActionEvent
@@ -13,11 +9,15 @@ import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
+import io.marimo.notebook.MarimoIcons
+import io.marimo.notebook.detect.MarimoDetector
+import io.marimo.notebook.launch.UvLauncher
+import io.marimo.notebook.server.MarimoServerService
 
 /**
  * Opens a marimo notebook in marimo's isolated uv environment (PEP 723 deps). Disabled with an
- * explanatory tooltip when uv — which marimo's sandbox requires — isn't on the machine. The uv lookup
- * runs on a background thread ([ActionUpdateThread.BGT]) so it never blocks the EDT.
+ * explanatory tooltip when uv — which marimo's sandbox requires — isn't on the machine. The uv
+ * lookup runs on a background thread ([ActionUpdateThread.BGT]) so it never blocks the EDT.
  */
 class RunInSandboxAction : AnAction(), DumbAware {
     init {

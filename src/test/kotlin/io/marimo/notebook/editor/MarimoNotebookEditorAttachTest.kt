@@ -17,7 +17,8 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
             service.sessions().forEach { snapshot ->
                 repeat(snapshot.attachedTabs) {
                     com.intellij.openapi.vfs.VirtualFileManager.getInstance()
-                        .findFileByUrl(snapshot.fileUrl)?.let(service::detach)
+                        .findFileByUrl(snapshot.fileUrl)
+                        ?.let(service::detach)
                 }
                 service.stopUrl(snapshot.fileUrl)
             }
@@ -35,7 +36,11 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         assertEquals(1, service.statusFor(file)!!.attachedTabs)
 
         val second = MarimoNotebookEditor(project, file)
-        assertEquals("a split shares the session, it does not relaunch it", 2, service.statusFor(file)!!.attachedTabs)
+        assertEquals(
+            "a split shares the session, it does not relaunch it",
+            2,
+            service.statusFor(file)!!.attachedTabs,
+        )
 
         second.dispose()
         assertEquals(1, service.statusFor(file)!!.attachedTabs)

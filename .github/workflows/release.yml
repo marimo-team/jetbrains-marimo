@@ -37,6 +37,8 @@ jobs:
     steps:
       - name: Fetch Sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Read Version
         id: version
@@ -52,8 +54,8 @@ jobs:
       - name: Assert Version Not Already Released
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ steps.version.outputs.version }}
         run: |
-          VERSION="${{ steps.version.outputs.version }}"
           if gh release view "$VERSION" --repo "${{ github.repository }}" >/dev/null 2>&1; then
             echo "::error::Version $VERSION is already released. Bump 'version' in gradle.properties first."
             exit 1
@@ -79,6 +81,8 @@ jobs:
 
       - name: Fetch Sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       - name: Setup Java
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
@@ -97,8 +101,9 @@ jobs:
       # Fails when CHANGELOG.md has no section for this version, which is the mistake most
       # likely to be caught here rather than halfway through a real release.
       - name: Render Release Notes
+        env:
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
           RELEASE_NOTE="./build/tmp/release_note.txt"
           mkdir -p "$(dirname "$RELEASE_NOTE")"
           ./gradlew getChangelog --project-version "$VERSION" --no-header --quiet --console=plain --output-file="$RELEASE_NOTE"
@@ -149,6 +154,8 @@ jobs:
       # Check out the current repository
       - name: Fetch Sources
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
 
       # Set up the Java environment for the next steps
       - name: Setup Java
@@ -185,8 +192,8 @@ jobs:
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.preflight.outputs.version }}
         run: |
-          VERSION="${{ needs.preflight.outputs.version }}"
           URL=$(gh release create "$VERSION" \
             --target "${{ github.sha }}" \
             --title "$VERSION" \

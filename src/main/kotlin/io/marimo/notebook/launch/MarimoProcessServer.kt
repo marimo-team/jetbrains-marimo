@@ -64,33 +64,39 @@ fun startMarimoServer(
         handle.attach(handler)
         val output = StringBuilder()
 
-        handler.addProcessListener(object : ProcessListener {
-            override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                synchronized(output) { output.append(event.text) }
-            }
+        handler.addProcessListener(
+            object : ProcessListener {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    synchronized(output) { output.append(event.text) }
+                }
 
-            // A dead process is otherwise indistinguishable from a slow one — without this the tab waits
-            // the full poll timeout (e.g. `python -m marimo` exiting on a missing module). Fail fast and
-            // surface the process output so the error panel explains why.
-            override fun processTerminated(event: ProcessEvent) {
-                val full = synchronized(output) { output.toString() }
-                val diagnosticTail = diagnosticOutputTail(listOf(full))
+                // A dead process is otherwise indistinguishable from a slow one — without this the
+                // tab waits
+                // the full poll timeout (e.g. `python -m marimo` exiting on a missing module). Fail
+                // fast and
+                // surface the process output so the error panel explains why.
+                override fun processTerminated(event: ProcessEvent) {
+                    val full = synchronized(output) { output.toString() }
+                    val diagnosticTail = diagnosticOutputTail(listOf(full))
 
-                if (ready.isDone) {
+                    if (ready.isDone) {
+                        handle.notifyTerminated(event.exitCode, diagnosticTail)
+                        return
+                    }
+
+                    if (fallback != null && indicatesUnsupportedWatch(full)) {
+                        runAttempt(fallback(), fallback = null)
+                        return
+                    }
+                    httpUp.completeExceptionally(
+                        IOException(
+                            "marimo exited (code ${event.exitCode}) before serving $expectedUrl\n$diagnosticTail"
+                        )
+                    )
                     handle.notifyTerminated(event.exitCode, diagnosticTail)
-                    return
                 }
-
-                if (fallback != null && indicatesUnsupportedWatch(full)) {
-                    runAttempt(fallback(), fallback = null)
-                    return
-                }
-                httpUp.completeExceptionally(
-                    IOException("marimo exited (code ${event.exitCode}) before serving $expectedUrl\n$diagnosticTail"),
-                )
-                handle.notifyTerminated(event.exitCode, diagnosticTail)
             }
-        })
+        )
         handler.startNotify()
     }
 
@@ -119,8 +125,11 @@ private fun pollUntilUp(url: String, httpUp: CompletableFuture<Void?>, timeoutSe
                 Thread.sleep(200)
             }
         }
-        if (!httpUp.isDone) httpUp.completeExceptionally(IOException("marimo server did not start: $url"))
-    }.apply { isDaemon = true }.start()
+        if (!httpUp.isDone)
+            httpUp.completeExceptionally(IOException("marimo server did not start: $url"))
+    }
+        .apply { isDaemon = true }
+        .start()
 }
 
 private class ProcessMarimoServerHandle(
@@ -137,23 +146,27 @@ private class ProcessMarimoServerHandle(
     override val isAlive: Boolean
         get() = !handler.isProcessTerminated
 
+    override val processHandle: ProcessHandler
+        get() = handler
 
-    override val processHandle: ProcessHandler get() = handler
     override fun awaitReady(): CompletableFuture<String> = ready
+
     override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
-        val previousTermination = synchronized(terminationLock) {
-            terminationListener = listener
-            termination
-        }
+        val previousTermination =
+            synchronized(terminationLock) {
+                terminationListener = listener
+                termination
+            }
         previousTermination?.let { listener(it.exitCode, it.outputTail) }
     }
 
     fun notifyTerminated(exitCode: Int, outputTail: String) {
-        val listener = synchronized(terminationLock) {
-            if (termination != null) return
-            termination = Termination(exitCode, outputTail)
-            terminationListener
-        }
+        val listener =
+            synchronized(terminationLock) {
+                if (termination != null) return
+                termination = Termination(exitCode, outputTail)
+                terminationListener
+            }
         try {
             listener?.invoke(exitCode, outputTail)
         } finally {

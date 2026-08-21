@@ -4,9 +4,9 @@ package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import org.junit.Assert.assertEquals
 import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertEquals
 
 /**
  * First attempt: rejects `--watch` the way marimo before 0.10 does. Second attempt (no `watch`
@@ -43,11 +43,15 @@ class MarimoProcessServerWatchRetryTest : BasePlatformTestCase() {
     fun testUnsupportedWatchRetriesOnceAndDeliversTheSuppliedUrl() {
         val port = ServerSocket(0).use { it.localPort }
         val supplied = "http://127.0.0.1:$port?access_token=fallbackT"
-        val handle = startMarimoServer(
-            command(port, watch = true), "127.0.0.1", port, readinessTimeoutSeconds = 15,
-            watchFallbackCmd = { command(port, watch = false) },
-            authenticatedUrl = supplied,
-        )
+        val handle =
+            startMarimoServer(
+                command(port, watch = true),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 15,
+                watchFallbackCmd = { command(port, watch = false) },
+                authenticatedUrl = supplied,
+            )
         val readyUrl = handle.awaitReady().get(15, TimeUnit.SECONDS)
         handle.dispose()
         assertEquals(supplied, readyUrl)

@@ -8,7 +8,13 @@ import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvUnavailableException
 
 /** An action the error panel can offer; the editor supplies the behaviour for each. */
-enum class MarimoErrorAction { RETRY, INSTALL, START_IN_SANDBOX, OPEN_AS_PYTHON, CLOSE }
+enum class MarimoErrorAction {
+    RETRY,
+    INSTALL,
+    START_IN_SANDBOX,
+    OPEN_AS_PYTHON,
+    CLOSE,
+}
 
 /** Why the marimo editor could not be shown. */
 sealed interface MarimoFailure {
@@ -24,8 +30,8 @@ sealed interface MarimoFailure {
 
 /**
  * What the error panel renders: a headline, optional secondary detail, and the actions that apply.
- * Derived from the failure and the interpreter's marimo presence so the message and buttons match the
- * actual cause — e.g. an Install button only when marimo is known to be missing.
+ * Derived from the failure and the interpreter's marimo presence so the message and buttons match
+ * the actual cause — e.g. an Install button only when marimo is known to be missing.
  */
 data class MarimoErrorModel(
     val message: String,
@@ -35,9 +41,14 @@ data class MarimoErrorModel(
     val sandboxEnabled: Boolean = true,
 ) {
     companion object {
-        fun of(failure: MarimoFailure, presence: MarimoPresence, uvAvailable: Boolean): MarimoErrorModel =
+        fun of(
+            failure: MarimoFailure,
+            presence: MarimoPresence,
+            uvAvailable: Boolean,
+        ): MarimoErrorModel =
             when (failure) {
-                is MarimoFailure.ServerNotStarted -> serverNotStarted(failure.cause, presence, uvAvailable)
+                is MarimoFailure.ServerNotStarted ->
+                    serverNotStarted(failure.cause, presence, uvAvailable)
                 is MarimoFailure.EditorLoadFailed ->
                     MarimoErrorModel(
                         message = "marimo started, but the editor failed to load.",
@@ -58,31 +69,35 @@ data class MarimoErrorModel(
             when {
                 cause is UvUnavailableException ->
                     MarimoErrorModel(
-                        message = "marimo sandbox mode needs uv. Install uv to run in an isolated environment.",
+                        message =
+                            "marimo sandbox mode needs uv. Install uv to run in an isolated environment.",
                         detail = null,
                         actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
                     )
                 cause is NoInterpreterException ->
                     MarimoErrorModel(
-                        message = "No Python interpreter is configured. Configure one to run marimo on it.",
+                        message =
+                            "No Python interpreter is configured. Configure one to run marimo on it.",
                         detail = null,
-                        actions = listOf(
-                            MarimoErrorAction.RETRY,
-                            MarimoErrorAction.START_IN_SANDBOX,
-                            MarimoErrorAction.OPEN_AS_PYTHON,
-                        ),
+                        actions =
+                            listOf(
+                                MarimoErrorAction.RETRY,
+                                MarimoErrorAction.START_IN_SANDBOX,
+                                MarimoErrorAction.OPEN_AS_PYTHON,
+                            ),
                         sandboxEnabled = uvAvailable,
                     )
                 presence is MarimoPresence.Missing ->
                     MarimoErrorModel(
                         message = "marimo isn't installed in the project interpreter.",
                         detail = null,
-                        actions = listOf(
-                            MarimoErrorAction.INSTALL,
-                            MarimoErrorAction.RETRY,
-                            MarimoErrorAction.START_IN_SANDBOX,
-                            MarimoErrorAction.OPEN_AS_PYTHON,
-                        ),
+                        actions =
+                            listOf(
+                                MarimoErrorAction.INSTALL,
+                                MarimoErrorAction.RETRY,
+                                MarimoErrorAction.START_IN_SANDBOX,
+                                MarimoErrorAction.OPEN_AS_PYTHON,
+                            ),
                         sandboxEnabled = uvAvailable,
                     )
                 else ->
@@ -102,11 +117,12 @@ data class MarimoErrorModel(
                     MarimoErrorModel(
                         message = "marimo was shut down for this notebook.",
                         detail = "Restart it to keep working, or close the tab.",
-                        actions = listOf(
-                            MarimoErrorAction.RETRY,
-                            MarimoErrorAction.CLOSE,
-                            MarimoErrorAction.OPEN_AS_PYTHON,
-                        ),
+                        actions =
+                            listOf(
+                                MarimoErrorAction.RETRY,
+                                MarimoErrorAction.CLOSE,
+                                MarimoErrorAction.OPEN_AS_PYTHON,
+                            ),
                     )
                 is StopCause.Unexpected ->
                     MarimoErrorModel(

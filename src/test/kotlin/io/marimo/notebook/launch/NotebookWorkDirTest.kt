@@ -11,8 +11,10 @@ class NotebookWorkDirTest : BasePlatformTestCase() {
 
     fun testNotebookInsideAContentRootResolvesToThatRoot() {
         val nested = myFixture.addFileToProject("sub/dir/nb.py", "import marimo\n").virtualFile
-        val expected = com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
-            .getContentRootForFile(nested)!!.path
+        val expected =
+            com.intellij.openapi.roots.ProjectFileIndex.getInstance(project)
+                .getContentRootForFile(nested)!!
+                .path
         assertEquals(expected, NotebookWorkDir.resolve(project, nested))
         assertFalse(
             "the notebook's own directory is the bug this fixes",

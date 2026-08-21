@@ -4,6 +4,8 @@
 .intellijPlatform
 .kotlin
 build
+/.vscode/
+/bin/
 
 # Python
 .venv/

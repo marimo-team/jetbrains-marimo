@@ -15,11 +15,19 @@ class UvLauncher : MarimoLauncher {
         val workDir = request.workDir ?: NotebookWorkDir.resolve(request.project, request.notebook)
         fun command(watch: Boolean) =
             buildCommandLine(
-                uv, request.notebook.path, workDir, request.host, request.port,
-                request.sandbox, watch, request.tokenPasswordFile,
+                uv,
+                request.notebook.path,
+                workDir,
+                request.host,
+                request.port,
+                request.sandbox,
+                watch,
+                request.tokenPasswordFile,
             )
         return startMarimoServer(
-            command(watch = true), request.host, request.port,
+            command(watch = true),
+            request.host,
+            request.port,
             watchFallbackCmd = { command(watch = false) },
             authenticatedUrl = request.authenticatedUrl,
             tokenPasswordFile = request.tokenPasswordFile,
@@ -33,12 +41,19 @@ class UvLauncher : MarimoLauncher {
 
     companion object {
         fun buildCommandLine(
-            uvPath: String, notebookPath: String, workDir: String, host: String, port: Int,
-            sandbox: Boolean = false, watch: Boolean = true,
+            uvPath: String,
+            notebookPath: String,
+            workDir: String,
+            host: String,
+            port: Int,
+            sandbox: Boolean = false,
+            watch: Boolean = true,
             tokenPasswordFile: String? = null,
         ): GeneralCommandLine {
             val params = buildList {
-                addAll(listOf("run", "--with", "marimo", "marimo", "edit", notebookPath, "--headless"))
+                addAll(
+                    listOf("run", "--with", "marimo", "marimo", "edit", notebookPath, "--headless")
+                )
                 if (watch) add("--watch")
                 addAll(listOf("--host", host, "--port", port.toString()))
                 if (tokenPasswordFile != null) {
@@ -53,26 +68,30 @@ class UvLauncher : MarimoLauncher {
         }
 
         /**
-         * GUI-launched IDEs on macOS inherit a minimal PATH that excludes Homebrew (/opt/homebrew/bin),
-         * the uv installer dir (~/.local/bin), and /usr/local/bin — so a PATH-only lookup misses uv that
-         * the user's shell can see. Fall back to the well-known install locations before giving up.
+         * GUI-launched IDEs on macOS inherit a minimal PATH that excludes Homebrew
+         * (/opt/homebrew/bin), the uv installer dir (~/.local/bin), and /usr/local/bin — so a
+         * PATH-only lookup misses uv that the user's shell can see. Fall back to the well-known
+         * install locations before giving up.
          */
         fun findUv(): String? {
             com.intellij.execution.configurations.PathEnvironmentVariableUtil
-                .findExecutableInPathOnAnyOS("uv")?.let { return it.absolutePath }
+                .findExecutableInPathOnAnyOS("uv")
+                ?.let {
+                    return it.absolutePath
+                }
 
             val home = System.getProperty("user.home")
-            return FALLBACK_UV_PATHS
-                .map { it.replaceFirst("~", home) }
+            return FALLBACK_UV_PATHS.map { it.replaceFirst("~", home) }
                 .map(::File)
                 .firstOrNull { it.canExecute() }
                 ?.absolutePath
         }
 
-        private val FALLBACK_UV_PATHS = listOf(
-            "~/.local/bin/uv",
-            "/opt/homebrew/bin/uv",
-            "/usr/local/bin/uv",
-        )
+        private val FALLBACK_UV_PATHS =
+            listOf(
+                "~/.local/bin/uv",
+                "/opt/homebrew/bin/uv",
+                "/usr/local/bin/uv",
+            )
     }
 }

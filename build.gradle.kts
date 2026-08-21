@@ -1,6 +1,8 @@
+import dev.detekt.gradle.extensions.FailOnSeverity
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
+import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
@@ -9,13 +11,26 @@ plugins {
     id("org.jetbrains.intellij.platform")
     id("org.jetbrains.changelog")
     id("com.diffplug.spotless") version "8.10.0"
+    id("dev.detekt") version "2.0.0-alpha.6"
 }
 
 spotless {
     kotlin {
         target("src/**/*.kt")
+        ktfmt("0.64").kotlinlangStyle()
         licenseHeader("/* Copyright \$YEAR Marimo. All rights reserved. */\n\n")
     }
+    kotlinGradle {
+        target("*.gradle.kts")
+        ktfmt("0.64").kotlinlangStyle()
+    }
+}
+
+detekt {
+    config.setFrom("detekt.yml")
+    buildUponDefaultConfig = false
+    ignoreFailures = false
+    failOnSeverity = FailOnSeverity.Error
 }
 
 // The telemetry environment is fixed when the artifact is built: only the release workflow passes
@@ -25,12 +40,14 @@ spotless {
 val telemetryEnv = providers.gradleProperty("telemetry.env").orElse("development").get()
 val telemetryResourcesDir = layout.buildDirectory.dir("generated/telemetry-resources")
 
-val generateTelemetryConfig = tasks.register<WriteProperties>("generateTelemetryConfig") {
-    destinationFile = telemetryResourcesDir.map { it.file("telemetry.properties") }
-    property("environment", telemetryEnv)
-    // Baked in so the runtime reports the plugin's own version without querying an internal platform API.
-    property("version", providers.provider { project.version.toString() })
-}
+val generateTelemetryConfig =
+    tasks.register<WriteProperties>("generateTelemetryConfig") {
+        destinationFile = telemetryResourcesDir.map { it.file("telemetry.properties") }
+        property("environment", telemetryEnv)
+        // Baked in so the runtime reports the plugin's own version without querying an internal
+        // platform API.
+        property("version", providers.provider { project.version.toString() })
+    }
 
 sourceSets.named("main") {
     resources.srcDir(telemetryResourcesDir)
@@ -45,11 +62,13 @@ intellijPlatform {
         ideaVersion {
             // Floor: 2026.1 — the install/probe path uses Python packaging APIs that don't exist
             // before then. Open-ended ceiling so new IDE releases don't lock the plugin out
-            // (an explicit untilBuild would otherwise default to the build branch we compile against).
+            // (an explicit untilBuild would otherwise default to the build branch we compile
+            // against).
             sinceBuild = "261"
             untilBuild = provider { null }
         }
-        // "What's new" on the Marketplace listing is rendered from the matching CHANGELOG.md section,
+        // "What's new" on the Marketplace listing is rendered from the matching CHANGELOG.md
+        // section,
         // falling back to [Unreleased] for builds whose version isn't pinned in the changelog yet.
         changeNotes = provider {
             with(changelog) {
@@ -63,19 +82,28 @@ intellijPlatform {
         }
     }
     pluginVerification {
+        ides {
+            // Fixed targets keep dependency verification reproducible as new IDE releases ship.
+            create(IntelliJPlatformType.PyCharm, "2026.1.3")
+            create(IntelliJPlatformType.PyCharm, "2026.2.1")
+        }
+
         // The verifier runs against a backend IDE image that omits the platform's frontend /
-        // split-mode modules. Resolving the bundled Python plugin transitively reaches those, so the
+        // split-mode modules. Resolving the bundled Python plugin transitively reaches those, so
+        // the
         // verifier can't resolve com.intellij.modules.python and reports every com.jetbrains.python
         // class as "not found" — yet Python is present at runtime in every targeted IDE and the
         // plugin loads fine. The ignore file mutes only that "not found" signature, scoped to
-        // com.jetbrains.python, so real method/class-level incompatibilities still fail verification.
+        // com.jetbrains.python, so real method/class-level incompatibilities still fail
+        // verification.
         ignoredProblemsFile = layout.projectDirectory.file("verifier-ignored-problems.txt")
 
-        failureLevel = listOf(
-            VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
-            VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
-            VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
-        )
+        failureLevel =
+            listOf(
+                VerifyPluginTask.FailureLevel.COMPATIBILITY_PROBLEMS,
+                VerifyPluginTask.FailureLevel.OVERRIDE_ONLY_API_USAGES,
+                VerifyPluginTask.FailureLevel.INTERNAL_API_USAGES,
+            )
     }
 
     // Signing and publishing read their material from environment variables, supplied in CI by the
@@ -102,10 +130,12 @@ dependencies {
 
     testImplementation("junit:junit:4.13.2")
 
-    // IntelliJ Platform Gradle Plugin Dependencies Extension - read more: https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
+    // IntelliJ Platform Gradle Plugin Dependencies Extension - read more:
+    // https://plugins.jetbrains.com/docs/intellij/tools-intellij-platform-gradle-plugin-dependencies-extension.html
     intellijPlatform {
         // PyCharm is the core target, so build and run against PyCharm (unified since 2025.1; its
-        // free core tier covers what the plugin needs). Depending on the bundled PythonCore module —
+        // free core tier covers what the plugin needs). Depending on the bundled PythonCore module
+        // —
         // the smallest Python surface — keeps the plugin runnable in IntelliJ IDEA and other
         // JetBrains IDEs whose Python plugin is a superset of PythonCore.
         pycharm("2026.1.3")

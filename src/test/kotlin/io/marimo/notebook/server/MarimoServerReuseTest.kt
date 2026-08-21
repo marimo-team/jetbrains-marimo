@@ -51,7 +51,10 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
         val reopened = service.lifecycleFor(file)
 
         assertSame(initial, reopened)
-        assertEquals(MarimoNotebookState.Stopped(StopCause.Unexpected(1, "crashed")), reopened.state)
+        assertEquals(
+            MarimoNotebookState.Stopped(StopCause.Unexpected(1, "crashed")),
+            reopened.state,
+        )
     }
 
     fun testReleaseStopsTheLifecycleWithoutClearingSandboxMode() {
@@ -77,7 +80,10 @@ class MarimoServerReuseTest : BasePlatformTestCase() {
         val executor = Executors.newFixedThreadPool(2)
         try {
             val first = executor.submit<CompletableFuture<String>> { service.urlFor(file) }
-            assertTrue("first launch did not begin", launcher.firstLaunchEntered.await(5, TimeUnit.SECONDS))
+            assertTrue(
+                "first launch did not begin",
+                launcher.firstLaunchEntered.await(5, TimeUnit.SECONDS),
+            )
 
             val second = executor.submit<CompletableFuture<String>> { service.urlFor(file) }
             launcher.allowFirstLaunch.countDown()

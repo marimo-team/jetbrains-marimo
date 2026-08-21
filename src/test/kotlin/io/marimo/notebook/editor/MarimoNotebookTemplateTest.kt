@@ -7,10 +7,17 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class MarimoNotebookTemplateTest {
-    @Test fun scaffoldOpensAsMarimoNotebook() {
-        val template = javaClass.getResourceAsStream("/fileTemplates/internal/marimo Notebook.py.ft")
-            ?.readBytes()?.decodeToString()
+    @Test
+    fun scaffoldOpensAsMarimoNotebook() {
+        val template =
+            javaClass
+                .getResourceAsStream("/fileTemplates/internal/marimo Notebook.py.ft")
+                ?.readBytes()
+                ?.decodeToString()
         assertTrue("template resource is bundled", template != null)
-        assertTrue("scaffold satisfies marimo detection", MarimoDetector.looksLikeMarimo(template!!))
+        assertTrue(
+            "scaffold satisfies marimo detection",
+            MarimoDetector.looksLikeMarimo(template!!),
+        )
     }
 }

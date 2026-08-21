@@ -15,8 +15,8 @@ class MarimoSessionSettings : PersistentStateComponent<MarimoSessionSettings.Sta
 
     class State {
         /**
-         * When true (the default), the plugin generates a per-launch token, passes it to marimo
-         * via `--token-password-file`, and builds the authenticated URL itself. Off restores
+         * When true (the default), the plugin generates a per-launch token, passes it to marimo via
+         * `--token-password-file`, and builds the authenticated URL itself. Off restores
          * `--no-token` as an escape hatch.
          */
         var tokenAuthEnabled: Boolean = true
@@ -34,7 +34,8 @@ class MarimoSessionSettings : PersistentStateComponent<MarimoSessionSettings.Sta
     }
 
     /** The TTL in milliseconds, clamped so a hand-edited config file cannot disable the reaper. */
-    fun backgroundTtlMillis(): Long = current.backgroundTtlMinutes.coerceIn(MIN_BACKGROUND_TTL_MINUTES, 720) * 60_000L
+    fun backgroundTtlMillis(): Long =
+        current.backgroundTtlMinutes.coerceIn(MIN_BACKGROUND_TTL_MINUTES, 720) * 60_000L
 
     companion object {
         const val DEFAULT_BACKGROUND_TTL_MINUTES: Int = 30

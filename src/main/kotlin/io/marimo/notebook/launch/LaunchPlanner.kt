@@ -33,8 +33,12 @@ class LaunchPlanner(
     fun plan(request: LaunchRequest): LaunchDecision =
         when {
             request.sandbox && uvLauncher.canLaunch(request) -> LaunchDecision.Launch(uvLauncher)
-            request.sandbox -> LaunchDecision.NeedsUv("marimo sandbox mode requires uv, which wasn't found.")
+            request.sandbox ->
+                LaunchDecision.NeedsUv("marimo sandbox mode requires uv, which wasn't found.")
             sdkLauncher.canLaunch(request) -> LaunchDecision.Launch(sdkLauncher)
-            else -> LaunchDecision.NoInterpreter("No Python interpreter is configured for this project.")
+            else ->
+                LaunchDecision.NoInterpreter(
+                    "No Python interpreter is configured for this project."
+                )
         }
 }

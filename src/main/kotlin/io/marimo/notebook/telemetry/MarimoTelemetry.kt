@@ -18,7 +18,11 @@ import io.sentry.protocol.User
 import java.util.Properties
 import java.util.UUID
 
-enum class Consent { UNSET, ALLOWED, DENIED }
+enum class Consent {
+    UNSET,
+    ALLOWED,
+    DENIED,
+}
 
 /**
  * The wire transport for usage events. The real implementation talks to PostHog; tests inject a
@@ -72,7 +76,8 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
 
     fun anonymousId(): String = state.anonymousId
 
-    val consent: Consent get() = persisted.consent
+    val consent: Consent
+        get() = persisted.consent
 
     /** Grants consent, brings up both transports, and records plugin activation. */
     fun allow() {
@@ -87,7 +92,10 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         persisted.consent = Consent.DENIED
     }
 
-    /** Withdraws previously-granted consent: ends the crash-free session, flushes, tears both transports down. */
+    /**
+     * Withdraws previously-granted consent: ends the crash-free session, flushes, tears both
+     * transports down.
+     */
     fun revoke() {
         persisted.consent = Consent.DENIED
         sink?.close()
@@ -104,17 +112,19 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     fun capture(event: TelemetryEvent) {
         if (consent != Consent.ALLOWED) return
         val target = sink ?: buildSink().also { sink = it }
-        val enriched = event.properties + mapOf(
-            "plugin_version" to pluginVersion(),
-            "environment" to environment(),
-        )
+        val enriched =
+            event.properties +
+                mapOf(
+                    "plugin_version" to pluginVersion(),
+                    "environment" to environment(),
+                )
         target.capture(anonymousId(), event.name, enriched)
     }
 
     /**
-     * Reports [throwable] to Sentry only when consent is [Consent.ALLOWED]; otherwise a network-free
-     * no-op. Exceptions that did not originate in plugin code are dropped by the transport's
-     * [SentryOriginFilter] `beforeSend` hook, so callers need not pre-filter.
+     * Reports [throwable] to Sentry only when consent is [Consent.ALLOWED]; otherwise a
+     * network-free no-op. Exceptions that did not originate in plugin code are dropped by the
+     * transport's [SentryOriginFilter] `beforeSend` hook, so callers need not pre-filter.
      */
     fun captureException(throwable: Throwable) {
         if (consent != Consent.ALLOWED) return
@@ -142,7 +152,10 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         }
     }
 
-    /** Ends the crash-free session and flushes both transports on IDE shutdown, leaving consent intact. */
+    /**
+     * Ends the crash-free session and flushes both transports on IDE shutdown, leaving consent
+     * intact.
+     */
     override fun dispose() {
         endSentrySession()
         sink?.close()
@@ -162,11 +175,15 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
 
     private fun environment(): String = ENVIRONMENT
 
-    private fun ideName(): String =
-        runCatching { ApplicationNamesInfo.getInstance().fullProductName }.getOrDefault("unknown")
+    private fun ideName(): String = runCatching {
+        ApplicationNamesInfo.getInstance().fullProductName
+    }
+        .getOrDefault("unknown")
 
-    private fun ideVersion(): String =
-        runCatching { ApplicationInfo.getInstance().fullVersion }.getOrDefault("unknown")
+    private fun ideVersion(): String = runCatching {
+        ApplicationInfo.getInstance().fullVersion
+    }
+        .getOrDefault("unknown")
 
     @Suppress("unused")
     fun withSinkForTest(sink: PostHogSink): MarimoTelemetry {
@@ -186,7 +203,8 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     }
 
     private class RealPostHogSink : PostHogSink {
-        private val client: PostHogInterface = PostHog.with(PostHogConfig(POSTHOG_API_KEY, POSTHOG_HOST))
+        private val client: PostHogInterface =
+            PostHog.with(PostHogConfig(POSTHOG_API_KEY, POSTHOG_HOST))
 
         override fun capture(distinctId: String, event: String, properties: Map<String, Any>) {
             client.capture(distinctId = distinctId, event = event, properties = properties)
@@ -205,7 +223,8 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
                 options.environment = environment()
                 options.isEnableUncaughtExceptionHandler = false
                 // Sessions are driven from the consent lifecycle (allow/revoke/dispose), not the
-                // SDK's process hooks, so a session maps to one consented run rather than JVM start.
+                // SDK's process hooks, so a session maps to one consented run rather than JVM
+                // start.
                 options.isEnableAutoSessionTracking = false
                 options.setBeforeSend { event, _ ->
                     if (SentryOriginFilter.isMarimoOrigin(event.throwable)) event else null
@@ -243,23 +262,27 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         const val POSTHOG_API_KEY = "phc_rC8Zgmycm8WEoyb3PU2hxEaXvtYfpofh6hZFiibwisHt"
 
         // Public client-side DSN (not a secret) — safe to ship in the plugin.
-        const val SENTRY_DSN = "https://db83abbe783accef094828aff85196d6@o4505919839862784.ingest.us.sentry.io/4511707070005248"
+        const val SENTRY_DSN =
+            "https://db83abbe783accef094828aff85196d6@o4505919839862784.ingest.us.sentry.io/4511707070005248"
 
-        const val PRIVACY_URL = "https://github.com/marimo-team/jetbrains-marimo/blob/main/PRIVACY.md"
+        const val PRIVACY_URL =
+            "https://github.com/marimo-team/jetbrains-marimo/blob/main/PRIVACY.md"
 
         // Baked in at build time by the generateTelemetryConfig Gradle task.
         private val telemetryConfig: Properties by lazy {
             Properties().apply {
-                MarimoTelemetry::class.java.getResourceAsStream("/telemetry.properties")?.use { load(it) }
+                MarimoTelemetry::class.java.getResourceAsStream("/telemetry.properties")?.use {
+                    load(it)
+                }
             }
         }
 
         // "production" only on the release build; falls back to "development" if the resource is
         // missing or its token was never filtered.
         private val ENVIRONMENT: String by lazy {
-            telemetryConfig.getProperty("environment")
-                ?.takeIf { it.isNotBlank() && !it.startsWith("\$") }
-                ?: "development"
+            telemetryConfig.getProperty("environment")?.takeIf {
+                it.isNotBlank() && !it.startsWith("\$")
+            } ?: "development"
         }
 
         private val PLUGIN_VERSION: String by lazy {

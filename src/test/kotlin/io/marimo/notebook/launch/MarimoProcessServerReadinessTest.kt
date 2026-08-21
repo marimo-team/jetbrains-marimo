@@ -3,12 +3,12 @@
 package io.marimo.notebook.launch
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
-import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
-import org.junit.Assert.assertTrue
 import java.io.File
 import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
 
 /** Prints a marimo-style URL banner, then stays alive without binding a socket. */
 object BannerOnlyProcess {
@@ -38,7 +38,9 @@ object ServeThenBannerProcess {
                     socket.close()
                 }
             }
-        }.apply { isDaemon = true }.start()
+        }
+            .apply { isDaemon = true }
+            .start()
         Thread.sleep(bannerDelayMs)
         if (banner.isNotEmpty()) {
             println("        ➜  URL: $banner")
@@ -48,7 +50,9 @@ object ServeThenBannerProcess {
     }
 }
 
-/** Binds and answers 401 to every request, then prints the banner. Auth-on marimo looks like this. */
+/**
+ * Binds and answers 401 to every request, then prints the banner. Auth-on marimo looks like this.
+ */
 object UnauthorizedServerProcess {
     @JvmStatic
     fun main(args: Array<String>) {
@@ -58,13 +62,17 @@ object UnauthorizedServerProcess {
                 while (true) {
                     val socket = server.accept()
                     socket.getOutputStream().apply {
-                        write("HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                        write(
+                            "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".toByteArray()
+                        )
                         flush()
                     }
                     socket.close()
                 }
             }
-        }.apply { isDaemon = true }.start()
+        }
+            .apply { isDaemon = true }
+            .start()
         println("        ➜  URL: http://127.0.0.1:$port?access_token=T")
         System.out.flush()
         Thread.sleep(60_000)
@@ -101,10 +109,13 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
         binder.isDaemon = true
         binder.start()
 
-        val handle = startMarimoServer(
-            javaProcess(BannerOnlyProcess::class.java.name, url),
-            "127.0.0.1", port, readinessTimeoutSeconds = 10,
-        )
+        val handle =
+            startMarimoServer(
+                javaProcess(BannerOnlyProcess::class.java.name, url),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 10,
+            )
         val start = System.nanoTime()
         val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
         val elapsedMs = (System.nanoTime() - start) / 1_000_000
@@ -121,13 +132,19 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
     fun testSuppliedAuthenticatedUrlDoesNotWaitForTheBanner() {
         val port = ServerSocket(0).use { it.localPort }
         val supplied = "http://127.0.0.1:$port?access_token=supplied"
-        val handle = startMarimoServer(
-            javaProcess(
-                ServeThenBannerProcess::class.java.name,
-                port.toString(), "750", "http://127.0.0.1:$port?access_token=late",
-            ),
-            "127.0.0.1", port, readinessTimeoutSeconds = 10, authenticatedUrl = supplied,
-        )
+        val handle =
+            startMarimoServer(
+                javaProcess(
+                    ServeThenBannerProcess::class.java.name,
+                    port.toString(),
+                    "750",
+                    "http://127.0.0.1:$port?access_token=late",
+                ),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 10,
+                authenticatedUrl = supplied,
+            )
         val start = System.nanoTime()
         val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
         val elapsedMs = (System.nanoTime() - start) / 1_000_000
@@ -144,11 +161,14 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
         val port = ServerSocket(0).use { it.localPort }
         val tokenFile = File.createTempFile("marimo-token-test-", ".txt")
         tokenFile.writeText("secret")
-        val handle = startMarimoServer(
-            javaProcess(BannerOnlyProcess::class.java.name, "http://127.0.0.1:$port"),
-            "127.0.0.1", port, readinessTimeoutSeconds = 10,
-            tokenPasswordFile = tokenFile.absolutePath,
-        )
+        val handle =
+            startMarimoServer(
+                javaProcess(BannerOnlyProcess::class.java.name, "http://127.0.0.1:$port"),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 10,
+                tokenPasswordFile = tokenFile.absolutePath,
+            )
 
         handle.dispose()
 
@@ -159,10 +179,14 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
     fun testAnyHttpStatusCountsAsReady() {
         val port = ServerSocket(0).use { it.localPort }
         val supplied = "http://127.0.0.1:$port?access_token=T"
-        val handle = startMarimoServer(
-            javaProcess(UnauthorizedServerProcess::class.java.name, port.toString()),
-            "127.0.0.1", port, readinessTimeoutSeconds = 10, authenticatedUrl = supplied,
-        )
+        val handle =
+            startMarimoServer(
+                javaProcess(UnauthorizedServerProcess::class.java.name, port.toString()),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 10,
+                authenticatedUrl = supplied,
+            )
         val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
         handle.dispose()
         assertEquals(supplied, readyUrl)
@@ -171,13 +195,15 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
     /** With token auth off, readiness delivers the plain URL without a banner. */
     fun testPlainUrlWhenNoAuthenticatedUrlIsSupplied() {
         val port = ServerSocket(0).use { it.localPort }
-        val handle = startMarimoServer(
-            javaProcess(ServeThenBannerProcess::class.java.name, port.toString(), "0", ""),
-            "127.0.0.1", port, readinessTimeoutSeconds = 2,
-        )
+        val handle =
+            startMarimoServer(
+                javaProcess(ServeThenBannerProcess::class.java.name, port.toString(), "0", ""),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 2,
+            )
         val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
         handle.dispose()
         assertEquals("http://127.0.0.1:$port", readyUrl)
     }
-
 }

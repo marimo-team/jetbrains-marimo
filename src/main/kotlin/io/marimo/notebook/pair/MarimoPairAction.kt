@@ -2,7 +2,6 @@
 
 package io.marimo.notebook.pair
 
-import io.marimo.notebook.detect.MarimoDetector
 import com.intellij.openapi.actionSystem.ActionGroup
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -12,6 +11,7 @@ import com.intellij.openapi.actionSystem.Separator
 import com.intellij.openapi.actionSystem.ex.ActionUtil
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.detect.MarimoDetector
 
 /** Popup group rendered as a native submenu (and as a dropdown button on toolbars). */
 class MarimoPairActionGroup : ActionGroup(), DumbAware {
@@ -29,7 +29,8 @@ class MarimoPairActionGroup : ActionGroup(), DumbAware {
 
     override fun getChildren(e: AnActionEvent?): Array<AnAction> =
         MarimoPairMenu.actions(
-            terminalActions = MarimoHarness.entries.map<MarimoHarness, AnAction> { LaunchHarnessAction(it) },
+            terminalActions =
+                MarimoHarness.entries.map<MarimoHarness, AnAction> { LaunchHarnessAction(it) },
             copyAction = CopyPromptAction(),
         )
 }
@@ -37,7 +38,9 @@ class MarimoPairActionGroup : ActionGroup(), DumbAware {
 internal fun marimoFile(e: AnActionEvent): VirtualFile? =
     e.getData(CommonDataKeys.VIRTUAL_FILE)?.takeIf(MarimoDetector::looksLikeMarimo)
 
-/** Keeps the popup's sections readable without producing leading, trailing, or duplicate separators. */
+/**
+ * Keeps the popup's sections readable without producing leading, trailing, or duplicate separators.
+ */
 internal object MarimoPairMenu {
 
     fun actions(
@@ -48,9 +51,11 @@ internal object MarimoPairMenu {
             terminalActions.takeIf { it.isNotEmpty() }?.let { add(it) }
             add(listOf(copyAction))
         }
-        return sections.flatMapIndexed { index, actions ->
-            if (index == 0) actions else listOf(Separator.getInstance()) + actions
-        }.toTypedArray()
+        return sections
+            .flatMapIndexed { index, actions ->
+                if (index == 0) actions else listOf(Separator.getInstance()) + actions
+            }
+            .toTypedArray()
     }
 }
 

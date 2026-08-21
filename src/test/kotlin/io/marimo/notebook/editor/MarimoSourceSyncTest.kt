@@ -26,7 +26,8 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
      * tab must reconcile the in-memory document with the new on-disk content.
      */
     fun testRefreshReloadsDocumentAfterExternalWrite() {
-        val original = "import marimo\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    x = 1\n    return\n"
+        val original =
+            "import marimo\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    x = 1\n    return\n"
         val updated = "import marimo\napp = marimo.App()\n"
 
         ioFile = File(FileUtil.createTempDirectory("marimo-sync", null), "nb.py")
@@ -51,7 +52,8 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
      */
     fun testFlushWritesEditedDocumentToDisk() {
         val original = "import marimo\napp = marimo.App()\n"
-        val edited = "import marimo\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    x = 1\n    return\n"
+        val edited =
+            "import marimo\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    x = 1\n    return\n"
 
         ioFile = File(FileUtil.createTempDirectory("marimo-sync", null), "nb.py")
         ioFile.writeText(original)

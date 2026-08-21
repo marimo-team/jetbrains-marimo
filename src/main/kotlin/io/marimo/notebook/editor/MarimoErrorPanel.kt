@@ -13,9 +13,9 @@ import javax.swing.JButton
 import javax.swing.JPanel
 
 /**
- * Swing fallback shown in the notebook tab when marimo can't be displayed. A failed launch has no URL to
- * render, so this offers themeable, actionable buttons instead of a raw browser error page. The panel is
- * presentation only: the editor supplies each action's behaviour through [onAction].
+ * Swing fallback shown in the notebook tab when marimo can't be displayed. A failed launch has no
+ * URL to render, so this offers themeable, actionable buttons instead of a raw browser error page.
+ * The panel is presentation only: the editor supplies each action's behaviour through [onAction].
  */
 class MarimoErrorPanel(
     model: MarimoErrorModel,
@@ -23,14 +23,16 @@ class MarimoErrorPanel(
 ) : JPanel(GridBagLayout()) {
 
     init {
-        // Every row shares column 0 with anchor CENTER, and all weights stay 0, so GridBag centers the
+        // Every row shares column 0 with anchor CENTER, and all weights stay 0, so GridBag centers
+        // the
         // whole block in the panel and each row on one vertical axis regardless of its width.
-        val gbc = GridBagConstraints().apply {
-            gridx = 0
-            gridy = 0
-            anchor = GridBagConstraints.CENTER
-            insets = JBUI.insets(4, 0)
-        }
+        val gbc =
+            GridBagConstraints().apply {
+                gridx = 0
+                gridy = 0
+                anchor = GridBagConstraints.CENTER
+                insets = JBUI.insets(4, 0)
+            }
 
         add(JBLabel(AllIcons.General.Error), gbc)
 
@@ -54,13 +56,15 @@ class MarimoErrorPanel(
         JPanel(FlowLayout(FlowLayout.CENTER, JBUI.scale(8), 0)).apply {
             isOpaque = false
             actions.forEach { action ->
-                add(JButton(label(action)).apply {
-                    addActionListener { onAction(action) }
-                    if (action == MarimoErrorAction.START_IN_SANDBOX && !sandboxEnabled) {
-                        isEnabled = false
-                        toolTipText = SANDBOX_NEEDS_UV
+                add(
+                    JButton(label(action)).apply {
+                        addActionListener { onAction(action) }
+                        if (action == MarimoErrorAction.START_IN_SANDBOX && !sandboxEnabled) {
+                            isEnabled = false
+                            toolTipText = SANDBOX_NEEDS_UV
+                        }
                     }
-                })
+                )
             }
         }
 

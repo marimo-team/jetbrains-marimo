@@ -2,13 +2,13 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.detect.MarimoDetector
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnActionEvent
 import com.intellij.openapi.actionSystem.CommonDataKeys
 import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.project.DumbAware
 import com.intellij.ui.jcef.JBCefApp
+import io.marimo.notebook.detect.MarimoDetector
 
 /** Shows the Marimo Session submenu only for marimo notebooks in supported IDEs. */
 class MarimoSessionActionGroup : DefaultActionGroup(), DumbAware {

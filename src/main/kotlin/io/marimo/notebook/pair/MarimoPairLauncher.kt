@@ -2,8 +2,6 @@
 
 package io.marimo.notebook.pair
 
-import io.marimo.notebook.telemetry.MarimoTelemetry
-import io.marimo.notebook.telemetry.TelemetryEvent
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
@@ -12,6 +10,8 @@ import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
 import com.intellij.ui.content.ContentManager
 import com.intellij.util.EnvironmentUtil
+import io.marimo.notebook.telemetry.MarimoTelemetry
+import io.marimo.notebook.telemetry.TelemetryEvent
 import java.awt.datatransfer.StringSelection
 import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner
 import org.jetbrains.plugins.terminal.TerminalTabState
@@ -23,7 +23,10 @@ object MarimoPairLauncher {
     fun launch(project: Project, file: VirtualFile, harness: MarimoHarness) {
         val path = EnvironmentUtil.getValue("PATH")
         if (!harness.findOnPath(path) { java.io.File(it).canExecute() }) {
-            MarimoPairNotifications.warning(project, "${harness.label} isn't installed. ${harness.installHint}")
+            MarimoPairNotifications.warning(
+                project,
+                "${harness.label} isn't installed. ${harness.installHint}",
+            )
             return
         }
 
@@ -35,11 +38,16 @@ object MarimoPairLauncher {
     }
 
     /**
-     * Opens the pair terminal for [harness] on [file]. A repeated launch reuses the live session for
-     * the same notebook (matched by file path, not tab title, so notebooks sharing a file name keep
-     * separate sessions) and replaces a tab whose shell has already exited.
+     * Opens the pair terminal for [harness] on [file]. A repeated launch reuses the live session
+     * for the same notebook (matched by file path, not tab title, so notebooks sharing a file name
+     * keep separate sessions) and replaces a tab whose shell has already exited.
      */
-    private fun runInTerminal(project: Project, file: VirtualFile, harness: MarimoHarness, command: String) {
+    private fun runInTerminal(
+        project: Project,
+        file: VirtualFile,
+        harness: MarimoHarness,
+        command: String,
+    ) {
         val manager = TerminalToolWindowManager.getInstance(project)
         val contentManager = manager.toolWindow?.contentManager
         val contents = contentManager?.contents?.toList().orEmpty()
@@ -54,7 +62,14 @@ object MarimoPairLauncher {
             }
             is PairTerminalTabs.Action.Launch -> {
                 action.closeIndex?.let { manager.closeTab(contents[it]) }
-                openTab(project, manager, contentManager, file, harness.tabTitle(file.name), command)
+                openTab(
+                    project,
+                    manager,
+                    contentManager,
+                    file,
+                    harness.tabTitle(file.name),
+                    command,
+                )
             }
         }
     }
@@ -70,11 +85,13 @@ object MarimoPairLauncher {
         val workDir = file.parent?.path ?: project.basePath
         try {
             val runner = LocalTerminalDirectRunner.createTerminalRunner(project)
-            val tabState = TerminalTabState().apply {
-                myTabName = title
-                myWorkingDirectory = workDir
-            }
-            // A null content manager lets the platform resolve — and lazily create — the terminal tool
+            val tabState =
+                TerminalTabState().apply {
+                    myTabName = title
+                    myWorkingDirectory = workDir
+                }
+            // A null content manager lets the platform resolve — and lazily create — the terminal
+            // tool
             // window, so the first pair launch works even before the tool window has been opened.
             val widget = manager.createNewSession(runner, tabState, null)
             tagWithNotebook(contentManager ?: manager.toolWindow?.contentManager, widget, file.path)
@@ -83,7 +100,10 @@ object MarimoPairLauncher {
         } catch (e: Throwable) {
             thisLogger().warn("Failed to open a terminal for the pair session", e)
             MarimoTelemetry.getInstance().captureException(e)
-            MarimoPairNotifications.warning(project, "Could not open a terminal. Run this manually:\n$command")
+            MarimoPairNotifications.warning(
+                project,
+                "Could not open a terminal. Run this manually:\n$command",
+            )
         }
     }
 
@@ -93,8 +113,13 @@ object MarimoPairLauncher {
         return widget.ttyConnector?.isConnected == true
     }
 
-    private fun tagWithNotebook(contentManager: ContentManager?, widget: TerminalWidget, notebookPath: String) {
-        contentManager?.contents
+    private fun tagWithNotebook(
+        contentManager: ContentManager?,
+        widget: TerminalWidget,
+        notebookPath: String,
+    ) {
+        contentManager
+            ?.contents
             ?.firstOrNull { TerminalToolWindowManager.findWidgetByContent(it) === widget }
             ?.putUserData(PairTerminalTabs.NOTEBOOK_KEY, notebookPath)
     }
