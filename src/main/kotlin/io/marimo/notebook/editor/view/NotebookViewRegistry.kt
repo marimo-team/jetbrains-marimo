@@ -25,7 +25,7 @@ class NotebookViewRegistry(private val project: Project) : Disposable {
         sessionManager.addSessionEventListener(this, ::onSessionEvent)
     }
 
-    /** Returns the primary view retained for [lease]'s session, creating it when needed. */
+    /** Returns the primary view for [lease]'s session. The registry creates it if it is absent. */
     fun primaryViewFor(lease: NotebookSessionLease): MarimoNotebookView =
         views.computeIfAbsent(lease.sessionId) {
             MarimoNotebookView(project, lease.notebook).also { view ->

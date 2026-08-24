@@ -62,9 +62,8 @@ internal fun interface TtlScheduler {
 }
 
 /**
- * Everything the project keeps for one notebook: the server lifecycle, launch mode, and owner
- * leases that drive the background TTL. Owned by [NotebookSessionManager]; mutable fields are
- * guarded by `synchronized(session)` there.
+ * Stores the lifecycle, launch mode, and owner leases for one notebook. Owner leases control the
+ * background TTL. The session lock guards mutable fields.
  */
 internal class NotebookSession(
     val id: SessionId,

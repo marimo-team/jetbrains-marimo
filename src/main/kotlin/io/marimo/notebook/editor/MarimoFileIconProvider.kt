@@ -13,10 +13,8 @@ import io.marimo.notebook.session.NotebookSessionManager
 import javax.swing.Icon
 
 /**
- * Marks marimo notebooks in the project tree, with the platform's green live badge while a session
- * is running. Icon painting happens for every visible file, so the status probe must stay
- * side-effect-free: `serviceIfCreated` never instantiates the session manager, and `peek` never
- * creates a session.
+ * Marks marimo notebooks in the project tree. The green live badge shows a live session. Icon reads
+ * never create sessions because the platform requests icons for every visible file.
  */
 class MarimoFileIconProvider : FileIconProvider {
     override fun getIcon(file: VirtualFile, flags: Int, project: Project?): Icon? {

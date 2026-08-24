@@ -111,6 +111,25 @@ class MarimoPairSessionTest : BasePlatformTestCase() {
         assertNotNull(manager.peek(file)!!.expiresAtMillis)
     }
 
+    fun testTerminalLaunchFailureClosesItsLeaseAndArmsTheTtl() {
+        val file = notebook()
+        val ttl = RecordingTtl()
+        manager.ttlScheduler = ttl
+        sdk.canLaunch = false
+        uv.canLaunch = false
+
+        MarimoPairSession.resolveTerminal(project, file) { _, _, _ ->
+            error("terminal must not be delivered")
+        }
+
+        assertEquals(
+            "a failed terminal must release its suppressing lease",
+            SessionSettings.getInstance().backgroundTtlMillis(),
+            PlatformTestUtil.waitForFuture(ttl.armed, 5_000),
+        )
+        assertNotNull(manager.peek(file)!!.expiresAtMillis)
+    }
+
     private fun notebook(): VirtualFile =
         myFixture.addFileToProject("pair_prompt.py", "import marimo\n").virtualFile
 }

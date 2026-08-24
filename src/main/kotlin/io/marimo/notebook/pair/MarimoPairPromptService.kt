@@ -69,9 +69,8 @@ internal object MarimoPairPromptService {
 }
 
 /**
- * Shared entry guard for the pairing workflow: starts (or reuses) the notebook server, resolves the
- * marimo CLI prefix, and delivers both to [onReady] on the EDT. Failures warn the user with the
- * same concise recovery message on every pairing path and log under [logContext].
+ * Pair work requires a ready server and an active CLI prefix. The callback receives a lease close
+ * action after both values are available.
  */
 internal object MarimoPairSession {
 
@@ -79,47 +78,41 @@ internal object MarimoPairSession {
         project: Project,
         file: VirtualFile,
         onReady: (url: String, prefix: List<String>, closeLease: () -> Unit) -> Unit,
-    ) {
-        val lease = project.service<NotebookSessionManager>().acquire(file, LeaseOwner.PAIR_PROMPT)
-        lease.readyUrl().whenComplete { url, err ->
-            runCatching {
-                ApplicationManager.getApplication().invokeLater {
-                    if (err != null || url == null) {
-                        thisLogger()
-                            .warn("Could not start the marimo server for a pair prompt", err)
-                        MarimoPairNotifications.warning(project, "Could not start marimo.")
-                        lease.close()
-                        return@invokeLater
-                    }
-                    val prefix = lease.launcherInfo()?.cliPrefix
-                    if (prefix == null) {
-                        MarimoPairNotifications.warning(
-                            project,
-                            "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
-                        )
-                        lease.close()
-                        return@invokeLater
-                    }
-                    runCatching { onReady(url, prefix, lease::close) }.onFailure { lease.close() }
-                }
-            }
-                .onFailure { lease.close() }
-        }
-    }
+    ) =
+        resolve(
+            project,
+            file,
+            LeaseOwner.PAIR_PROMPT,
+            "Could not start the marimo server for a pair prompt",
+            onReady,
+        )
 
     fun resolveTerminal(
         project: Project,
         file: VirtualFile,
         onReady: (url: String, prefix: List<String>, closeLease: () -> Unit) -> Unit,
+    ) =
+        resolve(
+            project,
+            file,
+            LeaseOwner.PAIR_TERMINAL,
+            "Could not start the marimo server for a pair session",
+            onReady,
+        )
+
+    private fun resolve(
+        project: Project,
+        file: VirtualFile,
+        owner: LeaseOwner,
+        startFailureLog: String,
+        onReady: (url: String, prefix: List<String>, closeLease: () -> Unit) -> Unit,
     ) {
-        val lease =
-            project.service<NotebookSessionManager>().acquire(file, LeaseOwner.PAIR_TERMINAL)
+        val lease = project.service<NotebookSessionManager>().acquire(file, owner)
         lease.readyUrl().whenComplete { url, err ->
             runCatching {
                 ApplicationManager.getApplication().invokeLater {
                     if (err != null || url == null) {
-                        thisLogger()
-                            .warn("Could not start the marimo server for a pair session", err)
+                        thisLogger().warn(startFailureLog, err)
                         MarimoPairNotifications.warning(project, "Could not start marimo.")
                         lease.close()
                         return@invokeLater

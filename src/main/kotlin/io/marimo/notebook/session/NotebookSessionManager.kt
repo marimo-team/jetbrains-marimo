@@ -117,9 +117,9 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle = sessionFor(file).lifecycle
 
     /**
-     * The URL the notebook editor must load, launching a server when none is alive. The value is
-     * marimo's authenticated startup URL and carries the access token: it may reach only the
-     * browser, the page-config fetch, and the pair harness — never status objects or logs.
+     * Returns the authenticated startup URL for [file]. If no server is live, this call starts one.
+     * The URL contains an access token. Only the browser, the page-config fetch, and the pair
+     * harness receive it. Status objects and logs never receive it.
      */
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
         while (true) {
@@ -264,13 +264,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     fun statusForUrl(url: String): SessionSnapshot? =
         sessionForUrl(url)?.let { synchronized(it) { it.snapshot() } }
 
-    /** All sessions, for the Sessions tool window. */
     fun sessions(): List<SessionSnapshot> =
         sessions.values.map { synchronized(it) { it.snapshot() } }
 
     /**
-     * Stops [file]'s server now. With an active ownership lease the session entry stays so its UI
-     * can render a stopped panel with a Restart offer; otherwise the entry is removed and disposed.
+     * Stops [file]'s server. An active ownership lease retains the session so its UI displays a
+     * stopped panel with a Restart offer. Otherwise, the manager removes and disposes the session.
      */
     fun stop(file: VirtualFile) = stopUrl(file.url)
 
@@ -344,7 +343,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     fun isSandbox(file: VirtualFile): Boolean =
         sessionForUrl(file.url)?.sandboxEnabled?.get() ?: false
 
-    /** Internal teardown used by the view's relaunch path: kill the process, keep the session. */
+    /** Stops the process but retains the session. */
     fun release(file: VirtualFile) {
         sessionForUrl(file.url)?.let { session ->
             synchronized(session) {
@@ -412,9 +411,9 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     }
 
     /**
-     * Runs on the scheduler thread. Everything is re-validated under the session lock: the timer
-     * may have been cancelled after firing, a tab may have reattached, or Stop may have removed the
-     * session already. `remove(sessionId, session)` makes the disposal single-shot.
+     * Ownership can return after expiry fires. An expiry task can run after cancellation or session
+     * removal. The session lock protects each state check. The matching session identity keeps
+     * disposal single-shot.
      */
     private fun onTtlExpired(sessionId: SessionId, session: NotebookSession, generation: Long) {
         val expired =
@@ -559,7 +558,6 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         sessionEventListeners.forEach { it(event) }
     }
 
-    /** Runs [block] now when already on the EDT, else schedules it there. */
     private fun onEdt(block: () -> Unit) {
         val application = ApplicationManager.getApplication()
         if (application.isDispatchThread) block()
