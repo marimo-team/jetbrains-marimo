@@ -9,6 +9,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
+import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.MarimoServerHandle
 import io.marimo.notebook.launch.NotebookWorkDir
 import java.io.File
@@ -16,6 +17,7 @@ import java.io.IOException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
+import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -28,17 +30,24 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
     class FakeHandle(val authUrl: String) : MarimoServerHandle {
         private val ready = CompletableFuture<String>()
         private var terminationListener: ((Int, String) -> Unit)? = null
+        val readinessObserved = CountDownLatch(1)
         override var isAlive = true
         override val processHandle: ProcessHandler
             get() = throw UnsupportedOperationException()
 
-        override fun awaitReady(): CompletableFuture<String> = ready
+        override fun awaitReady(): CompletableFuture<String> {
+            readinessObserved.countDown()
+            return ready
+        }
 
         override fun onTerminated(listener: (exitCode: Int, outputTail: String) -> Unit) {
             terminationListener = listener
         }
 
         fun becomeReady() {
+            check(readinessObserved.await(5, TimeUnit.SECONDS)) {
+                "launch did not register readiness"
+            }
             ready.complete(authUrl)
         }
 
@@ -59,15 +68,21 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val requests = CopyOnWriteArrayList<LaunchRequest>()
         val handles = CopyOnWriteArrayList<FakeHandle>()
         val firstLaunch = CountDownLatch(1)
+        val secondLaunchEntered = CountDownLatch(1)
         val secondLaunch = CountDownLatch(1)
         var canLaunch = true
         var launchFailure: Exception? = null
+        var secondLaunchGate: CountDownLatch? = null
 
         override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
 
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
             launchFailure?.let { throw it }
+            if (requests.size == 2) {
+                secondLaunchEntered.countDown()
+                secondLaunchGate?.await(5, TimeUnit.SECONDS)
+            }
             val authUrl =
                 request.authenticatedUrl
                     ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
@@ -155,6 +170,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals(MarimoSessionState.STARTING, status!!.state)
 
         sdk.handles.single().becomeReady()
+        url.get(5, TimeUnit.SECONDS)
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
         assertEquals(sdk.requests.single().port, manager.statusFor(file)!!.launch!!.port)
         assertEquals("fake-sdk", manager.statusFor(file)!!.launch!!.launcherId)
@@ -268,8 +284,9 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testRestartLaunchesAFreshProcess() {
         val file = notebook("restart_nb.py")
-        launch(file)
+        val firstReadyUrl = launch(file)
         sdk.handles.single().becomeReady()
+        firstReadyUrl.get(5, TimeUnit.SECONDS)
         val sessionId = manager.leaseIfPresent(file)!!.sessionId
         val events = mutableListOf<NotebookSessionEvent>()
         manager.addSessionEventListener(testRootDisposable, events::add)
@@ -282,13 +299,120 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         )
         assertEquals("restart must launch a second process", 2, sdk.handles.size)
         assertFalse("restart must kill the first process", sdk.handles[0].isAlive)
+        assertTrue(
+            "restart must register readiness",
+            sdk.handles[1].readinessObserved.await(5, TimeUnit.SECONDS),
+        )
+        val restartedUrl = manager.urlFor(file)
         sdk.handles[1].becomeReady()
+        restartedUrl.get(5, TimeUnit.SECONDS)
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
         assertEquals(sdk.requests[1].port, manager.statusFor(file)!!.launch!!.port)
         assertEquals(
             listOf(NotebookSessionEvent.Restarted(sessionId)),
             events,
         )
+    }
+
+    fun testReleaseClearsLaunchContext() {
+        val file = notebook("release_context_nb.py")
+        val readyUrl = launch(file)
+        sdk.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+        val lease = manager.leaseIfPresent(file)!!
+
+        manager.release(file)
+
+        assertNull(manager.statusFor(file)!!.launch)
+        assertNull(lease.launcherInfo())
+    }
+
+    fun testRestartClearsLaunchContextBeforeTheFreshLaunchAttaches() {
+        val file = notebook("restart_context_nb.py")
+        val readyUrl = launch(file)
+        sdk.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+        val lease = manager.leaseIfPresent(file)!!
+        val gate = CountDownLatch(1)
+        sdk.secondLaunchGate = gate
+
+        try {
+            manager.restart(file)
+
+            assertTrue(
+                "fresh launch did not begin",
+                sdk.secondLaunchEntered.await(5, TimeUnit.SECONDS),
+            )
+            assertNull(manager.statusFor(file)!!.launch)
+            assertNull(lease.launcherInfo())
+        } finally {
+            gate.countDown()
+        }
+
+        assertTrue("fresh launch did not finish", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertTrue(
+            "fresh launch must register readiness",
+            sdk.handles[1].readinessObserved.await(5, TimeUnit.SECONDS),
+        )
+        sdk.handles[1].becomeReady()
+        assertNotNull(manager.statusFor(file)!!.launch)
+    }
+
+    fun testStopPublishesLifecycleChangesAfterReleasingTheSessionLock() {
+        val file = notebook("stop_listener_lock_nb.py")
+        val readyUrl = launch(file)
+        sdk.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+        val lease = editorLease(file)
+        val executor = Executors.newSingleThreadExecutor()
+        try {
+            manager.lifecycleFor(file).addListener { update ->
+                if (update.state is MarimoNotebookState.Stopped) {
+                    val acquired =
+                        executor.submit<Boolean> {
+                            manager.acquire(file, LeaseOwner.PAIR_PROMPT).close()
+                            true
+                        }
+                    assertTrue(
+                        "lifecycle listener must not hold the session lock",
+                        acquired.get(1, TimeUnit.SECONDS),
+                    )
+                }
+            }
+
+            lease.stop()
+        } finally {
+            executor.shutdownNow()
+        }
+    }
+
+    fun testReleasePublishesLifecycleChangesAfterReleasingTheSessionLock() {
+        val file = notebook("release_listener_lock_nb.py")
+        val readyUrl = launch(file)
+        sdk.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+        val executor = Executors.newSingleThreadExecutor()
+        var observeRelease = true
+        try {
+            manager.lifecycleFor(file).addListener { update ->
+                if (observeRelease && update.state is MarimoNotebookState.Starting) {
+                    val acquired =
+                        executor.submit<Boolean> {
+                            manager.acquire(file, LeaseOwner.PAIR_PROMPT).close()
+                            true
+                        }
+                    assertTrue(
+                        "lifecycle listener must not hold the session lock",
+                        acquired.get(1, TimeUnit.SECONDS),
+                    )
+                }
+            }
+
+            manager.release(file)
+        } finally {
+            observeRelease = false
+            executor.shutdownNow()
+        }
     }
 
     fun testListenersFireOnSessionEvents() {

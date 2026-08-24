@@ -152,6 +152,17 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
         assertNull(manager.peek(file))
     }
 
+    fun testExistingLeaseDoesNotNotifySessionListeners() {
+        val file = notebook("silent_action_lease.py")
+        acquire(file, LeaseOwner.EDITOR_TAB)
+        var notifications = 0
+        manager.addSessionsListener(testRootDisposable) { notifications++ }
+
+        manager.leaseIfPresent(file)!!.close()
+
+        assertEquals(0, notifications)
+    }
+
     fun testPromptLeaseReportsTheActiveSandboxLauncher() {
         val file = notebook("sandbox_prompt.py")
         sdk.canLaunch = false

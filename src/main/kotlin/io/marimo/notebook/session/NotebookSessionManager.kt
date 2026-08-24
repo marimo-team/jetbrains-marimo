@@ -105,7 +105,6 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                     }
                 }
             if (lease != null) {
-                notifySessionsChanged()
                 return lease
             }
         }
@@ -182,10 +181,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                 )
             val launcherInfo = launcherInfoFor(planned.launcher, request)
             val handle = planned.launcher.launch(request)
-            val attached =
+            val attachTransition =
                 synchronized(session) {
                     if (sessions[session.id] !== session || session.inFlightReadyUrl !== readyUrl) {
-                        false
+                        null
                     } else {
                         session.launchContext =
                             MarimoLaunchContext(
@@ -197,11 +196,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                                 tokenAuthEnabled = tokenAuthEnabled,
                             )
                         Disposer.register(session.lifecycle, handle)
-                        session.lifecycle.attach(handle)
-                        true
+                        session.lifecycle.prepareAttach(handle)
                     }
                 }
-            if (!attached) {
+            if (attachTransition == null) {
                 tokenFile?.delete()
                 Disposer.dispose(handle)
                 readyUrl.completeExceptionally(
@@ -209,6 +207,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                 )
                 return
             }
+            attachTransition.publish()
             completeReadyUrlFrom(handle, readyUrl)
         } catch (e: ProcessCanceledException) {
             tokenFile?.delete()
@@ -279,19 +278,20 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     }
 
     private fun stopSession(session: NotebookSession) {
-        val removed =
+        val result =
             synchronized(session) {
                 if (sessions[session.id] !== session) return
                 cancelTtlLocked(session)
                 cancelInFlightLaunchLocked(session)
-                if (session.shouldArmTtl && sessions.remove(session.id, session)) {
-                    session.lifecycle.release()
-                    true
-                } else {
-                    session.lifecycle.stop()
-                    false
-                }
+                session.launchContext = null
+                val removed = session.shouldArmTtl && sessions.remove(session.id, session)
+                val transition =
+                    if (removed) session.lifecycle.prepareRelease()
+                    else session.lifecycle.prepareStop()
+                removed to transition
             }
+        val (removed, transition) = result
+        transition.publish()
         if (removed) {
             notifySessionEnded(session.id)
             disposeSessionOnEdt(session)
@@ -311,11 +311,14 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     }
 
     private fun restartSession(session: NotebookSession) {
-        synchronized(session) {
-            if (sessions[session.id] !== session) return
-            cancelInFlightLaunchLocked(session)
-        }
-        session.lifecycle.release()
+        val releaseTransition =
+            synchronized(session) {
+                if (sessions[session.id] !== session) return
+                cancelInFlightLaunchLocked(session)
+                session.launchContext = null
+                session.lifecycle.prepareRelease()
+            }
+        releaseTransition.publish()
         val restarted =
             synchronized(session) {
                 if (sessions[session.id] !== session) {
@@ -345,12 +348,16 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     /** Stops the process but retains the session. */
     fun release(file: VirtualFile) {
-        sessionForUrl(file.url)?.let { session ->
-            synchronized(session) {
-                cancelInFlightLaunchLocked(session)
-                session.lifecycle.release()
+        val releaseTransition =
+            sessionForUrl(file.url)?.let { session ->
+                synchronized(session) {
+                    if (sessions[session.id] !== session) return@let null
+                    session.launchContext = null
+                    cancelInFlightLaunchLocked(session)
+                    session.lifecycle.prepareRelease()
+                }
             }
-        }
+        releaseTransition?.publish()
     }
 
     /** [listener] runs after any session change. It must only schedule work, not block. */
@@ -386,11 +393,15 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         readyUrl: CompletableFuture<String>,
         error: Exception,
     ) {
-        synchronized(session) {
-            if (sessions[session.id] === session && session.inFlightReadyUrl === readyUrl) {
-                session.lifecycle.onLaunchPlanFailed(error)
+        val failureTransition =
+            synchronized(session) {
+                if (sessions[session.id] === session && session.inFlightReadyUrl === readyUrl) {
+                    session.lifecycle.prepareLaunchPlanFailure(error)
+                } else {
+                    null
+                }
             }
-        }
+        failureTransition?.publish()
         readyUrl.completeExceptionally(error)
     }
 
@@ -447,15 +458,21 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                     sessions[session.id] = session
                     Disposer.register(this, session)
                     session.lifecycle.addListener { update ->
-                        synchronized(session) {
-                            if (
-                                update.state !is MarimoNotebookState.Starting &&
-                                    update.state !is MarimoNotebookState.Running
-                            ) {
-                                session.launchContext = null
+                        val current =
+                            synchronized(session) {
+                                if (!session.lifecycle.isCurrent(update)) {
+                                    false
+                                } else {
+                                    if (
+                                        update.state !is MarimoNotebookState.Starting &&
+                                            update.state !is MarimoNotebookState.Running
+                                    ) {
+                                        session.launchContext = null
+                                    }
+                                    true
+                                }
                             }
-                        }
-                        notifySessionsChanged()
+                        if (current) notifySessionsChanged()
                     }
                 }
         }

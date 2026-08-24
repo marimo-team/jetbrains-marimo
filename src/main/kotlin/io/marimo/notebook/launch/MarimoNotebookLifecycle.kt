@@ -11,6 +11,16 @@ import java.util.concurrent.TimeUnit
 /** A lifecycle transition identified by its launch generation and resulting state. */
 data class LifecycleStateUpdate(val generation: Long, val state: MarimoNotebookState)
 
+internal class LifecycleTransition(
+    private val handleToDispose: MarimoServerHandle?,
+    private val publishAction: () -> Unit,
+) {
+    fun publish() {
+        handleToDispose?.let { Disposer.dispose(it) }
+        publishAction()
+    }
+}
+
 /**
  * The state of one notebook's marimo server, and the only place allowed to change it.
  *
@@ -62,23 +72,35 @@ class MarimoNotebookLifecycle(
         }
 
     /** Adopt a freshly launched server and follow it from starting through to a terminal state. */
-    fun attach(handle: MarimoServerHandle) {
-        val gen =
+    fun attach(handle: MarimoServerHandle) = prepareAttach(handle).publish()
+
+    internal fun prepareAttach(handle: MarimoServerHandle): LifecycleTransition {
+        val update =
             synchronized(lock) {
                 this.handle = handle
-                ++generation
+                state = MarimoNotebookState.Starting
+                LifecycleStateUpdate(++generation, state)
             }
-        setState(gen) { MarimoNotebookState.Starting }
-        handle.onTerminated { exitCode, tail -> onProcessTerminated(gen, exitCode, tail) }
-        handle.awaitReady().whenComplete { url, error ->
-            if (error != null) onLaunchFailed(gen, error) else onReady(gen, url)
+        return LifecycleTransition(handleToDispose = null) {
+            if (isCurrent(update)) {
+                listeners.forEach { it(update) }
+                handle.onTerminated { exitCode, tail ->
+                    onProcessTerminated(update.generation, exitCode, tail)
+                }
+                handle.awaitReady().whenComplete { url, error ->
+                    if (error != null) onLaunchFailed(update.generation, error)
+                    else onReady(update.generation, url)
+                }
+            }
         }
     }
 
     /** Marks a launch that failed before any handle existed (planner or spawn failure). */
-    fun onLaunchPlanFailed(error: Throwable) {
+    fun onLaunchPlanFailed(error: Throwable) = prepareLaunchPlanFailure(error)?.publish()
+
+    internal fun prepareLaunchPlanFailure(error: Throwable): LifecycleTransition? {
         val gen = synchronized(lock) { generation }
-        setState(gen) { MarimoNotebookState.Failed(error) }
+        return prepareState(gen) { MarimoNotebookState.Failed(error) }
     }
 
     /**
@@ -110,31 +132,36 @@ class MarimoNotebookLifecycle(
      * Kill the server and reset to a new launch state. Callbacks from it become stale by
      * generation.
      */
-    fun release() {
-        val update =
+    fun release() = prepareRelease().publish()
+
+    internal fun prepareRelease(): LifecycleTransition {
+        val (handleToDispose, update) =
             synchronized(lock) {
                 generation++
-                handle?.let { Disposer.dispose(it) }
+                val currentHandle = handle
                 handle = null
                 state = MarimoNotebookState.Starting
-                LifecycleStateUpdate(generation, state)
+                currentHandle to LifecycleStateUpdate(generation, state)
             }
-        listeners.forEach { it(update) }
+        return transition(handleToDispose, update)
     }
 
     /**
      * Kill the server and present it as deliberately stopped. The manual Stop action uses this so
      * the user sees a stopped panel instead of a crash report for the exit this stop causes.
      */
-    fun stop() {
-        val gen =
+    fun stop() = prepareStop().publish()
+
+    internal fun prepareStop(): LifecycleTransition {
+        val (handleToDispose, update) =
             synchronized(lock) {
                 ++generation
-                handle?.let { Disposer.dispose(it) }
+                val currentHandle = handle
                 handle = null
-                generation
+                state = MarimoNotebookState.Stopped(StopCause.Deliberate)
+                currentHandle to LifecycleStateUpdate(generation, state)
             }
-        setState(gen) { MarimoNotebookState.Stopped(StopCause.Deliberate) }
+        return transition(handleToDispose, update)
     }
 
     private fun onReady(gen: Long, url: String) {
@@ -186,16 +213,32 @@ class MarimoNotebookLifecycle(
      * "no transition from the current state".
      */
     private fun setState(gen: Long, next: () -> MarimoNotebookState?): Boolean {
+        val transition = prepareState(gen, next) ?: return false
+        transition.publish()
+        return true
+    }
+
+    private fun prepareState(
+        gen: Long,
+        next: () -> MarimoNotebookState?,
+    ): LifecycleTransition? {
         val update =
             synchronized(lock) {
-                if (gen != generation) return false
-                val value = next() ?: return false
+                if (gen != generation) return null
+                val value = next() ?: return null
                 state = value
                 LifecycleStateUpdate(gen, value)
             }
-        listeners.forEach { it(update) }
-        return true
+        return transition(handleToDispose = null, update)
     }
+
+    private fun transition(
+        handleToDispose: MarimoServerHandle?,
+        update: LifecycleStateUpdate,
+    ): LifecycleTransition =
+        LifecycleTransition(handleToDispose) {
+            if (isCurrent(update)) listeners.forEach { it(update) }
+        }
 
     override fun dispose() = release()
 
