@@ -8,6 +8,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
 import java.util.concurrent.CopyOnWriteArrayList
+import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -26,6 +27,8 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
     }
 
     private lateinit var ttl: ManualTtl
+    private lateinit var sdk: FakeLauncher
+    private lateinit var uv: FakeLauncher
     private val leases = mutableListOf<NotebookSessionLease>()
 
     private val manager: NotebookSessionManager
@@ -33,8 +36,9 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
-        val sdk = FakeLauncher("fake-sdk")
-        manager.planner = LaunchPlanner(sdk, FakeLauncher("fake-uv"))
+        sdk = FakeLauncher("fake-sdk")
+        uv = FakeLauncher("fake-uv")
+        manager.planner = LaunchPlanner(sdk, uv)
         ttl = ManualTtl()
         manager.ttlScheduler = ttl
     }
@@ -141,6 +145,28 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
 
         assertNull(manager.statusFor(file))
         assertTrue(prompt.readyUrl().isCompletedExceptionally)
+    }
+
+    fun testPromptLeaseReportsTheActiveSandboxLauncher() {
+        val file = notebook("sandbox_prompt.py")
+        sdk.canLaunch = false
+        manager.enableSandbox(file)
+        val lease = acquire(file, LeaseOwner.PAIR_PROMPT)
+
+        assertNull(lease.launcherInfo())
+
+        val readyUrl = lease.readyUrl()
+        assertTrue(
+            "sandbox launch did not begin",
+            uv.firstLaunch.await(5, TimeUnit.SECONDS),
+        )
+        uv.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+
+        assertEquals(
+            LauncherInfo(listOf("fake-uv", "marimo"), sandbox = true),
+            lease.launcherInfo(),
+        )
     }
 
     private fun acquire(file: VirtualFile, owner: LeaseOwner): NotebookSessionLease =

@@ -11,6 +11,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionManager
 
 /** Generates the generic marimo pairing prompt without delivering it anywhere. */
@@ -21,28 +22,38 @@ internal object MarimoPairPromptService {
      * EDT. Errors are reported here so every delivery path has the same concise recovery message.
      */
     fun generate(project: Project, file: VirtualFile, onPrompt: (String) -> Unit) {
-        MarimoPairSession.resolve(project, file, logContext = "pair prompt") { url, prefix ->
-            ApplicationManager.getApplication().executeOnPooledThread {
-                val result = runCatching {
-                    val command = GeneralCommandLine(MarimoHarness.promptArgs(prefix, url))
-                    file.parent?.path?.let { command.withWorkDirectory(it) }
-                    val output = ExecUtil.execAndGetOutput(command)
-                    PromptCommandResult(output.exitCode, output.stdout)
-                }
-                    .getOrNull()
-
-                onEdt {
-                    val prompt = promptText(result)
-                    if (prompt == null) {
-                        MarimoPairNotifications.warning(
-                            project,
-                            "Could not generate the marimo pair prompt.",
-                        )
-                    } else {
-                        onPrompt(prompt)
+        MarimoPairSession.resolvePrompt(project, file) { url, prefix, closeLease ->
+            runCatching {
+                ApplicationManager.getApplication().executeOnPooledThread {
+                    val result = runCatching {
+                        val command = GeneralCommandLine(MarimoHarness.promptArgs(prefix, url))
+                        file.parent?.path?.let { command.withWorkDirectory(it) }
+                        val output = ExecUtil.execAndGetOutput(command)
+                        PromptCommandResult(output.exitCode, output.stdout)
                     }
+                        .getOrNull()
+
+                    runCatching {
+                        onEdt {
+                            try {
+                                val prompt = promptText(result)
+                                if (prompt == null) {
+                                    MarimoPairNotifications.warning(
+                                        project,
+                                        "Could not generate the marimo pair prompt.",
+                                    )
+                                } else {
+                                    onPrompt(prompt)
+                                }
+                            } finally {
+                                closeLease()
+                            }
+                        }
+                    }
+                        .onFailure { closeLease() }
                 }
             }
+                .onFailure { closeLease() }
         }
     }
 
@@ -63,6 +74,38 @@ internal object MarimoPairPromptService {
  * same concise recovery message on every pairing path and log under [logContext].
  */
 internal object MarimoPairSession {
+
+    fun resolvePrompt(
+        project: Project,
+        file: VirtualFile,
+        onReady: (url: String, prefix: List<String>, closeLease: () -> Unit) -> Unit,
+    ) {
+        val lease = project.service<NotebookSessionManager>().acquire(file, LeaseOwner.PAIR_PROMPT)
+        lease.readyUrl().whenComplete { url, err ->
+            runCatching {
+                ApplicationManager.getApplication().invokeLater {
+                    if (err != null || url == null) {
+                        thisLogger()
+                            .warn("Could not start the marimo server for a pair prompt", err)
+                        MarimoPairNotifications.warning(project, "Could not start marimo.")
+                        lease.close()
+                        return@invokeLater
+                    }
+                    val prefix = lease.launcherInfo()?.cliPrefix
+                    if (prefix == null) {
+                        MarimoPairNotifications.warning(
+                            project,
+                            "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
+                        )
+                        lease.close()
+                        return@invokeLater
+                    }
+                    runCatching { onReady(url, prefix, lease::close) }.onFailure { lease.close() }
+                }
+            }
+                .onFailure { lease.close() }
+        }
+    }
 
     fun resolve(
         project: Project,

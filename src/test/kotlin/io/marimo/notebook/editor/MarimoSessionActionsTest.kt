@@ -23,6 +23,7 @@ class MarimoSessionActionsTest {
                     port = 2718,
                     workDir = "/proj",
                     launcherId = "sdk",
+                    launcherInfo = null,
                     sandbox = false,
                     tokenAuthEnabled = false,
                 ),

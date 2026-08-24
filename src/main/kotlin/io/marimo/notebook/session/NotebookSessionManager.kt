@@ -209,6 +209,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                             )
                         },
                 )
+            val launcherInfo = launcherInfoFor(planned.launcher, request)
             val handle = planned.launcher.launch(request)
             val attached =
                 synchronized(session) {
@@ -220,6 +221,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                                 port = request.port,
                                 workDir = requireNotNull(request.workDir),
                                 launcherId = planned.launcher.id,
+                                launcherInfo = launcherInfo,
                                 sandbox = request.sandbox,
                                 tokenAuthEnabled = tokenAuthEnabled,
                             )
@@ -265,6 +267,9 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             }
         return PlannedLaunch(baseRequest, launcher)
     }
+
+    private fun launcherInfoFor(launcher: MarimoLauncher, request: LaunchRequest): LauncherInfo? =
+        launcher.marimoCliPrefix(request)?.let { prefix -> LauncherInfo(prefix, request.sandbox) }
 
     private fun completeReadyUrlFrom(
         handle: io.marimo.notebook.launch.MarimoServerHandle,
@@ -563,7 +568,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             return synchronized(session) { session.snapshot() }
         }
 
-        override fun launcherInfo(): LauncherInfo? = null
+        override fun launcherInfo(): LauncherInfo? =
+            sessions[sessionId]?.let { session ->
+                synchronized(session) {
+                    session.launchContext?.launcherInfo
+                }
+            }
 
         override fun restart() {
             sessions[sessionId]?.let(::restartSession)

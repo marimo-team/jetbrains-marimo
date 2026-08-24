@@ -53,7 +53,10 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         }
     }
 
-    class FakeLauncher(override val id: String = "fake") : MarimoLauncher {
+    class FakeLauncher(
+        override val id: String = "fake",
+        var cliPrefix: List<String>? = listOf(id, "marimo"),
+    ) : MarimoLauncher {
         val requests = CopyOnWriteArrayList<LaunchRequest>()
         val handles = CopyOnWriteArrayList<FakeHandle>()
         val firstLaunch = CountDownLatch(1)
@@ -76,8 +79,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
             return handle
         }
 
-        override fun marimoCliPrefix(request: LaunchRequest): List<String> =
-            listOf("fake", "marimo")
+        override fun marimoCliPrefix(request: LaunchRequest): List<String>? = cliPrefix
     }
 
     private class ManualTtl(private val honorCancel: Boolean = true) : TtlScheduler {
