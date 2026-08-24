@@ -39,9 +39,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The project's notebook session manager. One [NotebookSession] per file owns that notebook's
- * marimo process, JCEF view, launch mode, and editor-attachment count. Editor tabs attach to and
- * detach from sessions; they never own the process. Status reads are side-effect-free, so painting
- * an icon or updating an action can never start a server.
+ * marimo process, JCEF view, launch mode, and owner leases. Editor tabs attach to and detach from
+ * sessions; they never own the process. Status reads are side-effect-free, so painting an icon or
+ * updating an action can never start a server.
  */
 @Service(Service.Level.PROJECT)
 class NotebookSessionManager(private val project: Project) : Disposable {
@@ -64,6 +64,27 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     private val sessionRegistryLock = Any()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
     private val projectViewRefreshQueued = AtomicBoolean(false)
+
+    /** Acquires one ownership lease for [file]'s shared notebook session. */
+    fun acquire(file: VirtualFile, owner: LeaseOwner): NotebookSessionLease {
+        while (true) {
+            val session = sessionFor(file)
+            val lease =
+                synchronized(session) {
+                    if (sessions[session.id] !== session) {
+                        null
+                    } else {
+                        session.acquireLease(owner)
+                        if (owner.suppressesTtl) cancelTtlLocked(session)
+                        SessionLease(session.id, owner)
+                    }
+                }
+            if (lease != null) {
+                notifySessionsChanged()
+                return lease
+            }
+        }
+    }
 
     /**
      * The per-file view (browser + panel) that editor tabs render. One per notebook, shared across
@@ -102,8 +123,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                                     session.view = it
                                     Disposer.register(session, it)
                                 }
-                        session.attachedTabs++
-                        cancelTtlLocked(session)
+                        acquireOwnerLocked(session, LeaseOwner.EDITOR_TAB)
                         session.id to resolved
                     }
                 }
@@ -125,47 +145,60 @@ class NotebookSessionManager(private val project: Project) : Disposable {
      * browser, the page-config fetch, and the pair harness — never status objects or logs.
      */
     fun urlFor(file: VirtualFile): CompletableFuture<String> {
-        val session = sessionFor(file)
-        synchronized(session) {
-            session.lifecycle.liveHandle()?.let {
-                return it.awaitReady()
+        while (true) {
+            val session = sessionFor(file)
+            val readyUrl =
+                synchronized(session) {
+                    if (sessions[session.id] === session) urlForSessionLocked(session, file)
+                    else null
+                }
+            if (readyUrl != null) return readyUrl
+        }
+    }
+
+    private fun urlForSessionLocked(
+        session: NotebookSession,
+        file: VirtualFile,
+    ): CompletableFuture<String> {
+        session.lifecycle.liveHandle()?.let {
+            return it.awaitReady()
+        }
+
+        val port = NetUtils.findAvailableSocketPort()
+        val host = MarimoLocalhost.HOST
+        val workDir = NotebookWorkDir.resolve(project, file)
+        val baseRequest =
+            LaunchRequest(
+                project = project,
+                notebook = file,
+                port = port,
+                host = host,
+                sandbox = session.sandboxEnabled.get(),
+                workDir = workDir,
+            )
+        val launcher =
+            try {
+                when (val decision = planner.plan(baseRequest)) {
+                    is LaunchDecision.Launch -> decision.launcher
+                    is LaunchDecision.NoInterpreter ->
+                        return launchPlanFailure(
+                            session,
+                            NoInterpreterException(decision.message),
+                        )
+
+                    is LaunchDecision.NeedsUv ->
+                        return launchPlanFailure(
+                            session,
+                            UvUnavailableException(decision.message),
+                        )
+                }
+            } catch (e: ProcessCanceledException) {
+                throw e
+            } catch (e: Exception) {
+                return launchPlanFailure(session, e)
             }
 
-            val port = NetUtils.findAvailableSocketPort()
-            val host = MarimoLocalhost.HOST
-            val workDir = NotebookWorkDir.resolve(project, file)
-            val baseRequest =
-                LaunchRequest(
-                    project = project,
-                    notebook = file,
-                    port = port,
-                    host = host,
-                    sandbox = session.sandboxEnabled.get(),
-                    workDir = workDir,
-                )
-            val launcher =
-                try {
-                    when (val decision = planner.plan(baseRequest)) {
-                        is LaunchDecision.Launch -> decision.launcher
-                        is LaunchDecision.NoInterpreter ->
-                            return launchPlanFailure(
-                                session,
-                                NoInterpreterException(decision.message),
-                            )
-                        is LaunchDecision.NeedsUv ->
-                            return launchPlanFailure(
-                                session,
-                                UvUnavailableException(decision.message),
-                            )
-                    }
-                } catch (e: ProcessCanceledException) {
-                    throw e
-                } catch (e: Exception) {
-                    return launchPlanFailure(session, e)
-                }
-
-            return launchSessionLocked(session, baseRequest, launcher)
-        }
+        return launchSessionLocked(session, baseRequest, launcher)
     }
 
     /**
@@ -181,8 +214,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     fun attach(file: VirtualFile) {
         val session = sessionForUrl(file.url) ?: return
         synchronized(session) {
-            session.attachedTabs++
-            cancelTtlLocked(session)
+            acquireOwnerLocked(session, LeaseOwner.EDITOR_TAB)
         }
         notifySessionsChanged()
     }
@@ -203,12 +235,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     }
 
     internal fun detach(sessionId: SessionId) {
-        val session = sessions[sessionId] ?: return
-        synchronized(session) {
-            if (session.attachedTabs > 0) session.attachedTabs--
-            if (session.attachedTabs == 0) armTtlLocked(session.id, session)
-        }
-        notifySessionsChanged()
+        releaseOwner(sessionId, LeaseOwner.EDITOR_TAB)
     }
 
     /** Side-effect-free status: null when the notebook has no session. Never creates one. */
@@ -229,10 +256,15 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     fun stopUrl(url: String) {
         val session = sessionForUrl(url) ?: return
+        stopSession(session)
+    }
+
+    private fun stopSession(session: NotebookSession) {
         val removed =
             synchronized(session) {
+                if (sessions[session.id] !== session) return
                 cancelTtlLocked(session)
-                if (session.attachedTabs == 0 && sessions.remove(session.id, session)) {
+                if (session.shouldArmTtl && sessions.remove(session.id, session)) {
                     session.lifecycle.release()
                     true
                 } else {
@@ -252,15 +284,31 @@ class NotebookSessionManager(private val project: Project) : Disposable {
      */
     fun restart(file: VirtualFile) {
         val session = sessionForUrl(file.url) ?: return
-        val view = synchronized(session) { session.view }
+        restartSession(session)
+    }
+
+    private fun restartSession(session: NotebookSession) {
+        val view =
+            synchronized(session) {
+                if (sessions[session.id] !== session) return
+                session.view
+            }
         if (view != null) {
             onEdt { view.reload() }
         } else {
             session.lifecycle.release()
-            ApplicationManager.getApplication().executeOnPooledThread { urlFor(file) }
+            ApplicationManager.getApplication().executeOnPooledThread {
+                synchronized(session) {
+                    if (sessions[session.id] === session) {
+                        urlForSessionLocked(session, session.notebook)
+                    }
+                }
+            }
         }
         synchronized(session) {
-            if (session.attachedTabs == 0) armTtlLocked(session.id, session)
+            if (sessions[session.id] === session && session.shouldArmTtl) {
+                armTtlLocked(session.id, session)
+            }
         }
         notifySessionsChanged()
     }
@@ -371,8 +419,8 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         val expired =
             synchronized(session) {
                 session.ttlGeneration == generation &&
-                    session.attachedTabs == 0 &&
-                    sessions.remove(sessionId, session)
+                        session.shouldArmTtl &&
+                        sessions.remove(sessionId, session)
             }
         if (!expired) return
         session.lifecycle.release()
@@ -399,7 +447,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                         synchronized(session) {
                             if (
                                 update.state !is MarimoNotebookState.Starting &&
-                                    update.state !is MarimoNotebookState.Running
+                                update.state !is MarimoNotebookState.Running
                             ) {
                                 session.launchContext = null
                             }
@@ -411,6 +459,70 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     private fun sessionForUrl(url: String): NotebookSession? =
         sessions.values.firstOrNull { session -> session.fileUrl == url }
+
+    private fun acquireOwnerLocked(session: NotebookSession, owner: LeaseOwner) {
+        session.acquireLease(owner)
+        if (owner.suppressesTtl) cancelTtlLocked(session)
+    }
+
+    private fun releaseOwner(sessionId: SessionId, owner: LeaseOwner) {
+        val session = sessions[sessionId] ?: return
+        val released =
+            synchronized(session) {
+                if (!session.releaseLease(owner)) {
+                    false
+                } else {
+                    if (session.shouldArmTtl) armTtlLocked(session.id, session)
+                    true
+                }
+            }
+        if (released) notifySessionsChanged()
+    }
+
+    private inner class SessionLease(
+        override val sessionId: SessionId,
+        private val owner: LeaseOwner,
+    ) : NotebookSessionLease {
+        private val closed = AtomicBoolean(false)
+
+        override val notebook: VirtualFile
+            get() = sessionForId(sessionId).notebook
+
+        override fun readyUrl(): CompletableFuture<String> {
+            val session = sessions[sessionId] ?: return expiredLeaseFuture()
+            return synchronized(session) {
+                if (sessions[sessionId] !== session) expiredLeaseFuture()
+                else urlForSessionLocked(session, session.notebook)
+            }
+        }
+
+        override fun status(): SessionSnapshot {
+            val session = sessionForId(sessionId)
+            return synchronized(session) { session.snapshot() }
+        }
+
+        override fun launcherInfo(): LauncherInfo? = null
+
+        override fun restart() {
+            sessions[sessionId]?.let(::restartSession)
+        }
+
+        override fun stop() {
+            sessions[sessionId]?.let(::stopSession)
+        }
+
+        override fun close() {
+            if (closed.compareAndSet(false, true)) releaseOwner(sessionId, owner)
+        }
+
+        private fun expiredLeaseFuture(): CompletableFuture<String> =
+            CompletableFuture.failedFuture(
+                IllegalStateException("Notebook session is no longer available")
+            )
+    }
+
+    private fun sessionForId(sessionId: SessionId): NotebookSession =
+        requireNotNull(sessions[sessionId]) { "Notebook session is no longer available" }
 
     private fun notifySessionsChanged() {
         listeners.forEach { it() }

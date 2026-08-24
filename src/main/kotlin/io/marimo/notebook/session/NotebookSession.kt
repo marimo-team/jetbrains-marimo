@@ -9,6 +9,7 @@ import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager
 import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
+import java.util.EnumMap
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** What one notebook's server process is doing, reduced to the states the UI presents. */
@@ -78,16 +79,41 @@ internal class NotebookSession(
     val fileName: String
         get() = filePointer.file?.name ?: filePointer.fileName
 
+    val notebook: VirtualFile
+        get() = requireNotNull(filePointer.file) { "Notebook file is no longer available" }
+
     fun matches(file: VirtualFile): Boolean = filePointer.file === file || fileUrl == file.url
 
     val lifecycle = MarimoNotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
     var view: MarimoNotebookView? = null
     var launchContext: MarimoLaunchContext? = null
-    var attachedTabs: Int = 0
+    private val leaseCounts = EnumMap<LeaseOwner, Int>(LeaseOwner::class.java)
     var ttl: TtlCancellable? = null
     var ttlGeneration: Long = 0
     var expiresAtMillis: Long? = null
+
+    val attachedTabs: Int
+        get() = leaseCount(LeaseOwner.EDITOR_TAB)
+
+    val hasTtlSuppressingLease: Boolean
+        get() = LeaseOwner.entries.any { owner -> owner.suppressesTtl && leaseCount(owner) > 0 }
+
+    val shouldArmTtl: Boolean
+        get() = !hasTtlSuppressingLease
+
+    fun acquireLease(owner: LeaseOwner) {
+        leaseCounts[owner] = leaseCount(owner) + 1
+    }
+
+    fun releaseLease(owner: LeaseOwner): Boolean {
+        val count = leaseCount(owner)
+        if (count == 0) return false
+        if (count == 1) leaseCounts.remove(owner) else leaseCounts[owner] = count - 1
+        return true
+    }
+
+    private fun leaseCount(owner: LeaseOwner): Int = leaseCounts[owner] ?: 0
 
     fun snapshot(): SessionSnapshot =
         SessionSnapshot(
