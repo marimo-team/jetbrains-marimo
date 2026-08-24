@@ -40,9 +40,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The project's notebook session manager. One [NotebookSession] per file owns that notebook's
- * marimo process, JCEF view, launch mode, and owner leases. Editor tabs attach to and detach from
- * sessions; they never own the process. Status reads are side-effect-free, so painting an icon or
- * updating an action can never start a server.
+ * marimo process, JCEF view, launch mode, and owner leases. Owners retain the session without
+ * owning its process. Status reads are side-effect-free, so painting an icon or updating an action
+ * can never start a server.
  */
 @Service(Service.Level.PROJECT)
 class NotebookSessionManager(private val project: Project) : Disposable {
@@ -292,20 +292,6 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     internal fun statusFor(file: VirtualFile): SessionSnapshot? = peek(file)
 
-    /** Temporary test seam until the lease contract suite replaces the legacy TTL cases. */
-    internal fun attach(file: VirtualFile) {
-        val session = sessionForUrl(file.url) ?: return
-        synchronized(session) {
-            acquireOwnerLocked(session, LeaseOwner.EDITOR_TAB)
-        }
-        notifySessionsChanged()
-    }
-
-    internal fun detach(file: VirtualFile) {
-        val session = sessionForUrl(file.url) ?: return
-        releaseOwner(session.id, LeaseOwner.EDITOR_TAB)
-    }
-
     fun statusForUrl(url: String): SessionSnapshot? =
         sessionForUrl(url)?.let { synchronized(it) { it.snapshot() } }
 
@@ -314,8 +300,8 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         sessions.values.map { synchronized(it) { it.snapshot() } }
 
     /**
-     * Stops [file]'s server now. With an attached tab the session entry stays so the tab renders a
-     * stopped panel with a Restart offer; with no tab the whole entry is removed and disposed.
+     * Stops [file]'s server now. With an active ownership lease the session entry stays so its UI
+     * can render a stopped panel with a Restart offer; otherwise the entry is removed and disposed.
      */
     fun stop(file: VirtualFile) = stopUrl(file.url)
 
@@ -498,11 +484,6 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     private fun sessionForUrl(url: String): NotebookSession? =
         sessions.values.firstOrNull { session -> session.fileUrl == url }
-
-    private fun acquireOwnerLocked(session: NotebookSession, owner: LeaseOwner) {
-        session.acquireLease(owner)
-        if (owner.suppressesTtl) cancelTtlLocked(session)
-    }
 
     private fun cancelInFlightLaunchLocked(session: NotebookSession) {
         session.inFlightReadyUrl?.let { readyUrl ->

@@ -46,7 +46,6 @@ data class SessionSnapshot(
     val fileUrl: String,
     val fileName: String,
     val state: MarimoSessionState,
-    val attachedTabs: Int,
     /** Epoch millis when the background TTL stops the session, or null while no TTL is armed. */
     val expiresAtMillis: Long?,
     val launch: MarimoLaunchContext?,
@@ -65,7 +64,7 @@ internal fun interface TtlScheduler {
 
 /**
  * Everything the project keeps for one notebook: the server lifecycle, the shared JCEF view, the
- * launch mode, and the editor-attachment bookkeeping that drives the background TTL. Owned by
+ * launch mode, and the owner leases that drive the background TTL. Owned by
  * [NotebookSessionManager]; mutable fields are guarded by `synchronized(session)` there.
  */
 internal class NotebookSession(
@@ -95,9 +94,6 @@ internal class NotebookSession(
     var ttl: TtlCancellable? = null
     var ttlGeneration: Long = 0
     var expiresAtMillis: Long? = null
-
-    val attachedTabs: Int
-        get() = leaseCount(LeaseOwner.EDITOR_TAB)
 
     val hasTtlSuppressingLease: Boolean
         get() = LeaseOwner.entries.any { owner -> owner.suppressesTtl && leaseCount(owner) > 0 }
@@ -130,7 +126,6 @@ internal class NotebookSession(
                     is MarimoNotebookState.Stopped -> MarimoSessionState.STOPPED
                     is MarimoNotebookState.Failed -> MarimoSessionState.FAILED
                 },
-            attachedTabs = attachedTabs,
             expiresAtMillis = expiresAtMillis,
             launch = launchContext,
             sandbox = sandboxEnabled.get(),

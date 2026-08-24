@@ -9,12 +9,25 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import io.marimo.notebook.session.SessionSettings
+import io.marimo.notebook.session.TtlCancellable
+import io.marimo.notebook.session.TtlScheduler
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 
 class MarimoPairSessionTest : BasePlatformTestCase() {
+
+    private class RecordingTtl : TtlScheduler {
+        val armed = CompletableFuture<Long>()
+
+        override fun schedule(delayMillis: Long, task: Runnable): TtlCancellable {
+            armed.complete(delayMillis)
+            return TtlCancellable {}
+        }
+    }
 
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
@@ -77,6 +90,25 @@ class MarimoPairSessionTest : BasePlatformTestCase() {
         uv.handles.single().becomeReady()
 
         assertEquals(listOf("fake-uv", "marimo"), PlatformTestUtil.waitForFuture(prefix, 5_000))
+    }
+
+    fun testPromptLaunchFailureClosesItsLeaseAndArmsTheTtl() {
+        val file = notebook()
+        val ttl = RecordingTtl()
+        manager.ttlScheduler = ttl
+        sdk.canLaunch = false
+        uv.canLaunch = false
+
+        MarimoPairSession.resolvePrompt(project, file) { _, _, _ ->
+            error("prompt must not be delivered")
+        }
+
+        assertEquals(
+            "a failed prompt must release its non-suppressing lease",
+            SessionSettings.getInstance().backgroundTtlMillis(),
+            PlatformTestUtil.waitForFuture(ttl.armed, 5_000),
+        )
+        assertNotNull(manager.peek(file)!!.expiresAtMillis)
     }
 
     private fun notebook(): VirtualFile =

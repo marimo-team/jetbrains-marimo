@@ -15,14 +15,7 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
     override fun tearDown() {
         try {
             val service = project.service<NotebookSessionManager>()
-            service.sessions().forEach { snapshot ->
-                repeat(snapshot.attachedTabs) {
-                    com.intellij.openapi.vfs.VirtualFileManager.getInstance()
-                        .findFileByUrl(snapshot.fileUrl)
-                        ?.let(service::detach)
-                }
-                service.stopUrl(snapshot.fileUrl)
-            }
+            service.sessions().forEach { service.stopUrl(it.fileUrl) }
         } finally {
             super.tearDown()
         }
@@ -34,20 +27,20 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         val file = myFixture.addFileToProject("attach_nb.py", "import marimo\n").virtualFile
 
         val first = MarimoNotebookEditor(project, file)
-        assertEquals(1, service.statusFor(file)!!.attachedTabs)
+        assertNotNull(service.peek(file))
+        assertNull(service.peek(file)!!.expiresAtMillis)
 
         val second = MarimoNotebookEditor(project, file)
-        assertEquals(
-            "a split shares the session, it does not relaunch it",
-            2,
-            service.statusFor(file)!!.attachedTabs,
-        )
+        assertEquals("a split shares one session", 1, service.sessions().size)
 
         second.dispose()
-        assertEquals(1, service.statusFor(file)!!.attachedTabs)
+        assertNull(service.peek(file)!!.expiresAtMillis)
 
         first.dispose()
-        assertEquals(0, service.statusFor(file)!!.attachedTabs)
+        assertNotNull(
+            "closing the final tab must arm the background TTL",
+            service.peek(file)!!.expiresAtMillis,
+        )
     }
 
     fun testRenamedEditorDetachesTheSession() {
@@ -60,7 +53,6 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         editor.dispose()
 
         val status = service.statusFor(file)
-        assertEquals(0, status!!.attachedTabs)
-        assertNotNull("closing a renamed tab must arm the background TTL", status.expiresAtMillis)
+        assertNotNull("closing a renamed tab must arm the background TTL", status!!.expiresAtMillis)
     }
 }

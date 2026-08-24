@@ -211,4 +211,44 @@ class NotebookSessionManagerReuseTest : BasePlatformTestCase() {
             lease.close()
         }
     }
+
+    fun testDisposingTheManagerInvalidatesALeaseAndDisposesALateLaunch() {
+        val file =
+            myFixture.addFileToProject("disposed_manager_nb.py", "import marimo\n").virtualFile
+        val service = project.service<NotebookSessionManager>()
+        val launcher = BlockingLauncher()
+        val lease = service.acquire(file, LeaseOwner.EDITOR_TAB)
+        service.planner = LaunchPlanner(launcher, launcher)
+        try {
+            val readyUrl = lease.readyUrl()
+            assertTrue(
+                "launch did not begin",
+                launcher.firstLaunchEntered.await(5, TimeUnit.SECONDS),
+            )
+
+            service.dispose()
+
+            assertTrue(
+                "project disposal must fail the lease future",
+                readyUrl.isCompletedExceptionally,
+            )
+            assertTrue(
+                "disposed leases cannot create a replacement",
+                lease.readyUrl().isCompletedExceptionally,
+            )
+            launcher.allowFirstLaunch.countDown()
+            assertTrue(
+                "late launch did not create a handle",
+                launcher.firstHandleCreated.await(5, TimeUnit.SECONDS),
+            )
+            assertTrue(
+                "project disposal must dispose a late handle",
+                launcher.firstHandleDisposed.await(5, TimeUnit.SECONDS),
+            )
+            assertFalse("late handle must be disposed", launcher.handles.single().isAlive)
+        } finally {
+            launcher.allowFirstLaunch.countDown()
+            lease.close()
+        }
+    }
 }

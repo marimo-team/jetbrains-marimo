@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.session
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -59,18 +60,16 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
 
         assertEquals(first.sessionId, second.sessionId)
         assertEquals(1, manager.sessions().size)
-        assertEquals(2, first.status().attachedTabs)
+        assertNull(first.status().expiresAtMillis)
 
         first.close()
 
-        assertEquals(1, second.status().attachedTabs)
         assertTrue(ttl.pending.isEmpty())
 
         second.close()
 
-        assertEquals(0, manager.statusFor(file)!!.attachedTabs)
         assertEquals(1, ttl.pending.size)
-        assertNotNull(manager.statusFor(file)!!.expiresAtMillis)
+        assertNotNull(manager.peek(file)!!.expiresAtMillis)
     }
 
     fun testClosingALeaseTwiceOnlyArmsOneTtl() {
@@ -80,7 +79,6 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
         lease.close()
         lease.close()
 
-        assertEquals(0, manager.statusFor(file)!!.attachedTabs)
         assertEquals(1, ttl.pending.size)
     }
 
@@ -174,6 +172,24 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
             LauncherInfo(listOf("fake-uv", "marimo"), sandbox = true),
             lease.launcherInfo(),
         )
+    }
+
+    fun testRenameThenRetryUsesOneSessionAndProcess() {
+        val file = notebook("rename_lease.py")
+        val lease = acquire(file, LeaseOwner.EDITOR_TAB)
+        val readyUrl = lease.readyUrl()
+        assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+
+        ApplicationManager.getApplication().runWriteAction { file.rename(this, "renamed_lease.py") }
+
+        lease.readyUrl().get(5, TimeUnit.SECONDS)
+
+        assertEquals(file.url, manager.sessions().single().fileUrl)
+        assertEquals("renamed_lease.py", manager.sessions().single().fileName)
+        assertEquals(1, sdk.requests.size)
+        assertEquals(1, manager.sessions().size)
     }
 
     private fun acquire(file: VirtualFile, owner: LeaseOwner): NotebookSessionLease =

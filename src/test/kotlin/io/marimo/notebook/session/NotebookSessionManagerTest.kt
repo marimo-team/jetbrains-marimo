@@ -3,7 +3,6 @@
 package io.marimo.notebook.session
 
 import com.intellij.execution.process.ProcessHandler
-import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -101,6 +100,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
     private lateinit var ttl: ManualTtl
+    private val leases = mutableListOf<NotebookSessionLease>()
 
     private val manager: NotebookSessionManager
         get() = project.service<NotebookSessionManager>()
@@ -112,6 +112,9 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         manager.urlFor(file).also {
             assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
         }
+
+    private fun editorLease(file: VirtualFile): NotebookSessionLease =
+        manager.acquire(file, LeaseOwner.EDITOR_TAB).also(leases::add)
 
     private fun awaitFailure(future: CompletableFuture<String>) {
         runCatching { future.get(5, TimeUnit.SECONDS) }
@@ -131,14 +134,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
     // them. Each test uses its own file name, and teardown drains every session it created.
     override fun tearDown() {
         try {
-            manager.sessions().forEach { snapshot ->
-                repeat(snapshot.attachedTabs) {
-                    com.intellij.openapi.vfs.VirtualFileManager.getInstance()
-                        .findFileByUrl(snapshot.fileUrl)
-                        ?.let(manager::detach)
-                }
-                manager.stopUrl(snapshot.fileUrl)
-            }
+            leases.forEach(NotebookSessionLease::close)
+            manager.sessions().forEach { manager.stopUrl(it.fileUrl) }
         } finally {
             super.tearDown()
         }
@@ -210,14 +207,17 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals(MarimoSessionState.STOPPED, manager.statusFor(file)!!.state)
     }
 
-    fun testAttachAndDetachCountTabs() {
+    fun testEditorLeasesArmTtlOnlyAfterTheFinalClose() {
         val file = notebook("count_nb.py")
         launch(file)
-        manager.attach(file)
-        manager.attach(file)
-        assertEquals(2, manager.statusFor(file)!!.attachedTabs)
-        manager.detach(file)
-        assertEquals(1, manager.statusFor(file)!!.attachedTabs)
+        val first = editorLease(file)
+        val second = editorLease(file)
+
+        first.close()
+        assertTrue("one remaining editor must suppress the TTL", ttl.pending.isEmpty())
+
+        second.close()
+        assertEquals(1, ttl.pending.size)
     }
 
     fun testTwoNotebooksGetIndependentSessions() {
@@ -239,23 +239,6 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(b)!!.state)
     }
 
-    fun testRenameThenRetryUsesOneSessionAndProcess() {
-        val file = notebook("rename_nb.py")
-        launch(file)
-        sdk.handles.single().becomeReady()
-
-        ApplicationManager.getApplication().runWriteAction { file.rename(this, "renamed_nb.py") }
-
-        assertEquals(file.url, manager.sessions().single().fileUrl)
-
-        launch(file)
-
-        assertEquals(1, sdk.requests.size)
-        assertEquals(1, sdk.handles.size)
-        assertEquals(1, manager.sessions().size)
-        assertEquals("renamed_nb.py", manager.sessions().single().fileName)
-    }
-
     fun testStopWithNoTabsRemovesTheSessionEntry() {
         val file = notebook("stop_bg_nb.py")
         launch(file)
@@ -265,14 +248,14 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertFalse(sdk.handles.single().isAlive)
     }
 
-    fun testStopWithAnAttachedTabKeepsTheEntryAsStopped() {
+    fun testStopWithAnActiveLeaseKeepsTheEntryAsStopped() {
         val file = notebook("stop_tab_nb.py")
         launch(file)
         sdk.handles.single().becomeReady()
-        manager.attach(file)
-        manager.stop(file)
+        val editor = editorLease(file)
+        editor.stop()
         val status = manager.statusFor(file)
-        assertNotNull("an open tab still needs status to render", status)
+        assertNotNull("an active lease still needs status to render", status)
         assertEquals(MarimoSessionState.STOPPED, status!!.state)
         assertFalse(sdk.handles.single().isAlive)
     }
@@ -301,8 +284,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         manager.addSessionsListener(testRootDisposable) { events++ }
         launch(file)
         sdk.handles.single().becomeReady()
-        manager.attach(file)
-        manager.detach(file)
+        editorLease(file).close()
         assertTrue("expected several change notifications, saw $events", events >= 4)
     }
 
@@ -384,17 +366,16 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         return file
     }
 
-    fun testAnAttachedTabKeepsTheSessionWithoutAnyTimer() {
+    fun testAnEditorLeaseKeepsTheSessionWithoutAnyTimer() {
         val file = runningNotebook("keep_nb.py")
-        manager.attach(file)
+        editorLease(file)
         assertTrue("an open tab must never race a timer", ttl.pending.isEmpty())
         assertNull(manager.statusFor(file)!!.expiresAtMillis)
     }
 
-    fun testFinalDetachArmsTheThirtyMinuteTtl() {
+    fun testFinalLeaseCloseArmsTheThirtyMinuteTtl() {
         val file = runningNotebook("ttl_nb.py")
-        manager.attach(file)
-        manager.detach(file)
+        editorLease(file).close()
         assertEquals(1, ttl.pending.size)
         assertEquals(
             SessionSettings.getInstance().backgroundTtlMillis(),
@@ -409,24 +390,23 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testReopenBeforeExpiryCancelsTheTtlAndReusesTheProcess() {
         val file = runningNotebook("reopen_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-        manager.attach(file)
+        editorLease(file).close()
+        val reopened = editorLease(file)
         assertTrue(ttl.pending.isEmpty())
         assertNull(manager.statusFor(file)!!.expiresAtMillis)
-        launch(file)
+        reopened.readyUrl().get(5, TimeUnit.SECONDS)
         assertEquals("reattach must reuse the live process, not relaunch", 1, sdk.handles.size)
     }
 
     fun testTabMovePreservesTheSessionInEitherEventOrder() {
         val file = runningNotebook("move_nb.py")
-        manager.attach(file)
-        manager.attach(file)
-        manager.detach(file)
+        val first = editorLease(file)
+        val second = editorLease(file)
+        first.close()
         assertTrue("attach-then-detach never reaches zero", ttl.pending.isEmpty())
 
-        manager.detach(file)
-        manager.attach(file)
+        second.close()
+        editorLease(file)
         assertTrue("detach-then-attach cancels the armed timer", ttl.pending.isEmpty())
         assertEquals(1, sdk.handles.size)
         assertTrue(sdk.handles.single().isAlive)
@@ -434,8 +414,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
         val file = runningNotebook("expire_nb.py")
-        manager.attach(file)
-        manager.detach(file)
+        editorLease(file).close()
         ttl.fireAll()
         assertFalse("expiry must stop the process", sdk.handles.single().isAlive)
         assertNull("expiry must remove the registry entry", manager.statusFor(file))
@@ -447,9 +426,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val sticky = ManualTtl(honorCancel = false)
         manager.ttlScheduler = sticky
         val file = runningNotebook("stale_ttl_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-        manager.attach(file)
+        editorLease(file).close()
+        editorLease(file)
         sticky.fireAll()
         assertTrue(
             "a cancelled-but-fired task must be ignored by generation",
@@ -460,9 +438,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testStopCancelsTheArmedTtl() {
         val file = runningNotebook("stop_ttl_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-        manager.stop(file)
+        editorLease(file).close()
+        manager.acquire(file, LeaseOwner.PAIR_PROMPT).use { it.stop() }
         assertNull(manager.statusFor(file))
         ttl.fireAll()
         assertNull("a fired timer after stop must find nothing", manager.statusFor(file))
@@ -470,9 +447,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testRestartOfABackgroundSessionRearmsTheTtl() {
         val file = runningNotebook("restart_bg_nb.py")
-        manager.attach(file)
-        manager.detach(file)
-        manager.restart(file)
+        editorLease(file).close()
+        manager.acquire(file, LeaseOwner.PAIR_PROMPT).use { it.restart() }
         assertTrue(
             "background restart must schedule a second process",
             sdk.secondLaunch.await(5, TimeUnit.SECONDS),

@@ -16,7 +16,6 @@ class MarimoSessionActionsTest {
             fileUrl = "temp:///src/nb.py",
             fileName = "nb.py",
             state = state,
-            attachedTabs = 0,
             expiresAtMillis = null,
             launch =
                 MarimoLaunchContext(
