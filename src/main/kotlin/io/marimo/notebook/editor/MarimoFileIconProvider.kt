@@ -9,19 +9,17 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.detect.MarimoDetector
-import io.marimo.notebook.server.MarimoServerService
+import io.marimo.notebook.session.NotebookSessionManager
 import javax.swing.Icon
 
 /**
- * Marks marimo notebooks in the project tree, with the platform's green live badge while a session
- * is running. Icon painting happens for every visible file, so the status probe must stay
- * side-effect-free: `serviceIfCreated` never instantiates the session manager, and `statusFor`
- * never creates a session.
+ * Marks marimo notebooks in the project tree. The green live badge shows a live session. Icon reads
+ * never create sessions because the platform requests icons for every visible file.
  */
 class MarimoFileIconProvider : FileIconProvider {
     override fun getIcon(file: VirtualFile, flags: Int, project: Project?): Icon? {
         if (!MarimoDetector.looksLikeMarimo(file)) return null
-        val status = project?.serviceIfCreated<MarimoServerService>()?.statusFor(file)
+        val status = project?.serviceIfCreated<NotebookSessionManager>()?.peek(file)
         return if (status?.state?.isLive == true) ExecutionUtil.getLiveIndicator(MarimoIcons.FILE)
         else MarimoIcons.FILE
     }

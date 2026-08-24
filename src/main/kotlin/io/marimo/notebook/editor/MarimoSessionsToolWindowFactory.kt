@@ -19,9 +19,9 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.MarimoLocalhost
-import io.marimo.notebook.server.MarimoServerService
-import io.marimo.notebook.server.MarimoSessionSnapshot
-import io.marimo.notebook.server.MarimoSessionState
+import io.marimo.notebook.session.MarimoSessionState
+import io.marimo.notebook.session.NotebookSessionManager
+import io.marimo.notebook.session.SessionSnapshot
 import java.awt.BorderLayout
 import java.awt.Cursor
 import java.awt.Dimension
@@ -39,7 +39,7 @@ import javax.swing.JPanel
 
 class MarimoSessionsToolWindowFactory : ToolWindowFactory, DumbAware {
     override fun createToolWindowContent(project: Project, toolWindow: ToolWindow) {
-        val service = project.service<MarimoServerService>()
+        val service = project.service<NotebookSessionManager>()
         val panel = MarimoSessionsPanel(project, service)
         service.addSessionsListener(panel) { panel.refresh() }
         panel.refresh()
@@ -51,7 +51,7 @@ class MarimoSessionsToolWindowFactory : ToolWindowFactory, DumbAware {
 
 private class MarimoSessionsPanel(
     private val project: Project,
-    private val service: MarimoServerService,
+    private val service: NotebookSessionManager,
 ) : JPanel(BorderLayout()), Disposable {
     private val cards =
         JBPanel<JBPanel<*>>().apply {
@@ -112,8 +112,8 @@ private class MarimoSessionsPanel(
 
 private class SessionCard(
     private val project: Project,
-    private val service: MarimoServerService,
-    snapshot: MarimoSessionSnapshot,
+    private val service: NotebookSessionManager,
+    snapshot: SessionSnapshot,
 ) : JPanel(BorderLayout()) {
     init {
         val launch = snapshot.launch
@@ -173,14 +173,16 @@ private class SessionCard(
                             val file =
                                 VirtualFileManager.getInstance().findFileByUrl(snapshot.fileUrl)
                                     ?: return@addActionListener
-                            service.restart(file)
+                            service.withExistingActionLease(file) { it.restart() }
                         }
                     }
                 )
                 add(
                     iconButton(AllIcons.Actions.Suspend, "Stop session").apply {
                         isEnabled = canControl
-                        addActionListener { service.stopUrl(snapshot.fileUrl) }
+                        addActionListener {
+                            service.stopUrl(snapshot.fileUrl)
+                        }
                     }
                 )
             }

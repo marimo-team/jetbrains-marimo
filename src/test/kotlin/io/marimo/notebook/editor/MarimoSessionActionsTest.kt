@@ -2,9 +2,9 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.server.MarimoLaunchContext
-import io.marimo.notebook.server.MarimoSessionSnapshot
-import io.marimo.notebook.server.MarimoSessionState
+import io.marimo.notebook.session.MarimoLaunchContext
+import io.marimo.notebook.session.MarimoSessionState
+import io.marimo.notebook.session.SessionSnapshot
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -12,17 +12,17 @@ import org.junit.Test
 class MarimoSessionActionsTest {
 
     private fun snapshot(state: MarimoSessionState) =
-        MarimoSessionSnapshot(
+        SessionSnapshot(
             fileUrl = "temp:///src/nb.py",
             fileName = "nb.py",
             state = state,
-            attachedTabs = 0,
             expiresAtMillis = null,
             launch =
                 MarimoLaunchContext(
                     port = 2718,
                     workDir = "/proj",
                     launcherId = "sdk",
+                    launcherInfo = null,
                     sandbox = false,
                     tokenAuthEnabled = false,
                 ),

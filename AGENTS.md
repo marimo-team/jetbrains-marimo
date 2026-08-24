@@ -41,7 +41,7 @@ Source lives under `src/main/kotlin/io/marimo/notebook/`:
 - `detect/` — decide whether a `.py` file is a marimo notebook.
 - `editor/` — the custom `FileEditorProvider` that opens notebooks in the marimo editor.
 - `launch/` — launch the marimo server (uv vs. SDK Python), build CLI args, manage the process.
-- `server/` — manage notebook sessions, server processes, page configuration, and session settings.
+- `session/` — manage notebook sessions, server processes, page configuration, and session settings.
 - `pair/` — "Pair with marimo" action that wires an AI harness onto a notebook.
 
 Plugin wiring is in `src/main/resources/META-INF/plugin.xml`. Tests mirror the package

@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.server
+package io.marimo.notebook.session
 
 import java.io.IOException
 import org.junit.Assert.assertEquals
@@ -9,7 +9,7 @@ import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MarimoPageConfigTest {
+class PageConfigReaderTest {
 
     private fun page(escapedConfig: String) =
         """
@@ -28,8 +28,8 @@ class MarimoPageConfigTest {
 
     @Test
     fun readsTheme() {
-        assertEquals("light", MarimoPageConfig.displayTheme(page(escapedConfig("light"))))
-        assertEquals("system", MarimoPageConfig.displayTheme(page(escapedConfig("system"))))
+        assertEquals("light", PageConfigReader.displayTheme(page(escapedConfig("light"))))
+        assertEquals("system", PageConfigReader.displayTheme(page(escapedConfig("system"))))
     }
 
     @Test
@@ -37,22 +37,22 @@ class MarimoPageConfigTest {
         val config =
             "{&quot;theme&quot;: &quot;dark&quot;, " +
                 "&quot;display&quot;: {&quot;theme&quot;: &quot;light&quot;}}"
-        assertEquals("light", MarimoPageConfig.displayTheme(page(config)))
+        assertEquals("light", PageConfigReader.displayTheme(page(config)))
     }
 
     @Test
     fun nullWhenTagMissing() {
-        assertNull(MarimoPageConfig.displayTheme("<html><body>no config here</body></html>"))
+        assertNull(PageConfigReader.displayTheme("<html><body>no config here</body></html>"))
     }
 
     @Test
     fun nullWhenDisplayTableMissing() {
-        assertNull(MarimoPageConfig.displayTheme(page("{&quot;runtime&quot;: {}}")))
+        assertNull(PageConfigReader.displayTheme(page("{&quot;runtime&quot;: {}}")))
     }
 
     @Test
     fun nullWhenConfigIsNotJson() {
-        assertNull(MarimoPageConfig.displayTheme(page("not json")))
+        assertNull(PageConfigReader.displayTheme(page("not json")))
     }
 
     @Test
@@ -60,7 +60,7 @@ class MarimoPageConfigTest {
         val config =
             "{&quot;display&quot;: {&quot;theme&quot;: &quot;dark&quot;}, " +
                 "&quot;custom_css&quot;: [&quot;a &amp; b &lt;c&gt; &#x27;d&#x27;&quot;]}"
-        assertEquals("dark", MarimoPageConfig.displayTheme(page(config)))
+        assertEquals("dark", PageConfigReader.displayTheme(page(config)))
     }
 
     @Test
@@ -68,7 +68,7 @@ class MarimoPageConfigTest {
         val url = "http://127.0.0.1:2718?access_token=URL_SECRET"
         val error = IOException("request failed for $url and access_token=MESSAGE_SECRET")
 
-        val warning = MarimoPageConfig.readFailureSummary(url, error)
+        val warning = PageConfigReader.readFailureSummary(url, error)
 
         assertFalse(warning.contains("URL_SECRET"))
         assertFalse(warning.contains("MESSAGE_SECRET"))
