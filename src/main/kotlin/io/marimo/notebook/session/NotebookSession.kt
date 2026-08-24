@@ -10,6 +10,7 @@ import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
 import java.util.EnumMap
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
 
 /** What one notebook's server process is doing, reduced to the states the UI presents. */
@@ -88,6 +89,7 @@ internal class NotebookSession(
     val sandboxEnabled = AtomicBoolean(false)
     var view: MarimoNotebookView? = null
     var launchContext: MarimoLaunchContext? = null
+    var inFlightReadyUrl: CompletableFuture<String>? = null
     private val leaseCounts = EnumMap<LeaseOwner, Int>(LeaseOwner::class.java)
     var ttl: TtlCancellable? = null
     var ttlGeneration: Long = 0

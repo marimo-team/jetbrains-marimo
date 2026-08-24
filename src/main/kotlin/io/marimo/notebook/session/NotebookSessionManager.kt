@@ -30,6 +30,7 @@ import io.marimo.notebook.launch.writeTokenPasswordFile
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
 import java.io.File
+import java.util.concurrent.CancellationException
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
@@ -45,6 +46,11 @@ import java.util.concurrent.atomic.AtomicLong
  */
 @Service(Service.Level.PROJECT)
 class NotebookSessionManager(private val project: Project) : Disposable {
+
+    private data class PlannedLaunch(
+        val request: LaunchRequest,
+        val launcher: MarimoLauncher,
+    )
 
     internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
 
@@ -149,56 +155,129 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             val session = sessionFor(file)
             val readyUrl =
                 synchronized(session) {
-                    if (sessions[session.id] === session) urlForSessionLocked(session, file)
+                    if (sessions[session.id] === session) readyUrlForSessionLocked(session, file)
                     else null
                 }
             if (readyUrl != null) return readyUrl
         }
     }
 
-    private fun urlForSessionLocked(
+    private fun readyUrlForSessionLocked(
         session: NotebookSession,
         file: VirtualFile,
     ): CompletableFuture<String> {
+        session.inFlightReadyUrl?.let {
+            return it
+        }
         session.lifecycle.liveHandle()?.let {
             return it.awaitReady()
         }
 
-        val port = NetUtils.findAvailableSocketPort()
-        val host = MarimoLocalhost.HOST
-        val workDir = NotebookWorkDir.resolve(project, file)
+        val readyUrl = CompletableFuture<String>()
+        session.inFlightReadyUrl = readyUrl
+        readyUrl.whenComplete { _, _ ->
+            synchronized(session) {
+                if (session.inFlightReadyUrl === readyUrl) session.inFlightReadyUrl = null
+            }
+        }
+        AppExecutorUtil.getAppExecutorService().execute {
+            launchSessionAsync(session, file, readyUrl)
+        }
+        return readyUrl
+    }
+
+    private fun launchSessionAsync(
+        session: NotebookSession,
+        file: VirtualFile,
+        readyUrl: CompletableFuture<String>,
+    ) {
+        var tokenFile: File? = null
+        try {
+            val planned = planLaunch(session, file)
+            val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
+            val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
+            tokenFile = token?.let(tokenPasswordFileWriter)
+            val request =
+                planned.request.copy(
+                    tokenPasswordFile = tokenFile?.absolutePath,
+                    authenticatedUrl =
+                        token?.let {
+                            MarimoLocalhost.authenticatedUrl(
+                                planned.request.host,
+                                planned.request.port,
+                                it,
+                            )
+                        },
+                )
+            val handle = planned.launcher.launch(request)
+            val attached =
+                synchronized(session) {
+                    if (sessions[session.id] !== session || session.inFlightReadyUrl !== readyUrl) {
+                        false
+                    } else {
+                        session.launchContext =
+                            MarimoLaunchContext(
+                                port = request.port,
+                                workDir = requireNotNull(request.workDir),
+                                launcherId = planned.launcher.id,
+                                sandbox = request.sandbox,
+                                tokenAuthEnabled = tokenAuthEnabled,
+                            )
+                        Disposer.register(session.lifecycle, handle)
+                        session.lifecycle.attach(handle)
+                        true
+                    }
+                }
+            if (!attached) {
+                tokenFile?.delete()
+                Disposer.dispose(handle)
+                readyUrl.completeExceptionally(
+                    CancellationException("Notebook session is no longer available")
+                )
+                return
+            }
+            completeReadyUrlFrom(handle, readyUrl)
+        } catch (e: ProcessCanceledException) {
+            tokenFile?.delete()
+            readyUrl.completeExceptionally(e)
+            throw e
+        } catch (e: Exception) {
+            tokenFile?.delete()
+            completeLaunchFailure(session, readyUrl, e)
+        }
+    }
+
+    private fun planLaunch(session: NotebookSession, file: VirtualFile): PlannedLaunch {
         val baseRequest =
             LaunchRequest(
                 project = project,
                 notebook = file,
-                port = port,
-                host = host,
+                port = NetUtils.findAvailableSocketPort(),
+                host = MarimoLocalhost.HOST,
                 sandbox = session.sandboxEnabled.get(),
-                workDir = workDir,
+                workDir = NotebookWorkDir.resolve(project, file),
             )
         val launcher =
-            try {
-                when (val decision = planner.plan(baseRequest)) {
-                    is LaunchDecision.Launch -> decision.launcher
-                    is LaunchDecision.NoInterpreter ->
-                        return launchPlanFailure(
-                            session,
-                            NoInterpreterException(decision.message),
-                        )
-
-                    is LaunchDecision.NeedsUv ->
-                        return launchPlanFailure(
-                            session,
-                            UvUnavailableException(decision.message),
-                        )
-                }
-            } catch (e: ProcessCanceledException) {
-                throw e
-            } catch (e: Exception) {
-                return launchPlanFailure(session, e)
+            when (val decision = planner.plan(baseRequest)) {
+                is LaunchDecision.Launch -> decision.launcher
+                is LaunchDecision.NoInterpreter -> throw NoInterpreterException(decision.message)
+                is LaunchDecision.NeedsUv -> throw UvUnavailableException(decision.message)
             }
+        return PlannedLaunch(baseRequest, launcher)
+    }
 
-        return launchSessionLocked(session, baseRequest, launcher)
+    private fun completeReadyUrlFrom(
+        handle: io.marimo.notebook.launch.MarimoServerHandle,
+        readyUrl: CompletableFuture<String>,
+    ) {
+        handle.awaitReady().whenComplete { url, error ->
+            if (error != null) {
+                Disposer.dispose(handle)
+                readyUrl.completeExceptionally(error)
+            } else {
+                readyUrl.complete(url)
+            }
+        }
     }
 
     /**
@@ -264,6 +343,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             synchronized(session) {
                 if (sessions[session.id] !== session) return
                 cancelTtlLocked(session)
+                cancelInFlightLaunchLocked(session)
                 if (session.shouldArmTtl && sessions.remove(session.id, session)) {
                     session.lifecycle.release()
                     true
@@ -291,17 +371,16 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         val view =
             synchronized(session) {
                 if (sessions[session.id] !== session) return
+                cancelInFlightLaunchLocked(session)
                 session.view
             }
         if (view != null) {
             onEdt { view.reload() }
         } else {
             session.lifecycle.release()
-            ApplicationManager.getApplication().executeOnPooledThread {
-                synchronized(session) {
-                    if (sessions[session.id] === session) {
-                        urlForSessionLocked(session, session.notebook)
-                    }
+            synchronized(session) {
+                if (sessions[session.id] === session) {
+                    readyUrlForSessionLocked(session, session.notebook)
                 }
             }
         }
@@ -328,7 +407,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     /** Internal teardown used by the view's relaunch path: kill the process, keep the session. */
     fun release(file: VirtualFile) {
-        sessionForUrl(file.url)?.lifecycle?.release()
+        sessionForUrl(file.url)?.let { session ->
+            synchronized(session) {
+                cancelInFlightLaunchLocked(session)
+                session.lifecycle.release()
+            }
+        }
     }
 
     /** [listener] runs after any session change. It must only schedule work, not block. */
@@ -339,59 +423,26 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     override fun dispose() {
         sessions.values.forEach { session ->
-            synchronized(session) { cancelTtlLocked(session) }
+            synchronized(session) {
+                cancelTtlLocked(session)
+                cancelInFlightLaunchLocked(session)
+            }
             Disposer.dispose(session)
         }
         sessions.clear()
     }
 
-    private fun launchPlanFailure(
+    private fun completeLaunchFailure(
         session: NotebookSession,
+        readyUrl: CompletableFuture<String>,
         error: Exception,
-    ): CompletableFuture<String> {
-        session.lifecycle.onLaunchPlanFailed(error)
-        return CompletableFuture.failedFuture(error)
-    }
-
-    private fun launchSessionLocked(
-        session: NotebookSession,
-        baseRequest: LaunchRequest,
-        launcher: MarimoLauncher,
-    ): CompletableFuture<String> {
-        var tokenFile: File? = null
-        try {
-            val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
-            val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
-            tokenFile = token?.let(tokenPasswordFileWriter)
-            val request =
-                baseRequest.copy(
-                    tokenPasswordFile = tokenFile?.absolutePath,
-                    authenticatedUrl =
-                        token?.let {
-                            MarimoLocalhost.authenticatedUrl(baseRequest.host, baseRequest.port, it)
-                        },
-                )
-            val handle = launcher.launch(request)
-            session.launchContext =
-                MarimoLaunchContext(
-                    port = request.port,
-                    workDir = requireNotNull(request.workDir),
-                    launcherId = launcher.id,
-                    sandbox = request.sandbox,
-                    tokenAuthEnabled = tokenAuthEnabled,
-                )
-            Disposer.register(session.lifecycle, handle)
-            session.lifecycle.attach(handle)
-            return handle.awaitReady().whenComplete { _, error ->
-                if (error != null) Disposer.dispose(handle)
+    ) {
+        synchronized(session) {
+            if (sessions[session.id] === session && session.inFlightReadyUrl === readyUrl) {
+                session.lifecycle.onLaunchPlanFailed(error)
             }
-        } catch (e: ProcessCanceledException) {
-            tokenFile?.delete()
-            throw e
-        } catch (e: Exception) {
-            tokenFile?.delete()
-            return launchPlanFailure(session, e)
         }
+        readyUrl.completeExceptionally(error)
     }
 
     private fun cancelTtlLocked(session: NotebookSession) {
@@ -419,8 +470,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         val expired =
             synchronized(session) {
                 session.ttlGeneration == generation &&
-                        session.shouldArmTtl &&
-                        sessions.remove(sessionId, session)
+                    session.shouldArmTtl &&
+                    sessions.remove(sessionId, session).also {
+                        if (it) cancelInFlightLaunchLocked(session)
+                    }
             }
         if (!expired) return
         session.lifecycle.release()
@@ -447,7 +500,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                         synchronized(session) {
                             if (
                                 update.state !is MarimoNotebookState.Starting &&
-                                update.state !is MarimoNotebookState.Running
+                                    update.state !is MarimoNotebookState.Running
                             ) {
                                 session.launchContext = null
                             }
@@ -463,6 +516,15 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     private fun acquireOwnerLocked(session: NotebookSession, owner: LeaseOwner) {
         session.acquireLease(owner)
         if (owner.suppressesTtl) cancelTtlLocked(session)
+    }
+
+    private fun cancelInFlightLaunchLocked(session: NotebookSession) {
+        session.inFlightReadyUrl?.let { readyUrl ->
+            session.inFlightReadyUrl = null
+            readyUrl.completeExceptionally(
+                CancellationException("Notebook session launch was cancelled")
+            )
+        }
     }
 
     private fun releaseOwner(sessionId: SessionId, owner: LeaseOwner) {
@@ -492,7 +554,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             val session = sessions[sessionId] ?: return expiredLeaseFuture()
             return synchronized(session) {
                 if (sessions[sessionId] !== session) expiredLeaseFuture()
-                else urlForSessionLocked(session, session.notebook)
+                else readyUrlForSessionLocked(session, session.notebook)
             }
         }
 

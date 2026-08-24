@@ -56,6 +56,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
     class FakeLauncher(override val id: String = "fake") : MarimoLauncher {
         val requests = CopyOnWriteArrayList<LaunchRequest>()
         val handles = CopyOnWriteArrayList<FakeHandle>()
+        val firstLaunch = CountDownLatch(1)
         val secondLaunch = CountDownLatch(1)
         var canLaunch = true
         var launchFailure: Exception? = null
@@ -70,6 +71,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
                     ?: "http://127.0.0.1:${request.port}?access_token=secret${handles.size}"
             val handle = FakeHandle(authUrl)
             handles.add(handle)
+            firstLaunch.countDown()
             if (requests.size == 2) secondLaunch.countDown()
             return handle
         }
@@ -103,6 +105,16 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     private fun notebook(name: String = "nb.py"): VirtualFile =
         myFixture.addFileToProject(name, "import marimo\n").virtualFile
+
+    private fun launch(file: VirtualFile): CompletableFuture<String> =
+        manager.urlFor(file).also {
+            assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        }
+
+    private fun awaitFailure(future: CompletableFuture<String>) {
+        runCatching { future.get(5, TimeUnit.SECONDS) }
+        assertTrue("launch must fail", future.isCompletedExceptionally)
+    }
 
     override fun setUp() {
         super.setUp()
@@ -138,7 +150,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testLaunchRecordsTheLaunchContextAndReportsRunning() {
         val file = notebook("launch_nb.py")
-        val url = manager.urlFor(file)
+        val url = launch(file)
         val status = manager.statusFor(file)
         assertNotNull(status)
         assertEquals(MarimoSessionState.STARTING, status!!.state)
@@ -156,7 +168,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         try {
             settings.state.tokenAuthEnabled = true
             val file = notebook("token_auth_snapshot_nb.py")
-            manager.urlFor(file)
+            launch(file)
 
             settings.state.tokenAuthEnabled = false
 
@@ -168,7 +180,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testSnapshotsNeverCarryTheToken() {
         val file = notebook("token_nb.py")
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
         val rendered = manager.statusFor(file).toString()
         assertFalse(
@@ -183,21 +195,22 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         uv.canLaunch = false
         val file = notebook("plan_nb.py")
         val url = manager.urlFor(file)
-        assertTrue(url.isCompletedExceptionally)
+        awaitFailure(url)
         assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
     }
 
     fun testCrashMovesTheSessionToStoppedButKeepsTheEntry() {
         val file = notebook("crash_nb.py")
-        manager.urlFor(file)
+        val url = launch(file)
         sdk.handles.single().becomeReady()
+        url.get(5, TimeUnit.SECONDS)
         sdk.handles.single().crash()
         assertEquals(MarimoSessionState.STOPPED, manager.statusFor(file)!!.state)
     }
 
     fun testAttachAndDetachCountTabs() {
         val file = notebook("count_nb.py")
-        manager.urlFor(file)
+        launch(file)
         manager.attach(file)
         manager.attach(file)
         assertEquals(2, manager.statusFor(file)!!.attachedTabs)
@@ -208,8 +221,9 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
     fun testTwoNotebooksGetIndependentSessions() {
         val a = notebook("iso_a.py")
         val b = notebook("iso_b.py")
-        manager.urlFor(a)
+        launch(a)
         manager.urlFor(b)
+        assertTrue("second launch did not begin", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
         sdk.handles.forEach { it.becomeReady() }
         assertEquals(2, manager.sessions().size)
         assertFalse(
@@ -225,14 +239,14 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testRenameThenRetryUsesOneSessionAndProcess() {
         val file = notebook("rename_nb.py")
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
 
         ApplicationManager.getApplication().runWriteAction { file.rename(this, "renamed_nb.py") }
 
         assertEquals(file.url, manager.sessions().single().fileUrl)
 
-        manager.urlFor(file)
+        launch(file)
 
         assertEquals(1, sdk.requests.size)
         assertEquals(1, sdk.handles.size)
@@ -242,7 +256,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testStopWithNoTabsRemovesTheSessionEntry() {
         val file = notebook("stop_bg_nb.py")
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
         manager.stop(file)
         assertNull("a stopped background session must leave the registry", manager.statusFor(file))
@@ -251,7 +265,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testStopWithAnAttachedTabKeepsTheEntryAsStopped() {
         val file = notebook("stop_tab_nb.py")
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
         manager.attach(file)
         manager.stop(file)
@@ -263,7 +277,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testRestartLaunchesAFreshProcess() {
         val file = notebook("restart_nb.py")
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
 
         manager.restart(file)
@@ -283,7 +297,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val file = notebook("listen_nb.py")
         var events = 0
         manager.addSessionsListener(testRootDisposable) { events++ }
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
         manager.attach(file)
         manager.detach(file)
@@ -292,7 +306,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testStopKillsItsProcess() {
         val file = notebook("dispose_nb.py")
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.single().becomeReady()
         manager.stop(file)
         assertFalse(sdk.handles.single().isAlive)
@@ -304,7 +318,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         try {
             settings.state.tokenAuthEnabled = false
             val file = notebook("token_toggle_nb.py")
-            manager.urlFor(file)
+            launch(file)
             assertNull(
                 "the escape hatch must omit the password file",
                 sdk.requests.single().tokenPasswordFile,
@@ -325,7 +339,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
         val url = manager.urlFor(notebook("no_interpreter_token_nb.py"))
 
-        assertTrue(url.isCompletedExceptionally)
+        awaitFailure(url)
         assertFalse("planning must finish before a password file is created", tokenFileWriterCalled)
     }
 
@@ -337,7 +351,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
         val url = manager.urlFor(file)
 
-        assertTrue(url.isCompletedExceptionally)
+        awaitFailure(url)
         assertFalse("a pre-handle token file must be cleaned up", tokenFile.exists())
         assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
     }
@@ -348,13 +362,13 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
         val url = manager.urlFor(file)
 
-        assertTrue(url.isCompletedExceptionally)
+        awaitFailure(url)
         assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
     }
 
     fun testLaunchRunsFromTheContentRootAndRecordsIt() {
         val file = myFixture.addFileToProject("deep/nested/wd_nb.py", "import marimo\n").virtualFile
-        manager.urlFor(file)
+        launch(file)
         val request = sdk.requests.single()
         assertEquals(NotebookWorkDir.resolve(project, file), request.workDir)
         assertEquals(request.workDir, manager.statusFor(file)!!.launch!!.workDir)
@@ -363,7 +377,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     private fun runningNotebook(name: String): VirtualFile {
         val file = notebook(name)
-        manager.urlFor(file)
+        launch(file)
         sdk.handles.last().becomeReady()
         return file
     }
@@ -398,7 +412,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         manager.attach(file)
         assertTrue(ttl.pending.isEmpty())
         assertNull(manager.statusFor(file)!!.expiresAtMillis)
-        manager.urlFor(file)
+        launch(file)
         assertEquals("reattach must reuse the live process, not relaunch", 1, sdk.handles.size)
     }
 
