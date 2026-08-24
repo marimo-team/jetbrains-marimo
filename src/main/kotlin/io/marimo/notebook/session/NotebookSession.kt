@@ -6,7 +6,6 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.pointers.VirtualFilePointer
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager
-import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
 import java.util.EnumMap
@@ -63,9 +62,9 @@ internal fun interface TtlScheduler {
 }
 
 /**
- * Everything the project keeps for one notebook: the server lifecycle, the shared JCEF view, the
- * launch mode, and the owner leases that drive the background TTL. Owned by
- * [NotebookSessionManager]; mutable fields are guarded by `synchronized(session)` there.
+ * Everything the project keeps for one notebook: the server lifecycle, launch mode, and owner
+ * leases that drive the background TTL. Owned by [NotebookSessionManager]; mutable fields are
+ * guarded by `synchronized(session)` there.
  */
 internal class NotebookSession(
     val id: SessionId,
@@ -87,7 +86,6 @@ internal class NotebookSession(
 
     val lifecycle = MarimoNotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
-    var view: MarimoNotebookView? = null
     var launchContext: MarimoLaunchContext? = null
     var inFlightReadyUrl: CompletableFuture<String>? = null
     private val leaseCounts = EnumMap<LeaseOwner, Int>(LeaseOwner::class.java)

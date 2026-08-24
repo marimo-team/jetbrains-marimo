@@ -54,10 +54,9 @@ import org.cef.handler.CefLoadHandlerAdapter
 
 /**
  * The long-lived UI and process state for a single open notebook: the JCEF browser, its content
- * panel, and the marimo server it renders. Owned by [NotebookSessionManager] and keyed by file, not
- * by any one editor tab. Moving a notebook between splits disposes and recreates the [FileEditor],
- * but the view survives, so the same browser (still connected to the same marimo session) is simply
- * reparented into the new tab.
+ * panel, and the marimo server it renders. Owned by [NotebookViewRegistry] and keyed by session,
+ * not by any one editor tab. Moving a notebook between splits disposes and recreates the
+ * [FileEditor], but the view survives, so the same browser stays connected to the same session.
  */
 class MarimoNotebookView(private val project: Project, private val file: VirtualFile) : Disposable {
 
@@ -393,6 +392,11 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
      * Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox).
      */
     fun reload() = relaunch()
+
+    /**
+     * Connects this retained browser to the server launch already started by the session manager.
+     */
+    internal fun reconnectAfterSessionRestart() = loadNotebook()
 
     /**
      * The service caches the failed handle by file URL, so a retry that reused it would replay the

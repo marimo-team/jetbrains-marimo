@@ -4,10 +4,14 @@ package io.marimo.notebook.editor
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import io.marimo.notebook.editor.view.NotebookViewRegistry
 import io.marimo.notebook.launch.LaunchPlanner
+import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import java.util.concurrent.TimeUnit
 
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
@@ -32,6 +36,7 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
         val second = MarimoNotebookEditor(project, file)
         assertEquals("a split shares one session", 1, service.sessions().size)
+        assertSame("a split reuses the registry's primary view", first.component, second.component)
 
         second.dispose()
         assertNull(service.peek(file)!!.expiresAtMillis)
@@ -54,5 +59,41 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
         val status = service.statusFor(file)
         assertNotNull("closing a renamed tab must arm the background TTL", status!!.expiresAtMillis)
+    }
+
+    fun testRegistryDisposesThePrimaryViewWhenItsSessionEnds() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("ended_view_nb.py", "import marimo\n").virtualFile
+        val lease = service.acquire(file, LeaseOwner.EDITOR_TAB)
+        val view = project.service<NotebookViewRegistry>().primaryViewFor(lease)
+        var viewDisposed = false
+        Disposer.register(view) { viewDisposed = true }
+
+        lease.close()
+        service.stop(file)
+
+        assertTrue("a removed session must dispose its retained view", viewDisposed)
+    }
+
+    fun testManagerRestartKeepsTheMountedPrimaryView() {
+        val service = project.service<NotebookSessionManager>()
+        val sdk = FakeLauncher("fake-sdk")
+        service.planner = LaunchPlanner(sdk, FakeLauncher("fake-uv"))
+        val file = myFixture.addFileToProject("restart_view_nb.py", "import marimo\n").virtualFile
+        val editor = MarimoNotebookEditor(project, file)
+        try {
+            val component = editor.component
+            assertTrue("initial launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+            sdk.handles.single().becomeReady()
+
+            service.restart(file)
+
+            assertTrue("restart did not begin", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+            assertFalse("restart must stop the first process", sdk.handles.first().isAlive)
+            assertSame("restart keeps the mounted primary view", component, editor.component)
+        } finally {
+            editor.dispose()
+        }
     }
 }

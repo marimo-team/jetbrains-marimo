@@ -13,7 +13,6 @@ import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
 import io.marimo.notebook.MarimoLocalhost
-import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
@@ -40,9 +39,9 @@ import java.util.concurrent.atomic.AtomicLong
 
 /**
  * The project's notebook session manager. One [NotebookSession] per file owns that notebook's
- * marimo process, JCEF view, launch mode, and owner leases. Owners retain the session without
- * owning its process. Status reads are side-effect-free, so painting an icon or updating an action
- * can never start a server.
+ * marimo process, launch mode, and owner leases. Owners retain the session without owning its
+ * process. Status reads are side-effect-free, so painting an icon or updating an action can never
+ * start a server.
  */
 @Service(Service.Level.PROJECT)
 class NotebookSessionManager(private val project: Project) : Disposable {
@@ -109,37 +108,6 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                 notifySessionsChanged()
                 return lease
             }
-        }
-    }
-
-    /**
-     * The per-file view (browser + panel) that editor tabs render. One per notebook, shared across
-     * every tab showing it, so moving a notebook between splits reuses the live view instead of
-     * tearing down and relaunching marimo.
-     */
-    fun viewFor(file: VirtualFile): MarimoNotebookView {
-        val session = sessionFor(file)
-        synchronized(session) {
-            session.view?.let {
-                return it
-            }
-            val view = MarimoNotebookView(project, file)
-            session.view = view
-            Disposer.register(session, view)
-            return view
-        }
-    }
-
-    /** Gets or creates the per-file view for an editor that already owns [lease]. */
-    internal fun attachView(lease: NotebookSessionLease): MarimoNotebookView {
-        val session = sessionForId(lease.sessionId)
-        return synchronized(session) {
-            require(sessions[session.id] === session) { "Notebook session is no longer available" }
-            session.view
-                ?: MarimoNotebookView(project, lease.notebook).also {
-                    session.view = it
-                    Disposer.register(session, it)
-                }
         }
     }
 
@@ -344,27 +312,17 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     }
 
     private fun restartSession(session: NotebookSession) {
-        val view =
-            synchronized(session) {
-                if (sessions[session.id] !== session) return
-                cancelInFlightLaunchLocked(session)
-                session.view
-            }
-        if (view != null) {
-            onEdt { view.reload() }
-        } else {
-            session.lifecycle.release()
-            synchronized(session) {
-                if (sessions[session.id] === session) {
-                    readyUrlForSessionLocked(session, session.notebook)
-                }
-            }
+        synchronized(session) {
+            if (sessions[session.id] !== session) return
+            cancelInFlightLaunchLocked(session)
         }
+        session.lifecycle.release()
         val restarted =
             synchronized(session) {
                 if (sessions[session.id] !== session) {
                     false
                 } else {
+                    readyUrlForSessionLocked(session, session.notebook)
                     if (session.shouldArmTtl) armTtlLocked(session.id, session)
                     true
                 }

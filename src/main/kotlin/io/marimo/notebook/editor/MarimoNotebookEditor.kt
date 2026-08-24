@@ -8,6 +8,7 @@ import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.editor.view.NotebookViewRegistry
 import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionLease
 import io.marimo.notebook.session.NotebookSessionManager
@@ -16,17 +17,17 @@ import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
 /**
- * Thin [FileEditor] over a per-file [MarimoNotebookView]. The view — browser, panel, and marimo
- * server — is owned by [NotebookSessionManager], keyed by file, and outlives this instance.
- * Dragging a notebook to another split disposes this editor and creates a fresh one for the same
- * file; both borrow the same view, so the marimo session is never torn down or reconnected.
+ * Thin [FileEditor] over a per-session [MarimoNotebookView]. The editor registry owns the browser
+ * and panel, while [NotebookSessionManager] owns the server and leases. Dragging a notebook to
+ * another split creates a fresh editor for the same retained view and session.
  */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
     private val sessionManager = project.service<NotebookSessionManager>()
+    private val viewRegistry = project.service<NotebookViewRegistry>()
     private val lease: NotebookSessionLease = sessionManager.acquire(file, LeaseOwner.EDITOR_TAB)
-    private val view: MarimoNotebookView = sessionManager.attachView(lease)
+    private val view: MarimoNotebookView = viewRegistry.primaryViewFor(lease)
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     /**
@@ -64,9 +65,8 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
         propertyChangeSupport.removePropertyChangeListener(listener)
 
     /**
-     * Detaches this tab from the session. The view, browser, and server survive in the project's
-     * session manager: a tab move or a quick reopen reattaches to the same live notebook, and only
-     * the manager's background TTL (or an explicit Stop) tears it down.
+     * Releases this tab's lease. The registry keeps the view while its session remains alive, so a
+     * tab move or quick reopen returns to the same live notebook.
      */
     override fun dispose() {
         lease.close()
