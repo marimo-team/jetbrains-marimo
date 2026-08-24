@@ -181,10 +181,7 @@ private class SessionCard(
                     iconButton(AllIcons.Actions.Suspend, "Stop session").apply {
                         isEnabled = canControl
                         addActionListener {
-                            val file =
-                                VirtualFileManager.getInstance().findFileByUrl(snapshot.fileUrl)
-                                    ?: return@addActionListener
-                            service.withExistingActionLease(file) { it.stop() }
+                            service.stopUrl(snapshot.fileUrl)
                         }
                     }
                 )

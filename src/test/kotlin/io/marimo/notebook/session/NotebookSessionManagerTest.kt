@@ -3,6 +3,7 @@
 package io.marimo.notebook.session
 
 import com.intellij.execution.process.ProcessHandler
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
@@ -160,6 +161,15 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val file = notebook("status_nb.py")
         assertNull(manager.statusFor(file))
         assertNull("a status probe must stay side-effect-free", manager.statusFor(file))
+    }
+
+    fun testLeaseReadyUrlFailsAfterNotebookDeletion() {
+        val file = notebook("deleted_lease_nb.py")
+        val lease = editorLease(file)
+
+        ApplicationManager.getApplication().runWriteAction { file.delete(this) }
+
+        assertTrue(lease.readyUrl().isCompletedExceptionally)
     }
 
     fun testLaunchRecordsTheLaunchContextAndReportsRunning() {

@@ -81,6 +81,9 @@ internal class NotebookSession(
     val notebook: VirtualFile
         get() = requireNotNull(filePointer.file) { "Notebook file is no longer available" }
 
+    val notebookOrNull: VirtualFile?
+        get() = filePointer.file
+
     fun matches(file: VirtualFile): Boolean = filePointer.file === file || fileUrl == file.url
 
     val lifecycle = MarimoNotebookLifecycle()

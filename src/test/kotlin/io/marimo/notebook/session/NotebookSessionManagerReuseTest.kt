@@ -62,7 +62,9 @@ class NotebookSessionManagerReuseTest : BasePlatformTestCase() {
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             if (launchCount.incrementAndGet() == 1) {
                 firstLaunchEntered.countDown()
-                allowFirstLaunch.await(5, TimeUnit.SECONDS)
+                check(allowFirstLaunch.await(5, TimeUnit.SECONDS)) {
+                    "first launch was not unblocked"
+                }
             }
             return TrackingHandle(firstHandleDisposed).also {
                 handles.add(it)

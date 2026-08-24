@@ -396,7 +396,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     /**
      * Connects this retained browser to the server launch already started by the session manager.
      */
-    internal fun reconnectAfterSessionRestart() = loadNotebook()
+    internal fun reconnectAfterSessionRestart() = onEdt { loadNotebook() }
 
     /**
      * The service caches the failed handle by file URL, so a retry that reused it would replay the

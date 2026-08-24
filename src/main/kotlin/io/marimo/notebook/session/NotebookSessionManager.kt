@@ -493,7 +493,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         val session = sessions[sessionId] ?: return
         val released =
             synchronized(session) {
-                if (!session.releaseLease(owner)) {
+                if (sessions[session.id] !== session || !session.releaseLease(owner)) {
                     false
                 } else {
                     if (session.shouldArmTtl) armTtlLocked(session.id, session)
@@ -515,8 +515,9 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         override fun readyUrl(): CompletableFuture<String> {
             val session = sessions[sessionId] ?: return expiredLeaseFuture()
             return synchronized(session) {
-                if (sessions[sessionId] !== session) expiredLeaseFuture()
-                else readyUrlForSessionLocked(session, session.notebook)
+                val notebook = session.notebookOrNull
+                if (sessions[sessionId] !== session || notebook == null) expiredLeaseFuture()
+                else readyUrlForSessionLocked(session, notebook)
             }
         }
 

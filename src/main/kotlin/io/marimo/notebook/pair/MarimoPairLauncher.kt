@@ -109,6 +109,7 @@ object MarimoPairLauncher {
             }
             content.putUserData(PairTerminalTabs.NOTEBOOK_KEY, file.path)
             Disposer.register(content) { closeLease() }
+            widget.addTerminationCallback(closeLease, content)
             widget.sendCommandToExecute(command)
             manager.toolWindow?.activate(null)
             return true

@@ -15,9 +15,12 @@ import java.util.concurrent.TimeUnit
 
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
+    private val editors = mutableListOf<MarimoNotebookEditor>()
+
     // Light projects and their services are reused across tests; drain what this class created.
     override fun tearDown() {
         try {
+            editors.forEach(Disposer::dispose)
             val service = project.service<NotebookSessionManager>()
             service.sessions().forEach { service.stopUrl(it.fileUrl) }
         } finally {
@@ -30,11 +33,11 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
         val file = myFixture.addFileToProject("attach_nb.py", "import marimo\n").virtualFile
 
-        val first = MarimoNotebookEditor(project, file)
+        val first = editor(file)
         assertNotNull(service.peek(file))
         assertNull(service.peek(file)!!.expiresAtMillis)
 
-        val second = MarimoNotebookEditor(project, file)
+        val second = editor(file)
         assertEquals("a split shares one session", 1, service.sessions().size)
         assertSame("a split reuses the registry's primary view", first.component, second.component)
 
@@ -52,7 +55,7 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         val service = project.service<NotebookSessionManager>()
         service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
         val file = myFixture.addFileToProject("renamed_attach_nb.py", "import marimo\n").virtualFile
-        val editor = MarimoNotebookEditor(project, file)
+        val editor = editor(file)
 
         ApplicationManager.getApplication().runWriteAction { file.rename(this, "renamed_nb.py") }
         editor.dispose()
@@ -81,7 +84,7 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         val sdk = FakeLauncher("fake-sdk")
         service.planner = LaunchPlanner(sdk, FakeLauncher("fake-uv"))
         val file = myFixture.addFileToProject("restart_view_nb.py", "import marimo\n").virtualFile
-        val editor = MarimoNotebookEditor(project, file)
+        val editor = editor(file)
         try {
             val component = editor.component
             assertTrue("initial launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
@@ -96,4 +99,7 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
             editor.dispose()
         }
     }
+
+    private fun editor(file: com.intellij.openapi.vfs.VirtualFile): MarimoNotebookEditor =
+        MarimoNotebookEditor(project, file).also(editors::add)
 }
