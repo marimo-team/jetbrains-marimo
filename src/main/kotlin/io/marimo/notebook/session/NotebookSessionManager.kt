@@ -69,6 +69,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     private val sessionIds = AtomicLong()
     private val sessionRegistryLock = Any()
     private val listeners = CopyOnWriteArrayList<() -> Unit>()
+    private val sessionEventListeners = CopyOnWriteArrayList<(NotebookSessionEvent) -> Unit>()
     private val projectViewRefreshQueued = AtomicBoolean(false)
 
     /** Acquires one ownership lease for [file]'s shared notebook session. */
@@ -324,7 +325,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                     false
                 }
             }
-        if (removed) disposeSessionOnEdt(session)
+        if (removed) {
+            notifySessionEnded(session.id)
+            disposeSessionOnEdt(session)
+        }
         notifySessionsChanged()
     }
 
@@ -356,11 +360,16 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                 }
             }
         }
-        synchronized(session) {
-            if (sessions[session.id] === session && session.shouldArmTtl) {
-                armTtlLocked(session.id, session)
+        val restarted =
+            synchronized(session) {
+                if (sessions[session.id] !== session) {
+                    false
+                } else {
+                    if (session.shouldArmTtl) armTtlLocked(session.id, session)
+                    true
+                }
             }
-        }
+        if (restarted) notifySessionRestarted(session.id)
         notifySessionsChanged()
     }
 
@@ -393,15 +402,26 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         Disposer.register(parent) { listeners.remove(listener) }
     }
 
+    /** [listener] observes session removal and restart after the manager updates its state. */
+    internal fun addSessionEventListener(
+        parent: Disposable,
+        listener: (NotebookSessionEvent) -> Unit,
+    ) {
+        sessionEventListeners.add(listener)
+        Disposer.register(parent) { sessionEventListeners.remove(listener) }
+    }
+
     override fun dispose() {
         sessions.values.forEach { session ->
             synchronized(session) {
                 cancelTtlLocked(session)
                 cancelInFlightLaunchLocked(session)
             }
-            Disposer.dispose(session)
+            if (sessions.remove(session.id, session)) {
+                notifySessionEnded(session.id)
+                Disposer.dispose(session)
+            }
         }
-        sessions.clear()
     }
 
     private fun completeLaunchFailure(
@@ -449,6 +469,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             }
         if (!expired) return
         session.lifecycle.release()
+        notifySessionEnded(session.id)
         disposeSessionOnEdt(session)
         notifySessionsChanged()
     }
@@ -566,6 +587,18 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             projectViewRefreshQueued.set(false)
             if (!project.isDisposed) ProjectView.getInstance(project).refresh()
         }
+    }
+
+    private fun notifySessionEnded(sessionId: SessionId) {
+        notifySessionEvent(NotebookSessionEvent.Ended(sessionId))
+    }
+
+    private fun notifySessionRestarted(sessionId: SessionId) {
+        notifySessionEvent(NotebookSessionEvent.Restarted(sessionId))
+    }
+
+    private fun notifySessionEvent(event: NotebookSessionEvent) {
+        sessionEventListeners.forEach { it(event) }
     }
 
     /** Runs [block] now when already on the EDT, else schedules it there. */

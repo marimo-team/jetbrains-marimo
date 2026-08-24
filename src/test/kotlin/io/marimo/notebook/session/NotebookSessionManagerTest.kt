@@ -243,7 +243,13 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val file = notebook("stop_bg_nb.py")
         launch(file)
         sdk.handles.single().becomeReady()
+        val sessionId = manager.leaseIfPresent(file)!!.sessionId
+        val events = mutableListOf<NotebookSessionEvent>()
+        manager.addSessionEventListener(testRootDisposable, events::add)
+
         manager.stop(file)
+
+        assertEquals(listOf(NotebookSessionEvent.Ended(sessionId)), events)
         assertNull("a stopped background session must leave the registry", manager.statusFor(file))
         assertFalse(sdk.handles.single().isAlive)
     }
@@ -264,6 +270,9 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val file = notebook("restart_nb.py")
         launch(file)
         sdk.handles.single().becomeReady()
+        val sessionId = manager.leaseIfPresent(file)!!.sessionId
+        val events = mutableListOf<NotebookSessionEvent>()
+        manager.addSessionEventListener(testRootDisposable, events::add)
 
         manager.restart(file)
 
@@ -276,6 +285,10 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         sdk.handles[1].becomeReady()
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
         assertEquals(sdk.requests[1].port, manager.statusFor(file)!!.launch!!.port)
+        assertEquals(
+            listOf(NotebookSessionEvent.Restarted(sessionId)),
+            events,
+        )
     }
 
     fun testListenersFireOnSessionEvents() {
@@ -414,12 +427,17 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
         val file = runningNotebook("expire_nb.py")
-        editorLease(file).close()
+        val lease = editorLease(file)
+        val events = mutableListOf<NotebookSessionEvent>()
+        manager.addSessionEventListener(testRootDisposable, events::add)
+        lease.close()
         ttl.fireAll()
         assertFalse("expiry must stop the process", sdk.handles.single().isAlive)
         assertNull("expiry must remove the registry entry", manager.statusFor(file))
+        assertEquals(listOf(NotebookSessionEvent.Ended(lease.sessionId)), events)
         ttl.fireAll()
         assertNull(manager.statusFor(file))
+        assertEquals("session removal must be single-shot", 1, events.size)
     }
 
     fun testAStaleExpiryTaskCannotKillAReattachedSession() {

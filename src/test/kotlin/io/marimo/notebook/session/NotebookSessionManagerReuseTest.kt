@@ -218,6 +218,8 @@ class NotebookSessionManagerReuseTest : BasePlatformTestCase() {
         val service = project.service<NotebookSessionManager>()
         val launcher = BlockingLauncher()
         val lease = service.acquire(file, LeaseOwner.EDITOR_TAB)
+        val events = mutableListOf<NotebookSessionEvent>()
+        service.addSessionEventListener(testRootDisposable, events::add)
         service.planner = LaunchPlanner(launcher, launcher)
         try {
             val readyUrl = lease.readyUrl()
@@ -232,6 +234,7 @@ class NotebookSessionManagerReuseTest : BasePlatformTestCase() {
                 "project disposal must fail the lease future",
                 readyUrl.isCompletedExceptionally,
             )
+            assertTrue(events.contains(NotebookSessionEvent.Ended(lease.sessionId)))
             assertTrue(
                 "disposed leases cannot create a replacement",
                 lease.readyUrl().isCompletedExceptionally,
