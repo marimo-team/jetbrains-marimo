@@ -5,6 +5,7 @@ package io.marimo.notebook.pair
 import com.intellij.openapi.diagnostic.thisLogger
 import com.intellij.openapi.ide.CopyPasteManager
 import com.intellij.openapi.project.Project
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.terminal.ui.TerminalWidget
 import com.intellij.ui.content.Content
@@ -30,10 +31,26 @@ object MarimoPairLauncher {
             return
         }
 
-        MarimoPairSession.resolve(project, file, logContext = "pair session") { url, prefix ->
-            runInTerminal(project, file, harness, harness.terminalCommand(prefix, url))
+        val manager = TerminalToolWindowManager.getInstance(project)
+        val contentManager = manager.toolWindow?.contentManager
+        if (reuseExistingTerminal(manager, contentManager, file)) {
             MarimoTelemetry.getInstance()
                 .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
+            return
+        }
+
+        MarimoPairSession.resolveTerminal(project, file) { url, prefix, closeLease ->
+            if (reuseExistingTerminal(manager, manager.toolWindow?.contentManager, file)) {
+                closeLease()
+                MarimoTelemetry.getInstance()
+                    .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
+                return@resolveTerminal
+            }
+            val command = harness.terminalCommand(prefix, url)
+            if (openTab(project, manager, file, harness.tabTitle(file.name), command, closeLease)) {
+                MarimoTelemetry.getInstance()
+                    .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
+            }
         }
     }
 
@@ -42,34 +59,25 @@ object MarimoPairLauncher {
      * for the same notebook (matched by file path, not tab title, so notebooks sharing a file name
      * keep separate sessions) and replaces a tab whose shell has already exited.
      */
-    private fun runInTerminal(
-        project: Project,
+    private fun reuseExistingTerminal(
+        manager: TerminalToolWindowManager,
+        contentManager: ContentManager?,
         file: VirtualFile,
-        harness: MarimoHarness,
-        command: String,
-    ) {
-        val manager = TerminalToolWindowManager.getInstance(project)
-        val contentManager = manager.toolWindow?.contentManager
+    ): Boolean {
         val contents = contentManager?.contents?.toList().orEmpty()
         val tabs = contents.map {
             PairTerminalTabs.Tab(it.getUserData(PairTerminalTabs.NOTEBOOK_KEY), isSessionAlive(it))
         }
 
-        when (val action = PairTerminalTabs.resolve(tabs, file.path)) {
+        return when (val action = PairTerminalTabs.resolve(tabs, file.path)) {
             is PairTerminalTabs.Action.Focus -> {
                 contentManager?.setSelectedContent(contents[action.index])
                 manager.toolWindow?.activate(null)
+                true
             }
             is PairTerminalTabs.Action.Launch -> {
                 action.closeIndex?.let { manager.closeTab(contents[it]) }
-                openTab(
-                    project,
-                    manager,
-                    contentManager,
-                    file,
-                    harness.tabTitle(file.name),
-                    command,
-                )
+                false
             }
         }
     }
@@ -77,11 +85,11 @@ object MarimoPairLauncher {
     private fun openTab(
         project: Project,
         manager: TerminalToolWindowManager,
-        contentManager: ContentManager?,
         file: VirtualFile,
         title: String,
         command: String,
-    ) {
+        closeLease: () -> Unit,
+    ): Boolean {
         val workDir = file.parent?.path ?: project.basePath
         try {
             val runner = LocalTerminalDirectRunner.createTerminalRunner(project)
@@ -94,16 +102,25 @@ object MarimoPairLauncher {
             // tool
             // window, so the first pair launch works even before the tool window has been opened.
             val widget = manager.createNewSession(runner, tabState, null)
-            tagWithNotebook(contentManager ?: manager.toolWindow?.contentManager, widget, file.path)
+            val content = terminalContent(manager.toolWindow?.contentManager, widget)
+            if (content == null) {
+                closeLease()
+                return false
+            }
+            content.putUserData(PairTerminalTabs.NOTEBOOK_KEY, file.path)
+            Disposer.register(content) { closeLease() }
             widget.sendCommandToExecute(command)
             manager.toolWindow?.activate(null)
+            return true
         } catch (e: Throwable) {
+            closeLease()
             thisLogger().warn("Failed to open a terminal for the pair session", e)
             MarimoTelemetry.getInstance().captureException(e)
             MarimoPairNotifications.warning(
                 project,
                 "Could not open a terminal. Run this manually:\n$command",
             )
+            return false
         }
     }
 
@@ -113,16 +130,13 @@ object MarimoPairLauncher {
         return widget.ttyConnector?.isConnected == true
     }
 
-    private fun tagWithNotebook(
+    private fun terminalContent(
         contentManager: ContentManager?,
         widget: TerminalWidget,
-        notebookPath: String,
-    ) {
-        contentManager
-            ?.contents
-            ?.firstOrNull { TerminalToolWindowManager.findWidgetByContent(it) === widget }
-            ?.putUserData(PairTerminalTabs.NOTEBOOK_KEY, notebookPath)
-    }
+    ): Content? =
+        contentManager?.contents?.firstOrNull {
+            TerminalToolWindowManager.findWidgetByContent(it) === widget
+        }
 
     /** Generate the generic marimo-pair prompt and put it on the clipboard. */
     fun copyPrompt(project: Project, file: VirtualFile) {

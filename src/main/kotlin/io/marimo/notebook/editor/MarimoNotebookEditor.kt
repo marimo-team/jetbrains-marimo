@@ -8,8 +8,9 @@ import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.session.LeaseOwner
+import io.marimo.notebook.session.NotebookSessionLease
 import io.marimo.notebook.session.NotebookSessionManager
-import io.marimo.notebook.session.SessionId
 import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
@@ -24,15 +25,9 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
     private val sessionManager = project.service<NotebookSessionManager>()
-    private val sessionId: SessionId
-    private val view: MarimoNotebookView
+    private val lease: NotebookSessionLease = sessionManager.acquire(file, LeaseOwner.EDITOR_TAB)
+    private val view: MarimoNotebookView = sessionManager.attachView(lease)
     private val propertyChangeSupport = PropertyChangeSupport(this)
-
-    init {
-        val attached = sessionManager.attachView(file)
-        sessionId = attached.first
-        view = attached.second
-    }
 
     /**
      * Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox).
@@ -74,6 +69,6 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
      * the manager's background TTL (or an explicit Stop) tears it down.
      */
     override fun dispose() {
-        sessionManager.detach(sessionId)
+        lease.close()
     }
 }

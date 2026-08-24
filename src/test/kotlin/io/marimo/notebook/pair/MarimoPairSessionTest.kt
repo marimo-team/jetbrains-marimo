@@ -50,7 +50,29 @@ class MarimoPairSessionTest : BasePlatformTestCase() {
             }
         }
 
-        assertTrue("sandbox launch did not begin", uv.firstLaunch.await(5, TimeUnit.SECONDS))
+        val launched = CompletableFuture.supplyAsync { uv.firstLaunch.await(5, TimeUnit.SECONDS) }
+        assertTrue("sandbox launch did not begin", PlatformTestUtil.waitForFuture(launched, 5_000))
+        uv.canLaunch = false
+        uv.handles.single().becomeReady()
+
+        assertEquals(listOf("fake-uv", "marimo"), PlatformTestUtil.waitForFuture(prefix, 5_000))
+    }
+
+    fun testTerminalUsesTheActiveSandboxLauncherWithoutReplanning() {
+        val file = notebook()
+        manager.enableSandbox(file)
+        val prefix = CompletableFuture<List<String>>()
+
+        MarimoPairSession.resolveTerminal(project, file) { _, activePrefix, closeLease ->
+            try {
+                prefix.complete(activePrefix)
+            } finally {
+                closeLease()
+            }
+        }
+
+        val launched = CompletableFuture.supplyAsync { uv.firstLaunch.await(5, TimeUnit.SECONDS) }
+        assertTrue("sandbox launch did not begin", PlatformTestUtil.waitForFuture(launched, 5_000))
         uv.canLaunch = false
         uv.handles.single().becomeReady()
 

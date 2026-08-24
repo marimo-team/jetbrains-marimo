@@ -107,30 +107,36 @@ internal object MarimoPairSession {
         }
     }
 
-    fun resolve(
+    fun resolveTerminal(
         project: Project,
         file: VirtualFile,
-        logContext: String,
-        onReady: (url: String, prefix: List<String>) -> Unit,
+        onReady: (url: String, prefix: List<String>, closeLease: () -> Unit) -> Unit,
     ) {
-        val sessionManager = project.service<NotebookSessionManager>()
-        sessionManager.urlFor(file).whenComplete { url, err ->
-            ApplicationManager.getApplication().invokeLater {
-                if (err != null || url == null) {
-                    thisLogger().warn("Could not start the marimo server for a $logContext", err)
-                    MarimoPairNotifications.warning(project, "Could not start marimo.")
-                    return@invokeLater
+        val lease =
+            project.service<NotebookSessionManager>().acquire(file, LeaseOwner.PAIR_TERMINAL)
+        lease.readyUrl().whenComplete { url, err ->
+            runCatching {
+                ApplicationManager.getApplication().invokeLater {
+                    if (err != null || url == null) {
+                        thisLogger()
+                            .warn("Could not start the marimo server for a pair session", err)
+                        MarimoPairNotifications.warning(project, "Could not start marimo.")
+                        lease.close()
+                        return@invokeLater
+                    }
+                    val prefix = lease.launcherInfo()?.cliPrefix
+                    if (prefix == null) {
+                        MarimoPairNotifications.warning(
+                            project,
+                            "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
+                        )
+                        lease.close()
+                        return@invokeLater
+                    }
+                    runCatching { onReady(url, prefix, lease::close) }.onFailure { lease.close() }
                 }
-                val prefix = sessionManager.marimoCliPrefixFor(file)
-                if (prefix == null) {
-                    MarimoPairNotifications.warning(
-                        project,
-                        "Could not resolve the marimo CLI (need uv on PATH or marimo in the interpreter).",
-                    )
-                    return@invokeLater
-                }
-                onReady(url, prefix)
             }
+                .onFailure { lease.close() }
         }
     }
 }

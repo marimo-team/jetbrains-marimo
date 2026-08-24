@@ -43,7 +43,7 @@ abstract class MarimoSessionAction(private val enabled: (SessionSnapshot?) -> Bo
         }
         e.presentation.isVisible = true
         e.presentation.isEnabled =
-            enabled(project.serviceIfCreated<NotebookSessionManager>()?.statusFor(file))
+            enabled(project.serviceIfCreated<NotebookSessionManager>()?.peek(file))
     }
 
     protected fun target(e: AnActionEvent): Pair<Project, VirtualFile>? {
@@ -63,13 +63,25 @@ class MarimoOpenNotebookAction : MarimoSessionAction(enabled = { true }) {
 class MarimoRestartNotebookAction : MarimoSessionAction(enabled = ::canControlSession) {
     override fun actionPerformed(e: AnActionEvent) {
         val (project, file) = target(e) ?: return
-        project.service<NotebookSessionManager>().restart(file)
+        project.service<NotebookSessionManager>().withExistingActionLease(file) { it.restart() }
     }
 }
 
 class MarimoStopNotebookAction : MarimoSessionAction(enabled = ::canControlSession) {
     override fun actionPerformed(e: AnActionEvent) {
         val (project, file) = target(e) ?: return
-        project.service<NotebookSessionManager>().stop(file)
+        project.service<NotebookSessionManager>().withExistingActionLease(file) { it.stop() }
+    }
+}
+
+internal inline fun NotebookSessionManager.withExistingActionLease(
+    file: VirtualFile,
+    action: (io.marimo.notebook.session.NotebookSessionLease) -> Unit,
+) {
+    val lease = leaseIfPresent(file) ?: return
+    try {
+        action(lease)
+    } finally {
+        lease.close()
     }
 }

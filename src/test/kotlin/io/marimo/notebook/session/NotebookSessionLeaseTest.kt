@@ -147,6 +147,13 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
         assertTrue(prompt.readyUrl().isCompletedExceptionally)
     }
 
+    fun testExistingLeaseDoesNotCreateASession() {
+        val file = notebook("action_lease.py")
+
+        assertNull(manager.leaseIfPresent(file))
+        assertNull(manager.peek(file))
+    }
+
     fun testPromptLeaseReportsTheActiveSandboxLauncher() {
         val file = notebook("sandbox_prompt.py")
         sdk.canLaunch = false

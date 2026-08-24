@@ -92,6 +92,25 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         }
     }
 
+    /** Returns a non-owning handle only when [file] already has a session. Never creates one. */
+    internal fun leaseIfPresent(file: VirtualFile): NotebookSessionLease? {
+        while (true) {
+            val session = sessionForUrl(file.url) ?: return null
+            val lease =
+                synchronized(session) {
+                    if (sessions[session.id] !== session) {
+                        null
+                    } else {
+                        SessionLease(session.id, owner = null)
+                    }
+                }
+            if (lease != null) {
+                notifySessionsChanged()
+                return lease
+            }
+        }
+    }
+
     /**
      * The per-file view (browser + panel) that editor tabs render. One per notebook, shared across
      * every tab showing it, so moving a notebook between splits reuses the live view instead of
@@ -110,33 +129,16 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         }
     }
 
-    /**
-     * Atomically gets/creates the per-file view and attaches one tab lease to the same session.
-     * This prevents a TTL race where view creation and attach target different entries.
-     */
-    fun attachView(file: VirtualFile): Pair<SessionId, MarimoNotebookView> {
-        while (true) {
-            val session = sessionFor(file)
-            val attachment =
-                synchronized(session) {
-                    if (sessions[session.id] !== session) {
-                        null
-                    } else {
-                        val existing = session.view
-                        val resolved =
-                            existing
-                                ?: MarimoNotebookView(project, file).also {
-                                    session.view = it
-                                    Disposer.register(session, it)
-                                }
-                        acquireOwnerLocked(session, LeaseOwner.EDITOR_TAB)
-                        session.id to resolved
-                    }
+    /** Gets or creates the per-file view for an editor that already owns [lease]. */
+    internal fun attachView(lease: NotebookSessionLease): MarimoNotebookView {
+        val session = sessionForId(lease.sessionId)
+        return synchronized(session) {
+            require(sessions[session.id] === session) { "Notebook session is no longer available" }
+            session.view
+                ?: MarimoNotebookView(project, lease.notebook).also {
+                    session.view = it
+                    Disposer.register(session, it)
                 }
-            if (attachment != null) {
-                notifySessionsChanged()
-                return attachment
-            }
         }
     }
 
@@ -285,17 +287,13 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         }
     }
 
-    /**
-     * marimo CLI prefix for [file] on the planned launcher. Null when no interpreter is configured.
-     */
-    fun marimoCliPrefixFor(file: VirtualFile): List<String>? {
-        val request = LaunchRequest(project = project, notebook = file, port = 0)
-        val launcher = (planner.plan(request) as? LaunchDecision.Launch)?.launcher ?: return null
-        return launcher.marimoCliPrefix(request)
-    }
+    /** Side-effect-free lookup: null when the notebook has no session. Never creates one. */
+    fun peek(file: VirtualFile): SessionSnapshot? = statusForUrl(file.url)
 
-    /** An editor tab now shows [file]. EDT. */
-    fun attach(file: VirtualFile) {
+    internal fun statusFor(file: VirtualFile): SessionSnapshot? = peek(file)
+
+    /** Temporary test seam until the lease contract suite replaces the legacy TTL cases. */
+    internal fun attach(file: VirtualFile) {
         val session = sessionForUrl(file.url) ?: return
         synchronized(session) {
             acquireOwnerLocked(session, LeaseOwner.EDITOR_TAB)
@@ -303,27 +301,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         notifySessionsChanged()
     }
 
-    /**
-     * An editor tab showing [file] closed. The final detach arms the background TTL: the session
-     * (process, browser, kernel state) stays alive so a reopen within the window reconnects
-     * instantly, and the timer bounds how long an abandoned notebook holds a Python process.
-     */
-    fun detach(file: VirtualFile) {
+    internal fun detach(file: VirtualFile) {
         val session = sessionForUrl(file.url) ?: return
-        detach(session.id)
+        releaseOwner(session.id, LeaseOwner.EDITOR_TAB)
     }
-
-    fun detachUrl(url: String) {
-        val session = sessionForUrl(url) ?: return
-        detach(session.id)
-    }
-
-    internal fun detach(sessionId: SessionId) {
-        releaseOwner(sessionId, LeaseOwner.EDITOR_TAB)
-    }
-
-    /** Side-effect-free status: null when the notebook has no session. Never creates one. */
-    fun statusFor(file: VirtualFile): SessionSnapshot? = statusForUrl(file.url)
 
     fun statusForUrl(url: String): SessionSnapshot? =
         sessionForUrl(url)?.let { synchronized(it) { it.snapshot() } }
@@ -548,7 +529,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     private inner class SessionLease(
         override val sessionId: SessionId,
-        private val owner: LeaseOwner,
+        private val owner: LeaseOwner?,
     ) : NotebookSessionLease {
         private val closed = AtomicBoolean(false)
 
@@ -584,7 +565,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         }
 
         override fun close() {
-            if (closed.compareAndSet(false, true)) releaseOwner(sessionId, owner)
+            if (closed.compareAndSet(false, true)) owner?.let { releaseOwner(sessionId, it) }
         }
 
         private fun expiredLeaseFuture(): CompletableFuture<String> =
