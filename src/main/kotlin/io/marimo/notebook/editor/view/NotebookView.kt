@@ -52,9 +52,10 @@ import org.cef.handler.CefLoadHandlerAdapter
  * [com.intellij.openapi.fileEditor.FileEditor], but the view survives, so the same browser stays
  * connected to the same session.
  */
-class NotebookView(private val project: Project, private val file: VirtualFile) : Disposable {
+class NotebookView(private val project: Project, private val file: VirtualFile) :
+    NotebookEditorView, Disposable {
 
-    val panel: JPanel =
+    override val panel: JPanel =
         object : JPanel(BorderLayout()), DataProvider {
             override fun getData(dataId: String): Any? =
                 if (CommonDataKeys.VIRTUAL_FILE.`is`(dataId)) file else null
@@ -92,7 +93,7 @@ class NotebookView(private val project: Project, private val file: VirtualFile) 
         loadNotebook()
     }
 
-    val preferredFocusedComponent: JComponent?
+    override val preferredFocusedComponent: JComponent?
         get() = browser?.component
 
     private fun reloadForIdeTheme(themedUrl: String) {
@@ -258,7 +259,7 @@ class NotebookView(private val project: Project, private val file: VirtualFile) 
     /**
      * Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox).
      */
-    fun reload() = relaunch()
+    override fun reload() = relaunch()
 
     /**
      * Connects this retained browser to the server launch already started by the session manager.

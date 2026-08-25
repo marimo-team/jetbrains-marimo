@@ -39,7 +39,11 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
         val second = editor(file)
         assertEquals("a split shares one session", 1, service.sessions().size)
-        assertSame("a split reuses the registry's primary view", first.component, second.component)
+        assertNotSame(
+            "a second split gets its own browser while the primary is mounted elsewhere",
+            first.component,
+            second.component,
+        )
 
         second.dispose()
         assertNull(service.peek(file)!!.expiresAtMillis)
