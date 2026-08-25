@@ -8,6 +8,16 @@ import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 
+private const val MARIMO_PAGE_BODY = """<html><marimo-user-config data-config="{}"></html>"""
+
+private fun httpResponse(statusLine: String, body: String = ""): ByteArray {
+    if (body.isEmpty()) {
+        return "HTTP/1.1 $statusLine\r\nContent-Length: 0\r\n\r\n".toByteArray()
+    }
+    return "HTTP/1.1 $statusLine\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body"
+        .toByteArray()
+}
+
 /**
  * First attempt: rejects `--watch` the way marimo before 0.10 does. Second attempt (no `watch`
  * argument): prints the banner and serves.
@@ -27,7 +37,7 @@ object WatchPickyProcess {
             while (true) {
                 val socket = server.accept()
                 socket.getOutputStream().apply {
-                    write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                    write(httpResponse("200 OK", MARIMO_PAGE_BODY))
                     flush()
                 }
                 socket.close()
@@ -48,11 +58,11 @@ class MarimoProcessServerWatchRetryTest : BasePlatformTestCase() {
                 command(port, watch = true),
                 "127.0.0.1",
                 port,
-                readinessTimeoutSeconds = 15,
+                readinessTimeoutSeconds = 5,
                 watchFallbackCmd = { command(port, watch = false) },
                 authenticatedUrl = supplied,
             )
-        val readyUrl = handle.awaitReady().get(15, TimeUnit.SECONDS)
+        val readyUrl = handle.awaitReady().get(5, TimeUnit.SECONDS)
         handle.dispose()
         assertEquals(supplied, readyUrl)
     }

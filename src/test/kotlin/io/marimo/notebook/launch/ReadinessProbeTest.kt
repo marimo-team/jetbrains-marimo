@@ -9,7 +9,9 @@ import org.junit.Test
 class ReadinessProbeTest {
     @Test
     fun recognizesMarimoPageMarker() {
-        assertTrue(ReadinessProbe.looksLikeMarimoPage("""<html><marimo-user-config data-config="{}">"""))
+        assertTrue(
+            ReadinessProbe.looksLikeMarimoPage("""<html><marimo-user-config data-config="{}">""")
+        )
     }
 
     @Test

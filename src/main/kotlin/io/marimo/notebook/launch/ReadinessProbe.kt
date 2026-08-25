@@ -19,31 +19,30 @@ internal object ReadinessProbe {
         timeoutSeconds: Long,
     ) {
         Thread {
-                val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-                while (!ready.isDone && System.nanoTime() < deadlineNanos) {
-                    val remainingNanos = deadlineNanos - System.nanoTime()
-                    if (remainingNanos <= 0) break
-                    val attemptTimeoutMs =
-                        TimeUnit.NANOSECONDS.toMillis(remainingNanos).coerceAtLeast(1)
-                    val body = fetchPageBody(probeUrl, attemptTimeoutMs.toInt())
-                    if (body != null && looksLikeMarimoPage(body)) {
-                        ready.complete(null)
-                        return@Thread
-                    }
-                    val sleepMs = minOf(POLL_INTERVAL_MS, attemptTimeoutMs)
-                    if (sleepMs > 0) Thread.sleep(sleepMs)
+            val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+            while (!ready.isDone && System.nanoTime() < deadlineNanos) {
+                val remainingNanos = deadlineNanos - System.nanoTime()
+                if (remainingNanos <= 0) break
+                val attemptTimeoutMs =
+                    TimeUnit.NANOSECONDS.toMillis(remainingNanos).coerceAtLeast(1)
+                val body = fetchPageBody(probeUrl, attemptTimeoutMs.toInt())
+                if (body != null && looksLikeMarimoPage(body)) {
+                    ready.complete(null)
+                    return@Thread
                 }
-                if (!ready.isDone) {
-                    ready.completeExceptionally(
-                        IOException("marimo server did not start: $probeUrl")
-                    )
-                }
+                val sleepMs = minOf(POLL_INTERVAL_MS, attemptTimeoutMs)
+                if (sleepMs > 0) Thread.sleep(sleepMs)
             }
+            if (!ready.isDone) {
+                ready.completeExceptionally(IOException("marimo server did not start: $probeUrl"))
+            }
+        }
             .apply { isDaemon = true }
             .start()
     }
 
-    internal fun looksLikeMarimoPage(body: String): Boolean = MARIMO_PAGE_MARKER.containsMatchIn(body)
+    internal fun looksLikeMarimoPage(body: String): Boolean =
+        MARIMO_PAGE_MARKER.containsMatchIn(body)
 
     private fun fetchPageBody(probeUrl: String, attemptTimeoutMs: Int): String? =
         try {

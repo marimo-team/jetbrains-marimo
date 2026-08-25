@@ -96,12 +96,12 @@ object StallAfterAcceptProcess {
     fun main(args: Array<String>) {
         val port = args[0].toInt()
         Thread {
-                ServerSocket(port).use { server ->
-                    while (true) {
-                        server.accept()
-                    }
+            ServerSocket(port).use { server ->
+                while (true) {
+                    server.accept()
                 }
             }
+        }
             .apply { isDaemon = true }
             .start()
         Thread.sleep(60_000)
@@ -116,19 +116,18 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
     fun testUnrelatedHttpListenerDoesNotCountAsReady() {
         val port = ServerSocket(0).use { it.localPort }
         val url = "http://127.0.0.1:$port"
-        val binder =
-            Thread {
-                ServerSocket(port).use { server ->
-                    while (true) {
-                        val socket = server.accept()
-                        socket.getOutputStream().apply {
-                            write(httpResponse("200 OK"))
-                            flush()
-                        }
-                        socket.close()
+        val binder = Thread {
+            ServerSocket(port).use { server ->
+                while (true) {
+                    val socket = server.accept()
+                    socket.getOutputStream().apply {
+                        write(httpResponse("200 OK"))
+                        flush()
                     }
+                    socket.close()
                 }
             }
+        }
         binder.isDaemon = true
         binder.start()
 
