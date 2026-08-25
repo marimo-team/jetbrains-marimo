@@ -25,7 +25,10 @@ internal fun indicatesUnsupportedWatch(output: String): Boolean =
 
 /** Redacts complete process output before it is retained in a user-visible diagnostic. */
 internal fun diagnosticOutputTail(chunks: Iterable<String>): String =
-    redactAccessTokens(chunks.joinToString(separator = "")).trim().takeLast(500)
+    diagnosticOutputTail(chunks.joinToString(separator = ""))
+
+internal fun diagnosticOutputTail(text: String): String =
+    redactAccessTokens(text).trim().takeLast(500)
 
 /**
  * Spawns a marimo process and completes [MarimoServerHandle.awaitReady] once BOTH startup signals
@@ -61,12 +64,12 @@ fun startMarimoServer(
     fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
         val handler = OSProcessHandler(command)
         handle.attach(handler)
-        val output = StringBuilder()
+        val output = BoundedProcessOutput()
 
         handler.addProcessListener(
             object : ProcessListener {
                 override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                    synchronized(output) { output.append(event.text) }
+                    output.append(event.text)
                 }
 
                 // A dead process is otherwise indistinguishable from a slow one — without this the
@@ -75,8 +78,8 @@ fun startMarimoServer(
                 // fast and
                 // surface the process output so the error panel explains why.
                 override fun processTerminated(event: ProcessEvent) {
-                    val full = synchronized(output) { output.toString() }
-                    val diagnosticTail = diagnosticOutputTail(listOf(full))
+                    val full = output.snapshot()
+                    val diagnosticTail = diagnosticOutputTail(full)
 
                     if (ready.isDone) {
                         handle.notifyTerminated(event.exitCode, diagnosticTail)
