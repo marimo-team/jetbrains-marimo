@@ -6,13 +6,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MarimoNotebookLifecycleTest {
+class NotebookLifecycleTest {
 
-    private fun lifecycle() = MarimoNotebookLifecycle()
+    private fun lifecycle() = NotebookLifecycle()
 
     private fun runningLifecycle(
         url: String = "http://127.0.0.1:1234"
-    ): Pair<MarimoNotebookLifecycle, ScriptedMarimoServerHandle> {
+    ): Pair<NotebookLifecycle, ScriptedMarimoServerHandle> {
         val l = lifecycle()
         val handle = ScriptedMarimoServerHandle()
         l.attach(handle)

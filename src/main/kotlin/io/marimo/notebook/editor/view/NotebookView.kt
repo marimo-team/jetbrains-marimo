@@ -20,12 +20,12 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
-import io.marimo.notebook.editor.MARIMO_SOURCE_EDITOR_TYPE
 import io.marimo.notebook.editor.error.ErrorAction
 import io.marimo.notebook.editor.error.ErrorModel
 import io.marimo.notebook.editor.error.ErrorPanel
 import io.marimo.notebook.editor.error.Failure
 import io.marimo.notebook.editor.error.FailureDiagnostics
+import io.marimo.notebook.editor.source.MARIMO_SOURCE_EDITOR_TYPE
 import io.marimo.notebook.launch.LifecycleStateUpdate
 import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.StopCause

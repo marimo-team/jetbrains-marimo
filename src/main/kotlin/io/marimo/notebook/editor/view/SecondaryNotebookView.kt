@@ -16,7 +16,7 @@ import javax.swing.JPanel
 import javax.swing.SwingConstants
 
 /**
- * A second browser for the same notebook session (D1). Created when the registry's primary
+ * A second browser for the same notebook session. Created when the registry's primary
  * [NotebookView] is already mounted in another split — satisfies Swing's single-parent rule. marimo
  * marks additional clients read-only; this class only loads [NotebookSessionLease.readyUrl].
  */

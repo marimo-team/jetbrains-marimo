@@ -27,7 +27,7 @@ internal class LifecycleTransition(
  * nothing. A slow exit or readiness event from a replaced server therefore cannot repaint or stop
  * its replacement. [release] and [stop] advance the generation for the same reason.
  */
-class MarimoNotebookLifecycle : Disposable {
+class NotebookLifecycle : Disposable {
 
     @Volatile
     var state: MarimoNotebookState = MarimoNotebookState.Starting

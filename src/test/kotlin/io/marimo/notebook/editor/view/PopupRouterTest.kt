@@ -121,4 +121,16 @@ class PopupRouterTest {
         val url = "?file=%2Ftmp%2Fa.py"
         assertEquals(MarimoPopup.External(url), classifyMarimoPopup(url, expectedOrigin = null))
     }
+
+    @Test
+    fun protocolRelativeCrossOriginFileDeepLinkIsExternal() {
+        val url = "//evil.example/?file=%2Ftmp%2Fa.py"
+        assertEquals(MarimoPopup.External(url), classifyMarimoPopup(url, origin))
+    }
+
+    @Test
+    fun protocolRelativeSameOriginFileDeepLinkIsNotebook() {
+        val url = "//127.0.0.1:5123/?file=%2Ftmp%2Fa.py"
+        assertEquals(MarimoPopup.Notebook("/tmp/a.py"), classifyMarimoPopup(url, origin))
+    }
 }

@@ -12,6 +12,7 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.jetbrains.python.PythonFileType
 import io.marimo.notebook.detect.MarimoDetector
+import io.marimo.notebook.editor.source.MARIMO_SOURCE_EDITOR_TYPE
 
 /**
  * Opens a marimo notebook's raw Python source in a split beside the notebook. A file maps to a

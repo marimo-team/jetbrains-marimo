@@ -13,6 +13,7 @@ import com.intellij.openapi.vfs.VirtualFileManager
 import com.intellij.openapi.vfs.newvfs.BulkFileListener
 import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent
 import com.intellij.openapi.vfs.newvfs.events.VFileEvent
+import io.marimo.notebook.editor.source.flushMarimoSourceToDisk
 import io.marimo.notebook.editor.view.NotebookEditorView
 import io.marimo.notebook.editor.view.NotebookViewRegistry
 import io.marimo.notebook.editor.view.SecondaryNotebookView
@@ -25,7 +26,7 @@ import javax.swing.JComponent
 
 /**
  * Thin [FileEditor] over a per-session notebook view. The registry owns the primary browser; a
- * second simultaneous split gets its own [SecondaryNotebookView] on the same session URL (D1).
+ * second simultaneous split gets its own [SecondaryNotebookView] on the same session URL.
  */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {

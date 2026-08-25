@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.source
 
 import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
@@ -10,12 +10,15 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 
 class MarimoSourceSyncTest : BasePlatformTestCase() {
     private lateinit var ioFile: File
 
     override fun tearDown() {
         try {
+            beforeSourceRefreshApply = null
             if (::ioFile.isInitialized) FileUtil.delete(ioFile.parentFile)
         } finally {
             super.tearDown()
@@ -103,5 +106,47 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         refreshThread.join(5_000)
 
         assertEquals(userEdit, document.text)
+    }
+
+    /**
+     * An edit that begins after the off-EDT stamp pre-check but before the EDT apply gate must not
+     * be overwritten by the queued refresh.
+     */
+    fun testRefreshDoesNotOverwriteEditThatStartsDuringRefreshApply() {
+        val original = "import marimo\napp = marimo.App()\n"
+        val autosaved = "import marimo\napp = marimo.App()\n# autosaved\n"
+        val userEdit = "import marimo\napp = marimo.App()\n# user typed during apply\n"
+
+        ioFile = File(FileUtil.createTempDirectory("marimo-sync", null), "nb.py")
+        ioFile.writeText(original)
+        val file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile)!!
+
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+        assertEquals(original, document.text)
+
+        ioFile.writeText(autosaved)
+        val modificationStamp = document.modificationStamp
+        val applyGateEntered = CountDownLatch(1)
+        val releaseApply = CountDownLatch(1)
+        beforeSourceRefreshApply = Runnable {
+            applyGateEntered.countDown()
+            assertTrue(releaseApply.await(5, TimeUnit.SECONDS))
+        }
+
+        val refreshThread = Thread {
+            refreshMarimoSourceFromDisk(file, modificationStamp)
+        }
+        refreshThread.start()
+        assertTrue(applyGateEntered.await(5, TimeUnit.SECONDS))
+
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(userEdit) }
+        releaseApply.countDown()
+        refreshThread.join(5_000)
+
+        assertEquals(userEdit, document.text)
+        assertFalse(
+            "refresh must skip once the EDT apply gate sees a newer modification stamp",
+            applySourceRefreshIfCurrent(file, modificationStamp),
+        )
     }
 }

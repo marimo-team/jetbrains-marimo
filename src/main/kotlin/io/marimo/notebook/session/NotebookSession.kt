@@ -6,8 +6,8 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.pointers.VirtualFilePointer
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager
-import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
+import io.marimo.notebook.launch.NotebookLifecycle
 import java.util.EnumMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
@@ -85,7 +85,7 @@ internal class NotebookSession(
 
     fun matches(file: VirtualFile): Boolean = filePointer.file === file || fileUrl == file.url
 
-    val lifecycle = MarimoNotebookLifecycle()
+    val lifecycle = NotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
     var launchContext: MarimoLaunchContext? = null
     var inFlightReadyUrl: CompletableFuture<String>? = null

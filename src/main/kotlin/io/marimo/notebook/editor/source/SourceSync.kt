@@ -1,9 +1,13 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.source
 
+import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.VirtualFile
+
+/** Test hook: runs after the off-EDT pre-check and before the EDT apply gate. */
+internal var beforeSourceRefreshApply: Runnable? = null
 
 /**
  * Reconcile [file] with its on-disk content so an editor showing it is not left stale.
@@ -13,22 +17,41 @@ import com.intellij.openapi.vfs.VirtualFile
  * files. Forcing the refresh reloads the document behind the Source tab.
  *
  * When [modificationStamp] is set, the refresh is skipped if the in-memory document changed after
- * the caller captured the stamp (for example, the user began typing while a queued refresh was
- * still waiting to run).
+ * the caller captured the stamp. The final stamp check runs on the EDT immediately before
+ * [VirtualFile.refresh] so an edit that begins after the off-EDT pre-check cannot be overwritten.
  *
- * The refresh is synchronous, so callers must invoke it off the EDT; the VFS events it produces are
- * still applied on the EDT, but the (potentially slow, on remote filesystems) disk scan is not.
+ * Callers must invoke this off the EDT; the VFS events it produces are still applied on the EDT.
  */
 internal fun refreshMarimoSourceFromDisk(file: VirtualFile, modificationStamp: Long? = null) {
-    val document = FileDocumentManager.getInstance().getCachedDocument(file)
+    val documents = FileDocumentManager.getInstance()
+    documents.getCachedDocument(file)?.let { document ->
+        if (modificationStamp != null && document.modificationStamp != modificationStamp) return
+    }
+    beforeSourceRefreshApply?.run()
+    ApplicationManager.getApplication().invokeAndWait {
+        applySourceRefreshIfCurrent(file, modificationStamp)
+    }
+}
+
+/**
+ * Applies a disk refresh when [modificationStamp] still matches the loaded document. Returns false
+ * when a newer edit made the stamp stale.
+ */
+internal fun applySourceRefreshIfCurrent(
+    file: VirtualFile,
+    modificationStamp: Long? = null,
+): Boolean {
+    val documents = FileDocumentManager.getInstance()
+    val document = documents.getCachedDocument(file)
     if (
         document != null &&
             modificationStamp != null &&
             document.modificationStamp != modificationStamp
     ) {
-        return
+        return false
     }
     file.refresh(/* asynchronous= */ false, /* recursive= */ false)
+    return true
 }
 
 /**

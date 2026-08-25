@@ -8,16 +8,6 @@ import java.net.ServerSocket
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 
-private const val MARIMO_PAGE_BODY = """<html><marimo-user-config data-config="{}"></html>"""
-
-private fun httpResponse(statusLine: String, body: String = ""): ByteArray {
-    if (body.isEmpty()) {
-        return "HTTP/1.1 $statusLine\r\nContent-Length: 0\r\n\r\n".toByteArray()
-    }
-    return "HTTP/1.1 $statusLine\r\nContent-Length: ${body.toByteArray().size}\r\n\r\n$body"
-        .toByteArray()
-}
-
 /**
  * First attempt: rejects `--watch` the way marimo before 0.10 does. Second attempt (no `watch`
  * argument): prints the banner and serves.

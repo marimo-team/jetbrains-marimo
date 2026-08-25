@@ -39,12 +39,12 @@
 
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
-        <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoSourceEditorProvider"/>
+        <fileEditorProvider implementation="io.marimo.notebook.editor.source.MarimoSourceEditorProvider"/>
         <fileIconProvider implementation="io.marimo.notebook.editor.MarimoFileIconProvider"/>
         <toolWindow id="Marimo Sessions"
                     anchor="right"
                     icon="io.marimo.notebook.MarimoIcons.FILE"
-                    factoryClass="io.marimo.notebook.editor.MarimoSessionsToolWindowFactory"/>
+                    factoryClass="io.marimo.notebook.editor.sessions.MarimoSessionsToolWindowFactory"/>
         <notificationGroup id="Marimo" displayType="BALLOON"/>
         <internalFileTemplate name="marimo Notebook"/>
         <applicationConfigurable
@@ -81,7 +81,7 @@
         </action>
 
         <group id="Marimo.Session"
-               class="io.marimo.notebook.editor.MarimoSessionActionGroup"
+               class="io.marimo.notebook.editor.sessions.MarimoSessionActionGroup"
                text="Marimo Session"
                description="Manage the marimo session for this notebook"
                icon="io.marimo.notebook.MarimoIcons.FILE"
@@ -91,7 +91,7 @@
         </group>
 
         <action id="Marimo.OpenNotebook"
-                class="io.marimo.notebook.editor.MarimoOpenNotebookAction"
+                class="io.marimo.notebook.editor.sessions.MarimoOpenNotebookAction"
                 text="Open marimo Notebook"
                 description="Open this notebook in the marimo editor"
                 icon="AllIcons.Actions.Forward">
@@ -99,7 +99,7 @@
         </action>
 
         <action id="Marimo.RestartNotebook"
-                class="io.marimo.notebook.editor.MarimoRestartNotebookAction"
+                class="io.marimo.notebook.editor.sessions.MarimoRestartNotebookAction"
                 text="Restart marimo Session"
                 description="Stop this notebook's marimo server and start a fresh one"
                 icon="AllIcons.Actions.Restart">
@@ -107,7 +107,7 @@
         </action>
 
         <action id="Marimo.StopNotebook"
-                class="io.marimo.notebook.editor.MarimoStopNotebookAction"
+                class="io.marimo.notebook.editor.sessions.MarimoStopNotebookAction"
                 text="Stop marimo Session"
                 description="Stop this notebook's marimo server"
                 icon="AllIcons.Actions.Suspend">

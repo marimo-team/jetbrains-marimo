@@ -9,6 +9,8 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.jcef.JBCefBrowser
+import java.net.URI
+import java.net.URISyntaxException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import org.cef.browser.CefBrowser
@@ -33,7 +35,7 @@ sealed interface MarimoPopup {
  * `about:blank`), leaving JCEF's default handling in place.
  *
  * A `?file=` link is trusted only when it is relative to the active server ([expectedOrigin]) or
- * its absolute form matches that origin exactly — not merely another loopback port (B18).
+ * its absolute form matches that origin exactly — not merely another loopback port.
  */
 fun classifyMarimoPopup(targetUrl: String?, expectedOrigin: String?): MarimoPopup? {
     val url = targetUrl?.trim().orEmpty()
@@ -98,6 +100,16 @@ private fun notebookPathFrom(url: String, expectedOrigin: String?): String? {
     return URLDecoder.decode(encoded, StandardCharsets.UTF_8).ifBlank { null }
 }
 
+private fun resolveTargetUrl(url: String, expectedOrigin: String): String =
+    when {
+        url.startsWith("//") -> {
+            val scheme = URI(expectedOrigin).scheme ?: return url
+            "$scheme:$url"
+        }
+        ABSOLUTE_URL.containsMatchIn(url) -> url
+        else -> resolveAgainstOrigin(url, expectedOrigin)
+    }
+
 private val ABSOLUTE_URL = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 /**
@@ -107,6 +119,13 @@ private val ABSOLUTE_URL = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
  */
 private fun isTrustedFileLink(url: String, expectedOrigin: String?): Boolean {
     if (expectedOrigin == null) return false
-    if (!ABSOLUTE_URL.containsMatchIn(url)) return true
-    return serverOrigin(url) == expectedOrigin
+    val resolvedOrigin = serverOrigin(resolveTargetUrl(url, expectedOrigin))
+    return resolvedOrigin == expectedOrigin
 }
+
+private fun resolveAgainstOrigin(relativeUrl: String, expectedOrigin: String): String =
+    try {
+        URI(expectedOrigin).resolve(relativeUrl).toString()
+    } catch (_: URISyntaxException) {
+        relativeUrl
+    }

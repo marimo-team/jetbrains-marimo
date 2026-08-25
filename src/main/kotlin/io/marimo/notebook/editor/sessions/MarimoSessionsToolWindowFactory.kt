@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.sessions
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
