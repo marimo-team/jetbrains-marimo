@@ -16,8 +16,9 @@ import javax.swing.JPanel
 import javax.swing.SwingConstants
 
 /**
- * A read-only second browser for the same notebook session (D1). Created when the registry's
- * primary [NotebookView] is already mounted in another editor split. Disposed with its editor.
+ * A second browser for the same notebook session (D1). Created when the registry's primary
+ * [NotebookView] is already mounted in another split — satisfies Swing's single-parent rule. marimo
+ * marks additional clients read-only; this class only loads [NotebookSessionLease.readyUrl].
  */
 internal class SecondaryNotebookView(private val lease: NotebookSessionLease) :
     NotebookEditorView, Disposable {

@@ -29,6 +29,7 @@ class NotebookViewRegistry(private val project: Project) : Disposable {
     /**
      * Returns the view an editor should render. The first open editor for a session gets the shared
      * primary [NotebookView]; any simultaneous editor gets its own [SecondaryNotebookView] (D1).
+     * Read-only behavior for the second client is enforced by marimo, not here.
      */
     internal fun viewFor(lease: NotebookSessionLease): NotebookEditorView {
         val primary = primaryViewFor(lease)

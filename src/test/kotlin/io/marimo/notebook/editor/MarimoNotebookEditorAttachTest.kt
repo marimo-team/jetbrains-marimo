@@ -11,7 +11,9 @@ import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import java.awt.BorderLayout
 import java.util.concurrent.TimeUnit
+import javax.swing.JPanel
 
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
@@ -26,6 +28,31 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         } finally {
             super.tearDown()
         }
+    }
+
+    fun testSimultaneousSplitsKeepChildrenInSeparateParents() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("two_parent_nb.py", "import marimo\n").virtualFile
+
+        val first = editor(file)
+        val second = editor(file)
+
+        val splitA = JPanel(BorderLayout())
+        val splitB = JPanel(BorderLayout())
+        splitA.add(first.component, BorderLayout.CENTER)
+        assertEquals(1, splitA.componentCount)
+
+        splitB.add(second.component, BorderLayout.CENTER)
+
+        assertEquals(
+            "mounting the second editor must not steal the first split's child",
+            1,
+            splitA.componentCount,
+        )
+        assertEquals(1, splitB.componentCount)
+        assertSame(first.component, splitA.getComponent(0))
+        assertSame(second.component, splitB.getComponent(0))
     }
 
     fun testEditorsAttachAndDetachTheSession() {
