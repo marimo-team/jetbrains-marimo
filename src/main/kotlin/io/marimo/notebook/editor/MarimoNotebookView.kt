@@ -307,11 +307,6 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         val state = update.state
         val navigation = navigationSnapshot.generation
         when (state) {
-            is MarimoNotebookState.Stopping ->
-                onEdt(navigation) {
-                    if (!lifecycle.isCurrent(update)) return@onEdt
-                    showContent(JLabel("Shutting down marimo…", SwingConstants.CENTER))
-                }
             is MarimoNotebookState.Stopped ->
                 onEdt(navigation) {
                     if (!lifecycle.isCurrent(update)) return@onEdt

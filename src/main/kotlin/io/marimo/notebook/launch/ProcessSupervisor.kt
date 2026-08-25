@@ -83,10 +83,8 @@ private class ProcessMarimoServerHandle(
 ) : MarimoServerHandle {
     private val supervisorLock = Any()
     private val terminationLock = Any()
-    @Volatile
-    private var disposed = false
-    @Volatile
-    private var handler: OSProcessHandler? = null
+    @Volatile private var disposed = false
+    @Volatile private var handler: OSProcessHandler? = null
     private var terminationListener: ((Int, String) -> Unit)? = null
     private var termination: Termination? = null
 

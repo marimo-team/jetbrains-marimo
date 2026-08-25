@@ -16,13 +16,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 enum class MarimoSessionState {
     STARTING,
     RUNNING,
-    STOPPING,
     STOPPED,
     FAILED;
 
     /** True while a server process exists for the session. */
     val isLive: Boolean
-        get() = this == STARTING || this == RUNNING || this == STOPPING
+        get() = this == STARTING || this == RUNNING
 }
 
 /** The launch settings one server process was started with. Carries no credentials. */
@@ -122,7 +121,6 @@ internal class NotebookSession(
                 when (lifecycle.state) {
                     is MarimoNotebookState.Starting -> MarimoSessionState.STARTING
                     is MarimoNotebookState.Running -> MarimoSessionState.RUNNING
-                    is MarimoNotebookState.Stopping -> MarimoSessionState.STOPPING
                     is MarimoNotebookState.Stopped -> MarimoSessionState.STOPPED
                     is MarimoNotebookState.Failed -> MarimoSessionState.FAILED
                 },

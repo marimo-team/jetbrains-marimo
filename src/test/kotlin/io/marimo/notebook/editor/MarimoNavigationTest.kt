@@ -97,9 +97,8 @@ class MarimoNavigationTest {
     }
 
     @Test
-    fun stoppingAndStoppedLifecyclesCannotRenderNotebookContent() {
+    fun stoppedLifecycleCannotRenderNotebookContent() {
         assertTrue(canRenderNotebookFor(MarimoNotebookState.Running("http://127.0.0.1:2222")))
-        assertFalse(canRenderNotebookFor(MarimoNotebookState.Stopping("http://127.0.0.1:2222")))
         assertFalse(canRenderNotebookFor(MarimoNotebookState.Stopped(StopCause.Deliberate)))
     }
 }

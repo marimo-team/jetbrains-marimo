@@ -33,7 +33,6 @@ class MarimoSessionActionsTest {
     fun liveStatesEnableRestartAndStop() {
         assertTrue(canControlSession(snapshot(MarimoSessionState.STARTING)))
         assertTrue(canControlSession(snapshot(MarimoSessionState.RUNNING)))
-        assertTrue(canControlSession(snapshot(MarimoSessionState.STOPPING)))
     }
 
     @Test

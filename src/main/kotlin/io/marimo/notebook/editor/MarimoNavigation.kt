@@ -53,4 +53,4 @@ internal fun loadErrorGeneration(failedUrl: String?, snapshot: NavigationSnapsho
 
 /** A terminal or stopping lifecycle owns the panel instead of a pending browser callback. */
 internal fun canRenderNotebookFor(state: MarimoNotebookState): Boolean =
-    state !is MarimoNotebookState.Stopping && state !is MarimoNotebookState.Stopped
+    state !is MarimoNotebookState.Stopped
