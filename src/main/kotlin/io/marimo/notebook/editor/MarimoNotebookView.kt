@@ -27,10 +27,10 @@ import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
 import io.marimo.notebook.launch.LifecycleStateUpdate
-import io.marimo.notebook.launch.MarimoEnvProbe
-import io.marimo.notebook.launch.MarimoInstaller
+import io.marimo.notebook.session.environment.MarimoEnvProbe
+import io.marimo.notebook.session.environment.MarimoInstaller
 import io.marimo.notebook.launch.MarimoNotebookState
-import io.marimo.notebook.launch.MarimoPresence
+import io.marimo.notebook.session.environment.MarimoPresence
 import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.redactAccessTokens

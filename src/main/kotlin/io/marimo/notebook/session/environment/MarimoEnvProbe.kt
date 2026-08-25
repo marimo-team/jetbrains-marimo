@@ -1,12 +1,13 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.launch
+package io.marimo.notebook.session.environment
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.launch.SdkPythonResolver
 import java.util.concurrent.ConcurrentHashMap
 
 /** Whether marimo is available on the interpreter resolved for a notebook. */

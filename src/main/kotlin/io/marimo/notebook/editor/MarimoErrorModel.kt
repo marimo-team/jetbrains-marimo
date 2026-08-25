@@ -2,7 +2,7 @@
 
 package io.marimo.notebook.editor
 
-import io.marimo.notebook.launch.MarimoPresence
+import io.marimo.notebook.session.environment.MarimoPresence
 import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvUnavailableException
