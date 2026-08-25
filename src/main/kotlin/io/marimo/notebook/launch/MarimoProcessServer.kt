@@ -8,12 +8,10 @@ import com.intellij.execution.process.ProcessEvent
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.execution.process.ProcessListener
 import com.intellij.openapi.util.Key
-import com.intellij.util.io.HttpRequests
 import io.marimo.notebook.MarimoLocalhost
 import java.io.File
 import java.io.IOException
 import java.util.concurrent.CompletableFuture
-import java.util.concurrent.TimeUnit
 
 /**
  * True when marimo aborted because it does not recognise `--watch`. marimo before 0.10 has no such
@@ -32,7 +30,7 @@ internal fun diagnosticOutputTail(text: String): String =
 
 /**
  * Spawns a marimo process and completes [MarimoServerHandle.awaitReady] once BOTH startup signals
- * arrive: the socket answers HTTP (any status), and the URL JCEF must load is known. When
+ * arrive: the served page looks like marimo, and the URL JCEF must load is known. When
  * [authenticatedUrl] is non-null the plugin supplied it (token auth on); when null readiness
  * delivers the plain server origin. Retained stdout is redacted before it is used for diagnostics.
  * Banner parsing is not used for readiness.
@@ -60,6 +58,7 @@ fun startMarimoServer(
     val httpUp = CompletableFuture<Void?>()
     val ready = urlFuture.thenCombine(httpUp) { url, _ -> url }
     val handle = ProcessMarimoServerHandle(ready, tokenPasswordFile?.let(::File))
+    val probeUrl = authenticatedUrl ?: expectedUrl
 
     fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
         val handler = OSProcessHandler(command)
@@ -108,30 +107,8 @@ fun startMarimoServer(
         handle.dispose()
         throw e
     }
-    pollUntilUp(expectedUrl, httpUp, readinessTimeoutSeconds)
+    ReadinessProbe.pollUntilReady(probeUrl, httpUp, readinessTimeoutSeconds)
     return handle
-}
-
-private fun pollUntilUp(url: String, httpUp: CompletableFuture<Void?>, timeoutSeconds: Long) {
-    Thread {
-        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-        while (!httpUp.isDone && System.nanoTime() < deadline) {
-            try {
-                HttpRequests.head(url).tryConnect()
-                httpUp.complete(null)
-                return@Thread
-            } catch (_: HttpRequests.HttpStatusException) {
-                httpUp.complete(null)
-                return@Thread
-            } catch (_: IOException) {
-                Thread.sleep(200)
-            }
-        }
-        if (!httpUp.isDone)
-            httpUp.completeExceptionally(IOException("marimo server did not start: $url"))
-    }
-        .apply { isDaemon = true }
-        .start()
 }
 
 private class ProcessMarimoServerHandle(
