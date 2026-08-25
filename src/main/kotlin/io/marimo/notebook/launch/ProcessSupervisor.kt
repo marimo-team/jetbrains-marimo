@@ -22,9 +22,6 @@ internal fun indicatesUnsupportedWatch(output: String): Boolean =
     output.contains("No such option") && output.contains("watch")
 
 /** Redacts complete process output before it is retained in a user-visible diagnostic. */
-internal fun diagnosticOutputTail(chunks: Iterable<String>): String =
-    diagnosticOutputTail(chunks.joinToString(separator = ""))
-
 internal fun diagnosticOutputTail(text: String): String =
     redactAccessTokens(text).trim().takeLast(500)
 
@@ -57,76 +54,49 @@ fun startMarimoServer(
     }
     val httpUp = CompletableFuture<Void?>()
     val ready = urlFuture.thenCombine(httpUp) { url, _ -> url }
-    val handle = ProcessMarimoServerHandle(ready, tokenPasswordFile?.let(::File))
     val probeUrl = authenticatedUrl ?: expectedUrl
-
-    fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
-        val handler = OSProcessHandler(command)
-        handle.attach(handler)
-        val output = BoundedProcessOutput()
-
-        handler.addProcessListener(
-            object : ProcessListener {
-                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
-                    output.append(event.text)
-                }
-
-                // A dead process is otherwise indistinguishable from a slow one — without this the
-                // tab waits
-                // the full poll timeout (e.g. `python -m marimo` exiting on a missing module). Fail
-                // fast and
-                // surface the process output so the error panel explains why.
-                override fun processTerminated(event: ProcessEvent) {
-                    val full = output.snapshot()
-                    val diagnosticTail = diagnosticOutputTail(full)
-
-                    if (ready.isDone) {
-                        handle.notifyTerminated(event.exitCode, diagnosticTail)
-                        return
-                    }
-
-                    if (fallback != null && indicatesUnsupportedWatch(full)) {
-                        runAttempt(fallback(), fallback = null)
-                        return
-                    }
-                    httpUp.completeExceptionally(
-                        IOException(
-                            "marimo exited (code ${event.exitCode}) before serving $expectedUrl\n$diagnosticTail"
-                        )
-                    )
-                    handle.notifyTerminated(event.exitCode, diagnosticTail)
-                }
-            }
+    val handle =
+        ProcessMarimoServerHandle(
+            ready = ready,
+            httpUp = httpUp,
+            expectedUrl = expectedUrl,
+            probeUrl = probeUrl,
+            readinessTimeoutSeconds = readinessTimeoutSeconds,
+            tokenPasswordFile = tokenPasswordFile?.let(::File),
         )
-        handler.startNotify()
-    }
-
     try {
-        runAttempt(cmd, watchFallbackCmd)
+        handle.launch(cmd, watchFallbackCmd)
     } catch (e: Exception) {
         handle.dispose()
         throw e
     }
-    ReadinessProbe.pollUntilReady(probeUrl, httpUp, readinessTimeoutSeconds)
     return handle
 }
 
 private class ProcessMarimoServerHandle(
     private val ready: CompletableFuture<String>,
+    private val httpUp: CompletableFuture<Void?>,
+    private val expectedUrl: String,
+    private val probeUrl: String,
+    private val readinessTimeoutSeconds: Long,
     private val tokenPasswordFile: File?,
 ) : MarimoServerHandle {
-    @Volatile private lateinit var handler: OSProcessHandler
+    private val supervisorLock = Any()
     private val terminationLock = Any()
+    @Volatile
+    private var disposed = false
+    @Volatile
+    private var handler: OSProcessHandler? = null
     private var terminationListener: ((Int, String) -> Unit)? = null
     private var termination: Termination? = null
 
     private data class Termination(val exitCode: Int, val outputTail: String)
 
     override val isAlive: Boolean
-        get() = !handler.isProcessTerminated
+        get() = handler?.let { !it.isProcessTerminated } == true
 
     override val processHandle: ProcessHandler
-        get() = handler
+        get() = handler ?: error("no process is attached")
 
     override fun awaitReady(): CompletableFuture<String> = ready
 
@@ -137,6 +107,75 @@ private class ProcessMarimoServerHandle(
                 termination
             }
         previousTermination?.let { listener(it.exitCode, it.outputTail) }
+    }
+
+    fun launch(cmd: GeneralCommandLine, watchFallbackCmd: (() -> GeneralCommandLine)?) {
+        synchronized(supervisorLock) {
+            if (disposed) return
+            runAttempt(cmd, watchFallbackCmd)
+        }
+        ReadinessProbe.pollUntilReady(probeUrl, httpUp, readinessTimeoutSeconds)
+    }
+
+    private fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
+        val processHandler = OSProcessHandler(command)
+        val output = BoundedProcessOutput()
+
+        synchronized(supervisorLock) {
+            if (disposed) {
+                processHandler.destroyProcess()
+                return
+            }
+            handler = processHandler
+        }
+
+        processHandler.addProcessListener(
+            object : ProcessListener {
+                override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
+                    output.append(event.text)
+                }
+
+                override fun processTerminated(event: ProcessEvent) {
+                    val full = output.snapshot()
+                    val diagnosticTail = diagnosticOutputTail(full)
+
+                    if (ready.isDone) {
+                        notifyTerminated(event.exitCode, diagnosticTail)
+                        return
+                    }
+
+                    if (fallback != null && indicatesUnsupportedWatch(full)) {
+                        val fallbackCommand =
+                            try {
+                                fallback()
+                            } catch (e: Exception) {
+                                failBeforeReady(e, diagnosticTail, event.exitCode)
+                                return
+                            }
+                        synchronized(supervisorLock) {
+                            if (disposed) return
+                            runAttempt(fallbackCommand, fallback = null)
+                        }
+                        return
+                    }
+                    failBeforeReady(
+                        IOException(
+                            "marimo exited (code ${event.exitCode}) before serving $expectedUrl\n$diagnosticTail"
+                        ),
+                        diagnosticTail,
+                        event.exitCode,
+                    )
+                }
+            }
+        )
+        processHandler.startNotify()
+    }
+
+    private fun failBeforeReady(error: Throwable, diagnosticTail: String, exitCode: Int) {
+        if (!httpUp.isDone) {
+            httpUp.completeExceptionally(error)
+        }
+        notifyTerminated(exitCode, diagnosticTail)
     }
 
     fun notifyTerminated(exitCode: Int, outputTail: String) {
@@ -153,17 +192,19 @@ private class ProcessMarimoServerHandle(
         }
     }
 
-    /** Points the handle at the live process; called again when a fallback attempt is spawned. */
-    fun attach(handler: OSProcessHandler) {
-        this.handler = handler
-    }
-
     override fun dispose() {
-        try {
-            if (::handler.isInitialized) handler.destroyProcess()
-        } finally {
-            deleteTokenPasswordFile()
+        synchronized(supervisorLock) {
+            if (disposed) return
+            disposed = true
+            handler?.destroyProcess()
+            handler = null
         }
+        if (!httpUp.isDone) {
+            httpUp.completeExceptionally(
+                IOException("marimo server disposed before ready: $expectedUrl")
+            )
+        }
+        deleteTokenPasswordFile()
     }
 
     private fun deleteTokenPasswordFile() {
