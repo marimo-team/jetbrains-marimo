@@ -12,10 +12,22 @@ import com.intellij.openapi.vfs.VirtualFile
  * never fires the frame-activation event that the platform relies on to refresh externally-changed
  * files. Forcing the refresh reloads the document behind the Source tab.
  *
+ * When [modificationStamp] is set, the refresh is skipped if the in-memory document changed after
+ * the caller captured the stamp (for example, the user began typing while a queued refresh was
+ * still waiting to run).
+ *
  * The refresh is synchronous, so callers must invoke it off the EDT; the VFS events it produces are
  * still applied on the EDT, but the (potentially slow, on remote filesystems) disk scan is not.
  */
-internal fun refreshMarimoSourceFromDisk(file: VirtualFile) {
+internal fun refreshMarimoSourceFromDisk(file: VirtualFile, modificationStamp: Long? = null) {
+    val document = FileDocumentManager.getInstance().getCachedDocument(file)
+    if (
+        document != null &&
+            modificationStamp != null &&
+            document.modificationStamp != modificationStamp
+    ) {
+        return
+    }
     file.refresh(/* asynchronous= */ false, /* recursive= */ false)
 }
 

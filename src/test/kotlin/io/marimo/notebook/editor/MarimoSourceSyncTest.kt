@@ -8,6 +8,8 @@ import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
 
 class MarimoSourceSyncTest : BasePlatformTestCase() {
     private lateinit var ioFile: File
@@ -66,5 +68,40 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         flushMarimoSourceToDisk(file)
 
         assertEquals(edited, ioFile.readText())
+    }
+
+    /**
+     * Selecting Source queues a background disk refresh. If the user types before that refresh
+     * runs, the queued reload must not overwrite the in-flight edit.
+     */
+    fun testRefreshDoesNotOverwriteEditStartedBeforeRefreshCompletes() {
+        val original = "import marimo\napp = marimo.App()\n"
+        val autosaved = "import marimo\napp = marimo.App()\n# autosaved\n"
+        val userEdit = "import marimo\napp = marimo.App()\n# user typed\n"
+
+        ioFile = File(FileUtil.createTempDirectory("marimo-sync", null), "nb.py")
+        ioFile.writeText(original)
+        val file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile)!!
+
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+        assertEquals(original, document.text)
+
+        ioFile.writeText(autosaved)
+        val modificationStamp = document.modificationStamp
+        val refreshStarted = CountDownLatch(1)
+        val allowRefresh = CountDownLatch(1)
+        val refreshThread = Thread {
+            refreshStarted.countDown()
+            assertTrue(allowRefresh.await(5, TimeUnit.SECONDS))
+            refreshMarimoSourceFromDisk(file, modificationStamp)
+        }
+        refreshThread.start()
+        assertTrue(refreshStarted.await(5, TimeUnit.SECONDS))
+
+        WriteCommandAction.runWriteCommandAction(project) { document.setText(userEdit) }
+        allowRefresh.countDown()
+        refreshThread.join(5_000)
+
+        assertEquals(userEdit, document.text)
     }
 }
