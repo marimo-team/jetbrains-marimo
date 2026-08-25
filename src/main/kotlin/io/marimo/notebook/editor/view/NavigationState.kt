@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.view
 
 import io.marimo.notebook.launch.MarimoNotebookState
 import java.net.URI

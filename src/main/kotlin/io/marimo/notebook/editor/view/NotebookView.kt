@@ -1,10 +1,8 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.view
 
 import com.intellij.icons.AllIcons
-import com.intellij.ide.BrowserUtil
-import com.intellij.ide.ui.LafManagerListener
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.actionSystem.ActionManager
 import com.intellij.openapi.actionSystem.CommonDataKeys
@@ -13,12 +11,8 @@ import com.intellij.openapi.actionSystem.DefaultActionGroup
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.diagnostic.thisLogger
-import com.intellij.openapi.editor.colors.EditorColorsListener
-import com.intellij.openapi.editor.colors.EditorColorsManager
-import com.intellij.openapi.editor.colors.FontPreferences
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
-import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.ui.components.JBLabel
 import com.intellij.ui.jcef.JBCefApp
@@ -26,6 +20,7 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import io.marimo.notebook.editor.MARIMO_SOURCE_EDITOR_TYPE
 import io.marimo.notebook.editor.error.ErrorAction
 import io.marimo.notebook.editor.error.ErrorModel
 import io.marimo.notebook.editor.error.ErrorPanel
@@ -47,10 +42,6 @@ import javax.swing.JComponent
 import javax.swing.JLabel
 import javax.swing.JPanel
 import javax.swing.SwingConstants
-import kotlin.math.ln
-import org.cef.browser.CefBrowser
-import org.cef.browser.CefFrame
-import org.cef.handler.CefLifeSpanHandlerAdapter
 import org.cef.handler.CefLoadHandler
 import org.cef.handler.CefLoadHandlerAdapter
 
@@ -58,9 +49,10 @@ import org.cef.handler.CefLoadHandlerAdapter
  * The long-lived UI and process state for a single open notebook: the JCEF browser, its content
  * panel, and the marimo server it renders. Owned by [NotebookViewRegistry] and keyed by session,
  * not by any one editor tab. Moving a notebook between splits disposes and recreates the
- * [FileEditor], but the view survives, so the same browser stays connected to the same session.
+ * [com.intellij.openapi.fileEditor.FileEditor], but the view survives, so the same browser stays
+ * connected to the same session.
  */
-class MarimoNotebookView(private val project: Project, private val file: VirtualFile) : Disposable {
+class NotebookView(private val project: Project, private val file: VirtualFile) : Disposable {
 
     val panel: JPanel =
         object : JPanel(BorderLayout()), DataProvider {
@@ -73,11 +65,17 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         else null
     private val sessionManager = project.service<NotebookSessionManager>()
     private val lifecycle = sessionManager.lifecycleFor(file)
-
-    /** Theme state for the loaded page; read and written on the EDT only. */
-    private var loadedUrl: String? = null
-    private var appliedTheme: String? = null
-    private var followsIdeTheme = false
+    private val themeController =
+        ThemeController(
+            disposable = this,
+            onEdt = { block -> onEdt(block = block) },
+            onThemeReload = ::reloadForIdeTheme,
+        )
+    private val popupRouter =
+        PopupRouter(
+            project = project,
+            onEdt = { block -> onEdt(block = block) },
+        )
 
     /** Disposal can be triggered from any thread, and is checked from the EDT. */
     @Volatile private var disposed = false
@@ -87,9 +85,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
 
     init {
         browser?.let(::installLoadErrorHandler)
-        browser?.let(::installPopupHandler)
-        browser?.let(::installEditorFontZoom)
-        browser?.let(::installIdeThemeSync)
+        browser?.let(popupRouter::installOn)
+        browser?.let(themeController::installOn)
         lifecycle.addListener { onStateChanged(it) }
         loadNotebook()
     }
@@ -97,112 +94,10 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     val preferredFocusedComponent: JComponent?
         get() = browser?.component
 
-    /**
-     * Keep the embedded notebook's zoom in step with the IDE's editor font size, so enlarging the
-     * font across editors enlarges the notebook too. CEF resets zoom on navigation, so reapply on
-     * every main-frame load as well as whenever the global scheme changes.
-     */
-    private fun installEditorFontZoom(browser: JBCefBrowser) {
-        ApplicationManager.getApplication()
-            .messageBus
-            .connect(this)
-            .subscribe(
-                EditorColorsManager.TOPIC,
-                EditorColorsListener { onEdt { applyEditorFontZoom(browser) } },
-            )
-        browser.jbCefClient.addLoadHandler(
-            object : CefLoadHandlerAdapter() {
-                override fun onLoadEnd(
-                    cefBrowser: CefBrowser?,
-                    frame: CefFrame?,
-                    httpStatusCode: Int,
-                ) {
-                    if (frame?.isMain == true) onEdt { applyEditorFontZoom(browser) }
-                }
-            },
-            browser.cefBrowser,
-        )
-    }
-
-    /**
-     * Map the editor font size onto a CEF zoom level, where the scale factor is `1.2^level`. The
-     * platform default font size renders the notebook at its native 100%; larger fonts scale it up
-     * proportionally.
-     */
-    private fun applyEditorFontZoom(browser: JBCefBrowser) {
-        val fontSize = EditorColorsManager.getInstance().globalScheme.editorFontSize
-        browser.cefBrowser.zoomLevel =
-            ln(fontSize.toDouble() / FontPreferences.DEFAULT_FONT_SIZE) / ln(1.2)
-    }
-
-    /**
-     * Follow the IDE's light/dark theme while it changes. The theme reaches marimo as a query
-     * parameter read when the page loads, so applying a new one means reloading the page — done
-     * only for a notebook that left the choice to the host, and only when the light/dark answer
-     * actually changed (the look and feel also fires for font and colour-scheme edits).
-     */
-    private fun installIdeThemeSync(browser: JBCefBrowser) {
-        ApplicationManager.getApplication()
-            .messageBus
-            .connect(this)
-            .subscribe(
-                LafManagerListener.TOPIC,
-                LafManagerListener { onEdt { syncIdeTheme(browser) } },
-            )
-    }
-
-    private fun syncIdeTheme(browser: JBCefBrowser) {
-        val url = loadedUrl ?: return
-        if (!followsIdeTheme) return
-        val theme = MarimoThemedUrl.ideTheme()
-        if (theme == appliedTheme) return
-        appliedTheme = theme
-        val themedUrl = MarimoThemedUrl.withTheme(url, theme)
+    private fun reloadForIdeTheme(themedUrl: String) {
+        ThreadingAssertions.assertEventDispatchThread()
         navigationSnapshot = navigationSnapshot.withExpectedUrl(themedUrl)
-        browser.loadURL(themedUrl)
-    }
-
-    /**
-     * marimo opens a duplicated (or otherwise linked) notebook with `window.open("?file=…",
-     * "_blank")`. Left to JCEF's default, that popup becomes a detached OS window that can't be
-     * docked as a tab. Catch it here: open notebook deep links as IDE editor tabs and send genuine
-     * external links to the system browser, so no stray Chromium window ever appears.
-     */
-    private fun installPopupHandler(browser: JBCefBrowser) {
-        browser.jbCefClient.addLifeSpanHandler(
-            object : CefLifeSpanHandlerAdapter() {
-                override fun onBeforePopup(
-                    cefBrowser: CefBrowser?,
-                    frame: CefFrame?,
-                    targetUrl: String?,
-                    targetFrameName: String?,
-                ): Boolean {
-                    when (val popup = classifyMarimoPopup(targetUrl)) {
-                        null -> return false
-                        is MarimoPopup.Notebook -> openNotebookTab(popup.path)
-                        is MarimoPopup.External -> BrowserUtil.browse(popup.url)
-                    }
-                    return true
-                }
-            },
-            browser.cefBrowser,
-        )
-    }
-
-    /**
-     * Resolve a just-created notebook path to a [VirtualFile] and open it as an editor tab. The VFS
-     * refresh is synchronous and must run off the EDT; the freshly copied file is picked up as a
-     * marimo notebook and rendered in this same editor kind.
-     */
-    private fun openNotebookTab(path: String) {
-        ApplicationManager.getApplication().executeOnPooledThread {
-            val target = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
-            if (target == null) {
-                thisLogger().warn("marimo popup: could not resolve notebook path $path")
-                return@executeOnPooledThread
-            }
-            onEdt { FileEditorManager.getInstance(project).openFile(target, true) }
-        }
+        browser?.loadURL(themedUrl)
     }
 
     /**
@@ -216,8 +111,8 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         browser.jbCefClient.addLoadHandler(
             object : CefLoadHandlerAdapter() {
                 override fun onLoadError(
-                    cefBrowser: CefBrowser?,
-                    frame: CefFrame?,
+                    cefBrowser: org.cef.browser.CefBrowser?,
+                    frame: org.cef.browser.CefFrame?,
                     errorCode: CefLoadHandler.ErrorCode?,
                     errorText: String?,
                     failedUrl: String?,
@@ -254,9 +149,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         ThreadingAssertions.assertEventDispatchThread()
         val navigation = NavigationSnapshot(navigationSnapshot.generation + 1, null)
         navigationSnapshot = navigation
-        loadedUrl = null
-        appliedTheme = null
-        followsIdeTheme = false
+        themeController.reset()
         showContent(JLabel("Starting marimo…", SwingConstants.CENTER))
         sessionManager.urlFor(file).whenComplete { url, err ->
             when {
@@ -286,10 +179,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             val resolvedTheme = PageConfigReader.fetchDisplayTheme(url)
             onEdt(navigation) {
                 if (!canRenderNotebookFor(lifecycle.state)) return@onEdt
-                followsIdeTheme = MarimoThemedUrl.followsIdeTheme(resolvedTheme)
-                appliedTheme = MarimoThemedUrl.ideTheme()
-                loadedUrl = url
-                val themedUrl = MarimoThemedUrl.of(url, resolvedTheme, appliedTheme!!)
+                val themedUrl = themeController.prepareNotebookUrl(resolvedTheme, url)
                 navigationSnapshot = NavigationSnapshot(navigation, serverOrigin(url), themedUrl)
                 browser.loadURL(themedUrl)
                 showContent(browser.component)
@@ -312,9 +202,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
             is MarimoNotebookState.Stopped ->
                 onEdt(navigation) {
                     if (!lifecycle.isCurrent(update)) return@onEdt
-                    loadedUrl = null
-                    appliedTheme = null
-                    followsIdeTheme = false
+                    themeController.reset()
                     val cause = state.cause
                     if (cause is StopCause.Unexpected) {
                         thisLogger()

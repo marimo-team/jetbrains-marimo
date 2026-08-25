@@ -1,12 +1,22 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.view
 
+import com.intellij.ide.BrowserUtil
+import com.intellij.openapi.application.ApplicationManager
+import com.intellij.openapi.diagnostic.thisLogger
+import com.intellij.openapi.fileEditor.FileEditorManager
+import com.intellij.openapi.project.Project
+import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.ui.jcef.JBCefBrowser
 import io.marimo.notebook.MarimoLocalhost
 import java.net.URI
 import java.net.URISyntaxException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
+import org.cef.browser.CefBrowser
+import org.cef.browser.CefFrame
+import org.cef.handler.CefLifeSpanHandlerAdapter
 
 /** Where a JCEF popup opened from the notebook should go. */
 sealed interface MarimoPopup {
@@ -30,6 +40,51 @@ fun classifyMarimoPopup(targetUrl: String?): MarimoPopup? {
     if (url.isEmpty() || url == "about:blank") return null
     val path = notebookPathFrom(url)
     return if (path != null) MarimoPopup.Notebook(path) else MarimoPopup.External(url)
+}
+
+/**
+ * Routes JCEF popups from the notebook: notebook deep links become editor tabs; external links go
+ * to the system browser.
+ */
+internal class PopupRouter(
+    private val project: Project,
+    private val onEdt: (() -> Unit) -> Unit,
+) {
+    fun installOn(browser: JBCefBrowser) {
+        browser.jbCefClient.addLifeSpanHandler(
+            object : CefLifeSpanHandlerAdapter() {
+                override fun onBeforePopup(
+                    cefBrowser: CefBrowser?,
+                    frame: CefFrame?,
+                    targetUrl: String?,
+                    targetFrameName: String?,
+                ): Boolean {
+                    when (val popup = classifyMarimoPopup(targetUrl)) {
+                        null -> return false
+                        is MarimoPopup.Notebook -> openNotebookTab(popup.path)
+                        is MarimoPopup.External -> BrowserUtil.browse(popup.url)
+                    }
+                    return true
+                }
+            },
+            browser.cefBrowser,
+        )
+    }
+
+    /**
+     * Resolve a just-created notebook path to a [com.intellij.openapi.vfs.VirtualFile] and open it
+     * as an editor tab. The VFS refresh is synchronous and must run off the EDT.
+     */
+    private fun openNotebookTab(path: String) {
+        ApplicationManager.getApplication().executeOnPooledThread {
+            val target = LocalFileSystem.getInstance().refreshAndFindFileByPath(path)
+            if (target == null) {
+                thisLogger().warn("marimo popup: could not resolve notebook path $path")
+                return@executeOnPooledThread
+            }
+            onEdt { FileEditorManager.getInstance(project).openFile(target, true) }
+        }
+    }
 }
 
 private fun notebookPathFrom(url: String): String? {

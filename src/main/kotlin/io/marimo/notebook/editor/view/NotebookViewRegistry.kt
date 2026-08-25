@@ -7,7 +7,6 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
-import io.marimo.notebook.editor.MarimoNotebookView
 import io.marimo.notebook.session.NotebookSessionEvent
 import io.marimo.notebook.session.NotebookSessionLease
 import io.marimo.notebook.session.NotebookSessionManager
@@ -19,16 +18,16 @@ import java.util.concurrent.ConcurrentHashMap
 class NotebookViewRegistry(private val project: Project) : Disposable {
 
     private val sessionManager = project.getService(NotebookSessionManager::class.java)
-    private val views = ConcurrentHashMap<SessionId, MarimoNotebookView>()
+    private val views = ConcurrentHashMap<SessionId, NotebookView>()
 
     init {
         sessionManager.addSessionEventListener(this, ::onSessionEvent)
     }
 
     /** Returns the primary view for [lease]'s session. The registry creates it if it is absent. */
-    fun primaryViewFor(lease: NotebookSessionLease): MarimoNotebookView =
+    fun primaryViewFor(lease: NotebookSessionLease): NotebookView =
         views.computeIfAbsent(lease.sessionId) {
-            MarimoNotebookView(project, lease.notebook).also { view ->
+            NotebookView(project, lease.notebook).also { view ->
                 Disposer.register(this, view)
             }
         }

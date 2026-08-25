@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.view
 
 import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.StopCause
@@ -9,7 +9,7 @@ import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MarimoNavigationTest {
+class NavigationStateTest {
 
     @Test
     fun originDropsPathQueryAndToken() {

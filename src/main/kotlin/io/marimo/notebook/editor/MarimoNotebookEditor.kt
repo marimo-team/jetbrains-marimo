@@ -8,6 +8,7 @@ import com.intellij.openapi.fileEditor.FileEditorState
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.editor.view.NotebookView
 import io.marimo.notebook.editor.view.NotebookViewRegistry
 import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionLease
@@ -17,9 +18,9 @@ import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
 /**
- * Thin [FileEditor] over a per-session [MarimoNotebookView]. The editor registry owns the browser
- * and panel, while [NotebookSessionManager] owns the server and leases. Dragging a notebook to
- * another split creates a fresh editor for the same retained view and session.
+ * Thin [FileEditor] over a per-session [NotebookView]. The editor registry owns the browser and
+ * panel, while [NotebookSessionManager] owns the server and leases. Dragging a notebook to another
+ * split creates a fresh editor for the same retained view and session.
  */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
@@ -27,7 +28,7 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     private val sessionManager = project.service<NotebookSessionManager>()
     private val viewRegistry = project.service<NotebookViewRegistry>()
     private val lease: NotebookSessionLease = sessionManager.acquire(file, LeaseOwner.EDITOR_TAB)
-    private val view: MarimoNotebookView = viewRegistry.primaryViewFor(lease)
+    private val view: NotebookView = viewRegistry.primaryViewFor(lease)
     private val propertyChangeSupport = PropertyChangeSupport(this)
 
     /**

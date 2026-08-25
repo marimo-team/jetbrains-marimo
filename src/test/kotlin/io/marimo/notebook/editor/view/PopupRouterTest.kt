@@ -1,12 +1,12 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.view
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
 
-class MarimoPopupTest {
+class PopupRouterTest {
     @Test
     fun classifiesFileDeepLinkAsNotebook() {
         val popup = classifyMarimoPopup("http://127.0.0.1:5123/?file=%2FUsers%2Fme%2F_notebook.py")
