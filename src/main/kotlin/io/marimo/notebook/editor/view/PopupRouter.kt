@@ -9,9 +9,6 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.LocalFileSystem
 import com.intellij.ui.jcef.JBCefBrowser
-import io.marimo.notebook.MarimoLocalhost
-import java.net.URI
-import java.net.URISyntaxException
 import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import org.cef.browser.CefBrowser
@@ -34,11 +31,14 @@ sealed interface MarimoPopup {
  * `window.open("?file=<abs path>", "_blank")`; left to JCEF's default that popup becomes a detached
  * OS window instead of an IDE tab. Returns null for targets not worth intercepting (blank,
  * `about:blank`), leaving JCEF's default handling in place.
+ *
+ * A `?file=` link is trusted only when it is relative to the active server ([expectedOrigin]) or
+ * its absolute form matches that origin exactly — not merely another loopback port (B18).
  */
-fun classifyMarimoPopup(targetUrl: String?): MarimoPopup? {
+fun classifyMarimoPopup(targetUrl: String?, expectedOrigin: String?): MarimoPopup? {
     val url = targetUrl?.trim().orEmpty()
     if (url.isEmpty() || url == "about:blank") return null
-    val path = notebookPathFrom(url)
+    val path = notebookPathFrom(url, expectedOrigin)
     return if (path != null) MarimoPopup.Notebook(path) else MarimoPopup.External(url)
 }
 
@@ -48,6 +48,7 @@ fun classifyMarimoPopup(targetUrl: String?): MarimoPopup? {
  */
 internal class PopupRouter(
     private val project: Project,
+    private val expectedOrigin: () -> String?,
     private val onEdt: (() -> Unit) -> Unit,
 ) {
     fun installOn(browser: JBCefBrowser) {
@@ -59,7 +60,7 @@ internal class PopupRouter(
                     targetUrl: String?,
                     targetFrameName: String?,
                 ): Boolean {
-                    when (val popup = classifyMarimoPopup(targetUrl)) {
+                    when (val popup = classifyMarimoPopup(targetUrl, expectedOrigin())) {
                         null -> return false
                         is MarimoPopup.Notebook -> openNotebookTab(popup.path)
                         is MarimoPopup.External -> BrowserUtil.browse(popup.url)
@@ -87,8 +88,8 @@ internal class PopupRouter(
     }
 }
 
-private fun notebookPathFrom(url: String): String? {
-    if (!isInternalTarget(url)) return null
+private fun notebookPathFrom(url: String, expectedOrigin: String?): String? {
+    if (!isTrustedFileLink(url, expectedOrigin)) return null
     val query = url.substringAfter('?', "").substringBefore('#')
     if (query.isEmpty()) return null
     val encoded =
@@ -100,18 +101,12 @@ private fun notebookPathFrom(url: String): String? {
 private val ABSOLUTE_URL = Regex("^[a-zA-Z][a-zA-Z0-9+.-]*:")
 
 /**
- * A `?file=` deep link is only trusted when it points back at the notebook's own server. marimo
- * emits it as a relative `window.open("?file=...")`, which JCEF resolves against the localhost
- * server. Refusing absolute URLs to any other host stops external pages (or link content) from
- * smuggling arbitrary local paths into an IDE tab via `?file=`.
+ * A `?file=` deep link is only trusted when it targets the notebook's own server. marimo emits
+ * relative `window.open("?file=...")` links against [expectedOrigin]; absolute URLs must match that
+ * origin exactly so another loopback port cannot smuggle a local path into an IDE tab.
  */
-private fun isInternalTarget(url: String): Boolean {
+private fun isTrustedFileLink(url: String, expectedOrigin: String?): Boolean {
+    if (expectedOrigin == null) return false
     if (!ABSOLUTE_URL.containsMatchIn(url)) return true
-    val host =
-        try {
-            URI(url).host
-        } catch (e: URISyntaxException) {
-            return false
-        } ?: return false
-    return MarimoLocalhost.isLoopbackHost(host)
+    return serverOrigin(url) == expectedOrigin
 }

@@ -74,6 +74,7 @@ class NotebookView(private val project: Project, private val file: VirtualFile) 
     private val popupRouter =
         PopupRouter(
             project = project,
+            expectedOrigin = { navigationSnapshot.expectedOrigin },
             onEdt = { block -> onEdt(block = block) },
         )
 
