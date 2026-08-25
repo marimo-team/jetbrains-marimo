@@ -26,16 +26,19 @@ import com.intellij.ui.jcef.JBCefBrowser
 import com.intellij.util.concurrency.ThreadingAssertions
 import com.intellij.util.ui.JBUI
 import com.intellij.util.ui.UIUtil
+import io.marimo.notebook.editor.error.ErrorAction
+import io.marimo.notebook.editor.error.ErrorModel
+import io.marimo.notebook.editor.error.ErrorPanel
+import io.marimo.notebook.editor.error.Failure
+import io.marimo.notebook.editor.error.FailureDiagnostics
 import io.marimo.notebook.launch.LifecycleStateUpdate
-import io.marimo.notebook.session.environment.MarimoEnvProbe
-import io.marimo.notebook.session.environment.MarimoInstaller
 import io.marimo.notebook.launch.MarimoNotebookState
-import io.marimo.notebook.session.environment.MarimoPresence
 import io.marimo.notebook.launch.StopCause
-import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.launch.redactAccessTokens
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.PageConfigReader
+import io.marimo.notebook.session.environment.MarimoInstaller
+import io.marimo.notebook.session.environment.MarimoPresence
 import io.marimo.notebook.telemetry.MarimoConsentPrompt
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
@@ -227,14 +230,14 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                     val generation = loadErrorGeneration(failedUrl, navigation) ?: return
                     val detail = errorText?.takeIf { it.isNotBlank() } ?: errorCode.name
                     val model =
-                        MarimoErrorModel.of(
-                            MarimoFailure.EditorLoadFailed(detail),
+                        ErrorModel.of(
+                            Failure.EditorLoadFailed(detail),
                             MarimoPresence.Unknown,
                             uvAvailable = false,
                         )
                     onEdt(generation) {
                         if (!canRenderNotebookFor(lifecycle.state)) return@onEdt
-                        showContent(MarimoErrorPanel(model, ::onErrorAction))
+                        showContent(ErrorPanel(model, ::onErrorAction))
                     }
                 }
             },
@@ -321,12 +324,12 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
                             )
                     }
                     val model =
-                        MarimoErrorModel.of(
-                            MarimoFailure.ServerStopped(state.cause),
+                        ErrorModel.of(
+                            Failure.ServerStopped(state.cause),
                             MarimoPresence.Unknown,
                             uvAvailable = false,
                         )
-                    showContent(MarimoErrorPanel(model, ::onErrorAction))
+                    showContent(ErrorPanel(model, ::onErrorAction))
                 }
             else -> Unit
         }
@@ -338,48 +341,29 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
     private fun showServerError(navigation: Long, err: Throwable?) {
         thisLogger().warn("marimo failed to start for ${file.name}", err)
         ApplicationManager.getApplication().executeOnPooledThread {
-            val probe = project.service<MarimoEnvProbe>()
-            probe.invalidate()
-            val presence = probe.probe(file)
-            val uvAvailable = UvLauncher.findUv() != null
-            val reason =
-                when {
-                    presence is MarimoPresence.Unknown -> "no_interpreter"
-                    presence is MarimoPresence.Missing -> "marimo_missing"
-                    !uvAvailable -> "uv_missing"
-                    else -> "other"
-                }
-            MarimoTelemetry.getInstance().capture(TelemetryEvent.NotebookLaunchFailed(reason))
-            MarimoTelemetry.getInstance()
-                .captureException(err ?: RuntimeException("marimo failed to start"))
-            val model =
-                MarimoErrorModel.of(
-                    MarimoFailure.ServerNotStarted(err),
-                    presence,
-                    uvAvailable = uvAvailable,
-                )
+            val model = FailureDiagnostics.diagnose(project, file, err)
             onEdt(navigation) {
                 if (lifecycle.state is MarimoNotebookState.Stopped) return@onEdt
-                showContent(MarimoErrorPanel(model, ::onErrorAction))
+                showContent(ErrorPanel(model, ::onErrorAction))
             }
         }
     }
 
-    private fun onErrorAction(action: MarimoErrorAction) {
+    private fun onErrorAction(action: ErrorAction) {
         when (action) {
-            MarimoErrorAction.RETRY -> relaunch()
-            MarimoErrorAction.INSTALL -> {
+            ErrorAction.RETRY -> relaunch()
+            ErrorAction.INSTALL -> {
                 project.service<MarimoInstaller>().installMarimo(file)
                 relaunch()
             }
-            MarimoErrorAction.START_IN_SANDBOX -> {
+            ErrorAction.START_IN_SANDBOX -> {
                 sessionManager.enableSandbox(file)
                 relaunch()
             }
-            MarimoErrorAction.OPEN_AS_PYTHON ->
+            ErrorAction.OPEN_AS_PYTHON ->
                 FileEditorManager.getInstance(project)
                     .setSelectedEditor(file, MARIMO_SOURCE_EDITOR_TYPE)
-            MarimoErrorAction.CLOSE -> FileEditorManager.getInstance(project).closeFile(file)
+            ErrorAction.CLOSE -> FileEditorManager.getInstance(project).closeFile(file)
         }
     }
 

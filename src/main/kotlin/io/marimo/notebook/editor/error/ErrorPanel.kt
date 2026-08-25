@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.error
 
 import com.intellij.icons.AllIcons
 import com.intellij.ui.components.JBLabel
@@ -17,9 +17,9 @@ import javax.swing.JPanel
  * URL to render, so this offers themeable, actionable buttons instead of a raw browser error page.
  * The panel is presentation only: the editor supplies each action's behaviour through [onAction].
  */
-class MarimoErrorPanel(
-    model: MarimoErrorModel,
-    onAction: (MarimoErrorAction) -> Unit,
+class ErrorPanel(
+    model: ErrorModel,
+    onAction: (ErrorAction) -> Unit,
 ) : JPanel(GridBagLayout()) {
 
     init {
@@ -49,9 +49,9 @@ class MarimoErrorPanel(
     }
 
     private fun buttonRow(
-        actions: List<MarimoErrorAction>,
+        actions: List<ErrorAction>,
         sandboxEnabled: Boolean,
-        onAction: (MarimoErrorAction) -> Unit,
+        onAction: (ErrorAction) -> Unit,
     ): JPanel =
         JPanel(FlowLayout(FlowLayout.CENTER, JBUI.scale(8), 0)).apply {
             isOpaque = false
@@ -59,7 +59,7 @@ class MarimoErrorPanel(
                 add(
                     JButton(label(action)).apply {
                         addActionListener { onAction(action) }
-                        if (action == MarimoErrorAction.START_IN_SANDBOX && !sandboxEnabled) {
+                        if (action == ErrorAction.START_IN_SANDBOX && !sandboxEnabled) {
                             isEnabled = false
                             toolTipText = SANDBOX_NEEDS_UV
                         }
@@ -71,13 +71,13 @@ class MarimoErrorPanel(
     private fun html(text: String): String =
         "<html><div style='text-align:center;width:${JBUI.scale(360)}px'>$text</div></html>"
 
-    private fun label(action: MarimoErrorAction): String =
+    private fun label(action: ErrorAction): String =
         when (action) {
-            MarimoErrorAction.RETRY -> "Retry"
-            MarimoErrorAction.INSTALL -> "Install marimo"
-            MarimoErrorAction.START_IN_SANDBOX -> "Start in Sandbox"
-            MarimoErrorAction.OPEN_AS_PYTHON -> "Open as Python File"
-            MarimoErrorAction.CLOSE -> "Close Tab"
+            ErrorAction.RETRY -> "Retry"
+            ErrorAction.INSTALL -> "Install marimo"
+            ErrorAction.START_IN_SANDBOX -> "Start in Sandbox"
+            ErrorAction.OPEN_AS_PYTHON -> "Open as Python File"
+            ErrorAction.CLOSE -> "Close Tab"
         }
 
     companion object {
