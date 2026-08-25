@@ -37,7 +37,6 @@ import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.redactAccessTokens
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.PageConfigReader
-import io.marimo.notebook.session.environment.MarimoInstaller
 import io.marimo.notebook.session.environment.MarimoPresence
 import io.marimo.notebook.telemetry.MarimoConsentPrompt
 import io.marimo.notebook.telemetry.MarimoTelemetry
@@ -353,7 +352,7 @@ class MarimoNotebookView(private val project: Project, private val file: Virtual
         when (action) {
             ErrorAction.RETRY -> relaunch()
             ErrorAction.INSTALL -> {
-                project.service<MarimoInstaller>().installMarimo(file)
+                FailureDiagnostics.installMarimo(project, file)
                 relaunch()
             }
             ErrorAction.START_IN_SANDBOX -> {

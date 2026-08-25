@@ -7,6 +7,7 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.session.environment.MarimoEnvProbe
+import io.marimo.notebook.session.environment.MarimoInstaller
 import io.marimo.notebook.session.environment.MarimoPresence
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
@@ -38,4 +39,11 @@ object FailureDiagnostics {
             uvAvailable = uvAvailable,
         )
     }
+
+    /**
+     * Installs marimo on [file]'s interpreter via the project installer. Call on the EDT; the
+     * install runs in modal progress.
+     */
+    fun installMarimo(project: Project, file: VirtualFile): MarimoPresence =
+        project.service<MarimoInstaller>().installMarimo(file)
 }
