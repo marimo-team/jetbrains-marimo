@@ -4,6 +4,7 @@ package io.marimo.notebook.editor
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.editor.view.NotebookViewRegistry
@@ -80,6 +81,37 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
             "closing the final tab must arm the background TTL",
             service.peek(file)!!.expiresAtMillis,
         )
+    }
+
+    fun testDeletedNotebookMakesEditorInvalid() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("deleted_nb.py", "import marimo\n").virtualFile
+        val editor = editor(file)
+
+        assertTrue(editor.isValid)
+
+        ApplicationManager.getApplication().runWriteAction { file.delete(this) }
+
+        assertFalse("deleted notebook must invalidate its editor", editor.isValid)
+    }
+
+    fun testDeletedNotebookFiresValidPropertyChange() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("deleted_prop_nb.py", "import marimo\n").virtualFile
+        val editor = editor(file)
+        var validAfterDelete: Boolean? = null
+        editor.addPropertyChangeListener { event ->
+            if (event.propertyName == FileEditor.getPropValid()) {
+                validAfterDelete = event.newValue as Boolean
+            }
+        }
+
+        ApplicationManager.getApplication().runWriteAction { file.delete(this) }
+
+        assertFalse(editor.isValid)
+        assertEquals(false, validAfterDelete)
     }
 
     fun testRenamedEditorDetachesTheSession() {

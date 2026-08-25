@@ -9,6 +9,10 @@ import com.intellij.openapi.project.Project
 import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.util.UserDataHolderBase
 import com.intellij.openapi.vfs.VirtualFile
+import com.intellij.openapi.vfs.VirtualFileManager
+import com.intellij.openapi.vfs.newvfs.BulkFileListener
+import com.intellij.openapi.vfs.newvfs.events.VFileDeleteEvent
+import com.intellij.openapi.vfs.newvfs.events.VFileEvent
 import io.marimo.notebook.editor.view.NotebookEditorView
 import io.marimo.notebook.editor.view.NotebookViewRegistry
 import io.marimo.notebook.editor.view.SecondaryNotebookView
@@ -31,6 +35,22 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     private val lease: NotebookSessionLease = sessionManager.acquire(file, LeaseOwner.EDITOR_TAB)
     private val view: NotebookEditorView = viewRegistry.viewFor(lease)
     private val propertyChangeSupport = PropertyChangeSupport(this)
+    private val vfsConnection = project.messageBus.connect()
+    private var disposed = false
+    private var valid = true
+
+    init {
+        vfsConnection.subscribe(
+            VirtualFileManager.VFS_CHANGES,
+            object : BulkFileListener {
+                override fun after(events: List<VFileEvent>) {
+                    if (events.any { it is VFileDeleteEvent && it.file == file }) {
+                        notifyValidityChanged()
+                    }
+                }
+            },
+        )
+    }
 
     /**
      * Re-launch this notebook, picking up any launch-mode change (e.g. a newly requested sandbox).
@@ -56,7 +76,14 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
 
     override fun isModified(): Boolean = false
 
-    override fun isValid(): Boolean = true
+    override fun isValid(): Boolean = !disposed && file.isValid
+
+    private fun notifyValidityChanged() {
+        if (valid && !isValid) {
+            valid = false
+            propertyChangeSupport.firePropertyChange(FileEditor.getPropValid(), true, false)
+        }
+    }
 
     override fun getFile(): VirtualFile = file
 
@@ -71,6 +98,10 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
      * tab move or quick reopen returns to the same live notebook.
      */
     override fun dispose() {
+        if (disposed) return
+        disposed = true
+        vfsConnection.disconnect()
+        notifyValidityChanged()
         viewRegistry.releaseView(lease, view)
         if (view is SecondaryNotebookView) Disposer.dispose(view)
         lease.close()
