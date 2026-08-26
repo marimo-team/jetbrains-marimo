@@ -16,6 +16,12 @@ internal class BoundedProcessOutput(
     fun append(text: String) {
         if (text.isEmpty()) return
         synchronized(buffer) {
+            val maxStored = capacityChars + markerOverlapChars
+            if (text.length >= maxStored) {
+                buffer.setLength(0)
+                buffer.append(text, text.length - maxStored, text.length)
+                return
+            }
             buffer.append(text)
             trimIfNeeded()
         }

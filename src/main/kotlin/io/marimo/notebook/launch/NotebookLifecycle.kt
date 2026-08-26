@@ -148,7 +148,8 @@ class NotebookLifecycle : Disposable {
                 is MarimoNotebookState.Stopped,
                 is MarimoNotebookState.Failed -> null
                 else ->
-                    if (exitCode == 0) MarimoNotebookState.Stopped(StopCause.Deliberate)
+                    if (exitCode == 0 && state is MarimoNotebookState.Running)
+                        MarimoNotebookState.Stopped(StopCause.Deliberate)
                     else MarimoNotebookState.Stopped(StopCause.Unexpected(exitCode, outputTail))
             }
         }

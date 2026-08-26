@@ -57,6 +57,20 @@ class NotebookLifecycleTest {
     }
 
     @Test
+    fun cleanProcessExitBeforeReadinessIsUnexpected() {
+        val l = lifecycle()
+        val handle = ScriptedMarimoServerHandle()
+        l.attach(handle)
+
+        handle.fireTerminated(exitCode = 0, tail = "startup ended")
+
+        assertEquals(
+            MarimoNotebookState.Stopped(StopCause.Unexpected(0, "startup ended")),
+            l.state,
+        )
+    }
+
+    @Test
     fun processExitWithoutCleanCodeIsUnexpected() {
         val (l, handle) = runningLifecycle()
         handle.fireTerminated(exitCode = 137, tail = "Killed")

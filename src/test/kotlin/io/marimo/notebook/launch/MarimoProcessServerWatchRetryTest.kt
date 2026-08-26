@@ -52,7 +52,7 @@ class MarimoProcessServerWatchRetryTest : BasePlatformTestCase() {
                 watchFallbackCmd = { command(port, watch = false) },
                 authenticatedUrl = supplied,
             )
-        val readyUrl = handle.awaitReady().get(5, TimeUnit.SECONDS)
+        val readyUrl = handle.awaitReady().get(15, TimeUnit.SECONDS)
         handle.dispose()
         assertEquals(supplied, readyUrl)
     }

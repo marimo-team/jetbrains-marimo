@@ -21,6 +21,21 @@ import java.util.concurrent.CompletableFuture
 internal fun indicatesUnsupportedWatch(output: String): Boolean =
     output.contains("No such option") && output.contains("watch")
 
+/** Remembers an unsupported-watch marker even after later process output drops it from the tail. */
+internal class UnsupportedWatchDetector {
+    private val recent = BoundedProcessOutput(capacityChars = 256, markerOverlapChars = 64)
+
+    var detected: Boolean = false
+        private set
+
+    fun append(text: String) {
+        if (detected || text.isEmpty()) return
+        val combined = recent.snapshot() + text
+        detected = indicatesUnsupportedWatch(combined)
+        recent.append(text)
+    }
+}
+
 /** Redacts complete process output before it is retained in a user-visible diagnostic. */
 internal fun diagnosticOutputTail(text: String): String =
     redactAccessTokens(text).trim().takeLast(500)
@@ -118,6 +133,7 @@ private class ProcessMarimoServerHandle(
     private fun runAttempt(command: GeneralCommandLine, fallback: (() -> GeneralCommandLine)?) {
         val processHandler = OSProcessHandler(command)
         val output = BoundedProcessOutput()
+        val unsupportedWatch = UnsupportedWatchDetector()
 
         synchronized(supervisorLock) {
             if (disposed) {
@@ -131,6 +147,7 @@ private class ProcessMarimoServerHandle(
             object : ProcessListener {
                 override fun onTextAvailable(event: ProcessEvent, outputType: Key<*>) {
                     output.append(event.text)
+                    unsupportedWatch.append(event.text)
                 }
 
                 override fun processTerminated(event: ProcessEvent) {
@@ -142,7 +159,7 @@ private class ProcessMarimoServerHandle(
                         return
                     }
 
-                    if (fallback != null && indicatesUnsupportedWatch(full)) {
+                    if (fallback != null && unsupportedWatch.detected) {
                         val fallbackCommand =
                             try {
                                 fallback()

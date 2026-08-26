@@ -3,8 +3,10 @@
 package io.marimo.notebook.launch
 
 import java.io.IOException
+import java.io.InputStreamReader
 import java.net.HttpURLConnection
 import java.net.URI
+import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
 
@@ -23,22 +25,27 @@ internal object ReadinessProbe {
         timeoutSeconds: Long,
     ) {
         Thread {
-            val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
-            while (!ready.isDone && System.nanoTime() < deadlineNanos) {
-                val remainingNanos = deadlineNanos - System.nanoTime()
-                if (remainingNanos <= 0) break
-                val attemptTimeoutMs =
-                    TimeUnit.NANOSECONDS.toMillis(remainingNanos).coerceAtLeast(1)
-                val body = fetchPageBody(probeUrl, attemptTimeoutMs.toInt())
-                if (body != null && looksLikeMarimoPage(body)) {
-                    ready.complete(null)
-                    return@Thread
+            try {
+                val deadlineNanos = System.nanoTime() + TimeUnit.SECONDS.toNanos(timeoutSeconds)
+                while (!ready.isDone && System.nanoTime() < deadlineNanos) {
+                    val remainingNanos = deadlineNanos - System.nanoTime()
+                    if (remainingNanos <= 0) break
+                    val attemptTimeoutMs =
+                        TimeUnit.NANOSECONDS.toMillis(remainingNanos).coerceAtLeast(1)
+                    val body = fetchPageBody(probeUrl, attemptTimeoutMs.toInt())
+                    if (body != null && looksLikeMarimoPage(body)) {
+                        ready.complete(null)
+                        return@Thread
+                    }
+                    val sleepMs = minOf(POLL_INTERVAL_MS, attemptTimeoutMs)
+                    if (sleepMs > 0) Thread.sleep(sleepMs)
                 }
-                val sleepMs = minOf(POLL_INTERVAL_MS, attemptTimeoutMs)
-                if (sleepMs > 0) Thread.sleep(sleepMs)
-            }
-            if (!ready.isDone) {
-                ready.completeExceptionally(IOException(readinessFailureMessage(probeUrl)))
+            } catch (_: Exception) {
+                // The sanitized failure below also covers malformed URLs and interrupted probes.
+            } finally {
+                if (!ready.isDone) {
+                    ready.completeExceptionally(IOException(readinessFailureMessage(probeUrl)))
+                }
             }
         }
             .apply { isDaemon = true }
@@ -59,7 +66,9 @@ internal object ReadinessProbe {
             val scheme = uri.scheme ?: return redactAccessTokens(probeUrl)
             val host = uri.host ?: return redactAccessTokens(probeUrl)
             if (scheme != "http" && scheme != "https") return redactAccessTokens(probeUrl)
-            if (uri.port == -1) "$scheme://$host" else "$scheme://$host:${uri.port}"
+            val bareHost = host.removeSurrounding("[", "]")
+            val urlHost = if (bareHost.contains(':')) "[$bareHost]" else bareHost
+            if (uri.port == -1) "$scheme://$urlHost" else "$scheme://$urlHost:${uri.port}"
         } catch (_: Exception) {
             redactAccessTokens(probeUrl)
         }
@@ -69,26 +78,44 @@ internal object ReadinessProbe {
      * read from [HttpURLConnection.getErrorStream] without HttpRequests' automatic status
      * exceptions.
      */
-    private fun fetchPageBody(probeUrl: String, attemptTimeoutMs: Int): String? =
-        try {
+    private fun fetchPageBody(probeUrl: String, attemptTimeoutMs: Int): String? {
+        return try {
             val connection =
                 (URI(probeUrl).toURL().openConnection() as HttpURLConnection).apply {
                     connectTimeout = attemptTimeoutMs
                     readTimeout = attemptTimeoutMs
+                    instanceFollowRedirects = false
                 }
             try {
+                val status = connection.responseCode
+                if (status in 300..399) return null
                 val stream =
-                    when (connection.responseCode) {
+                    when (status) {
                         in 200..299 -> connection.inputStream
                         else -> connection.errorStream ?: connection.inputStream
                     }
-                stream?.bufferedReader()?.use { it.readText() }
+                stream?.let { body ->
+                    InputStreamReader(body, StandardCharsets.UTF_8).use { reader ->
+                        val result = StringBuilder()
+                        val chars = CharArray(READ_BUFFER_CHARS)
+                        while (result.length < MAX_RESPONSE_CHARS) {
+                            val remaining = MAX_RESPONSE_CHARS - result.length
+                            val count = reader.read(chars, 0, minOf(chars.size, remaining))
+                            if (count < 0) break
+                            result.append(chars, 0, count)
+                        }
+                        result.toString()
+                    }
+                }
             } finally {
                 connection.disconnect()
             }
         } catch (_: IOException) {
             null
         }
+    }
 
     private const val POLL_INTERVAL_MS = 200L
+    private const val MAX_RESPONSE_CHARS = 64 * 1024
+    private const val READ_BUFFER_CHARS = 4 * 1024
 }
