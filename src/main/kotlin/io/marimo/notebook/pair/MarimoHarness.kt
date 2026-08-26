@@ -53,14 +53,17 @@ enum class MarimoHarness(
 
     /**
      * Terminal command that starts this harness with the marimo-pair prompt. [cliPrefix] are the
-     * tokens that invoke the marimo CLI (e.g. uv run ... marimo).
+     * tokens that invoke the marimo CLI (e.g. uv run ... marimo). The string is POSIX `sh`, because
+     * the IDE terminal only accepts a command string.
      */
     fun terminalCommand(cliPrefix: List<String>, url: String): String {
         val promptTokens =
             cliPrefix +
-                listOf("pair", "prompt", "--url", "'$url'") +
+                listOf("pair", "prompt", "--url", url) +
                 (agentFlag?.let { listOf(it) } ?: emptyList())
-        return "$id \"\$(${promptTokens.joinToString(" ")})\""
+        val prompt =
+            TerminalCommandBuilder.posixShellString(promptTokens.first(), promptTokens.drop(1))
+        return "${TerminalCommandBuilder.quote(id)} \"\$($prompt)\""
     }
 
     companion object {
