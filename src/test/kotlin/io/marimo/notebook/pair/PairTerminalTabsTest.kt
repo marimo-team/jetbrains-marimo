@@ -10,34 +10,65 @@ import org.junit.Test
 class PairTerminalTabsTest {
     @Test
     fun launchesFreshWhenNoTabMatchesNotebook() {
-        val tabs = listOf(Tab("/a/nb.py", alive = true))
-        assertEquals(Action.Launch(closeIndex = null), PairTerminalTabs.resolve(tabs, "/b/nb.py"))
+        val tabs = listOf(Tab("/a/nb.py", "claude", alive = true))
+        assertEquals(
+            Action.Launch(closeIndex = null),
+            PairTerminalTabs.resolve(tabs, "/b/nb.py", "claude"),
+        )
     }
 
     @Test
-    fun focusesLiveSessionForSameNotebook() {
-        val tabs = listOf(Tab("/a/nb.py", alive = true), Tab("/b/nb.py", alive = true))
-        assertEquals(Action.Focus(index = 1), PairTerminalTabs.resolve(tabs, "/b/nb.py"))
+    fun focusesLiveSessionForSameNotebookAndHarness() {
+        val tabs =
+            listOf(
+                Tab("/a/nb.py", "claude", alive = true),
+                Tab("/b/nb.py", "claude", alive = true),
+            )
+        assertEquals(Action.Focus(index = 1), PairTerminalTabs.resolve(tabs, "/b/nb.py", "claude"))
     }
 
     @Test
-    fun relaunchesAfterClosingExitedSession() {
-        val tabs = listOf(Tab("/a/nb.py", alive = false))
-        assertEquals(Action.Launch(closeIndex = 0), PairTerminalTabs.resolve(tabs, "/a/nb.py"))
+    fun liveClaudeTabDoesNotCaptureACodexRequest() {
+        val tabs = listOf(Tab("/a/nb.py", "claude", alive = true))
+        assertEquals(
+            Action.Launch(closeIndex = null),
+            PairTerminalTabs.resolve(tabs, "/a/nb.py", "codex"),
+        )
+    }
+
+    @Test
+    fun relaunchesAfterClosingExitedSessionForTheSameHarness() {
+        val tabs =
+            listOf(
+                Tab("/a/nb.py", "claude", alive = true),
+                Tab("/a/nb.py", "codex", alive = false),
+            )
+        assertEquals(
+            Action.Launch(closeIndex = 1),
+            PairTerminalTabs.resolve(tabs, "/a/nb.py", "codex"),
+        )
     }
 
     @Test
     fun sameFileNameInDifferentDirectoriesDoesNotCollide() {
-        val tabs = listOf(Tab("/a/stocks.py", alive = true))
+        val tabs = listOf(Tab("/a/stocks.py", "claude", alive = true))
         assertEquals(
             Action.Launch(closeIndex = null),
-            PairTerminalTabs.resolve(tabs, "/b/stocks.py"),
+            PairTerminalTabs.resolve(tabs, "/b/stocks.py", "claude"),
         )
     }
 
     @Test
     fun ignoresUntaggedTabs() {
-        val tabs = listOf(Tab(null, alive = true))
-        assertEquals(Action.Launch(closeIndex = null), PairTerminalTabs.resolve(tabs, "/a/nb.py"))
+        val tabs = listOf(Tab(null, null, alive = true))
+        assertEquals(
+            Action.Launch(closeIndex = null),
+            PairTerminalTabs.resolve(tabs, "/a/nb.py", "claude"),
+        )
+    }
+
+    @Test
+    fun contentKeyIsNotebookPathAndHarnessId() {
+        assertEquals("/a/nb.py" to "codex", PairTerminalTabs.contentKey("/a/nb.py", "codex"))
     }
 }
