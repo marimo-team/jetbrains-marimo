@@ -33,21 +33,21 @@ object MarimoPairLauncher {
 
         val manager = TerminalToolWindowManager.getInstance(project)
         val contentManager = manager.toolWindow?.contentManager
-        if (reuseExistingTerminal(manager, contentManager, file)) {
+        if (reuseExistingTerminal(manager, contentManager, file, harness)) {
             MarimoTelemetry.getInstance()
                 .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
             return
         }
 
         MarimoPairSession.resolveTerminal(project, file) { url, prefix, closeLease ->
-            if (reuseExistingTerminal(manager, manager.toolWindow?.contentManager, file)) {
+            if (reuseExistingTerminal(manager, manager.toolWindow?.contentManager, file, harness)) {
                 closeLease()
                 MarimoTelemetry.getInstance()
                     .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
                 return@resolveTerminal
             }
             val command = harness.terminalCommand(prefix, url)
-            if (openTab(project, manager, file, harness.tabTitle(file.name), command, closeLease)) {
+            if (openTab(project, manager, file, harness, command, closeLease)) {
                 MarimoTelemetry.getInstance()
                     .capture(TelemetryEvent.PairStarted(method = "terminal", harness = harness.id))
             }
@@ -56,20 +56,24 @@ object MarimoPairLauncher {
 
     /**
      * Opens the pair terminal for [harness] on [file]. A repeated launch reuses the live session
-     * for the same notebook (matched by file path, not tab title, so notebooks sharing a file name
-     * keep separate sessions) and replaces a tab whose shell has already exited.
+     * for the same notebook and harness (matched by path and harness id, not tab title) and
+     * replaces a tab whose shell has already exited.
      */
     private fun reuseExistingTerminal(
         manager: TerminalToolWindowManager,
         contentManager: ContentManager?,
         file: VirtualFile,
+        harness: MarimoHarness,
     ): Boolean {
         val contents = contentManager?.contents?.toList().orEmpty()
         val tabs = contents.map {
-            PairTerminalTabs.Tab(it.getUserData(PairTerminalTabs.NOTEBOOK_KEY), isSessionAlive(it))
+            PairTerminalTabs.Tab(
+                it.getUserData(PairTerminalTabs.IDENTITY_KEY),
+                isSessionAlive(it),
+            )
         }
 
-        return when (val action = PairTerminalTabs.resolve(tabs, file.path)) {
+        return when (val action = PairTerminalTabs.resolve(tabs, file.path, harness.id)) {
             is PairTerminalTabs.Action.Focus -> {
                 contentManager?.setSelectedContent(contents[action.index])
                 manager.toolWindow?.activate(null)
@@ -86,7 +90,7 @@ object MarimoPairLauncher {
         project: Project,
         manager: TerminalToolWindowManager,
         file: VirtualFile,
-        title: String,
+        harness: MarimoHarness,
         command: String,
         closeLease: () -> Unit,
     ): Boolean {
@@ -95,7 +99,7 @@ object MarimoPairLauncher {
             val runner = LocalTerminalDirectRunner.createTerminalRunner(project)
             val tabState =
                 TerminalTabState().apply {
-                    myTabName = title
+                    myTabName = harness.tabTitle(file.name)
                     myWorkingDirectory = workDir
                 }
             // A null content manager lets the platform resolve — and lazily create — the terminal
@@ -107,7 +111,10 @@ object MarimoPairLauncher {
                 closeLease()
                 return false
             }
-            content.putUserData(PairTerminalTabs.NOTEBOOK_KEY, file.path)
+            content.putUserData(
+                PairTerminalTabs.IDENTITY_KEY,
+                PairTerminalTabs.Identity(file.path, harness.id),
+            )
             Disposer.register(content) { closeLease() }
             widget.addTerminationCallback(closeLease, content)
             widget.sendCommandToExecute(command)

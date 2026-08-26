@@ -12,7 +12,7 @@ class MarimoHarnessTest {
     @Test
     fun claudeWrapsPairPromptWithClaudeFlag() {
         assertEquals(
-            "claude \"\$(/usr/bin/uv run --with marimo marimo pair prompt --url 'http://127.0.0.1:2718' --claude)\"",
+            "'claude' \"\$('/usr/bin/uv' 'run' '--with' 'marimo' 'marimo' 'pair' 'prompt' '--url' 'http://127.0.0.1:2718' '--claude')\"",
             MarimoHarness.CLAUDE.terminalCommand(prefix, url),
         )
     }
@@ -20,7 +20,7 @@ class MarimoHarnessTest {
     @Test
     fun codexWrapsPairPromptWithCodexFlag() {
         assertEquals(
-            "codex \"\$(/usr/bin/uv run --with marimo marimo pair prompt --url 'http://127.0.0.1:2718' --codex)\"",
+            "'codex' \"\$('/usr/bin/uv' 'run' '--with' 'marimo' 'marimo' 'pair' 'prompt' '--url' 'http://127.0.0.1:2718' '--codex')\"",
             MarimoHarness.CODEX.terminalCommand(prefix, url),
         )
     }
@@ -28,7 +28,7 @@ class MarimoHarnessTest {
     @Test
     fun opencodeWrapsPairPromptWithOpencodeFlag() {
         assertEquals(
-            "opencode \"\$(/usr/bin/uv run --with marimo marimo pair prompt --url 'http://127.0.0.1:2718' --opencode)\"",
+            "'opencode' \"\$('/usr/bin/uv' 'run' '--with' 'marimo' 'marimo' 'pair' 'prompt' '--url' 'http://127.0.0.1:2718' '--opencode')\"",
             MarimoHarness.OPENCODE.terminalCommand(prefix, url),
         )
     }
@@ -44,7 +44,7 @@ class MarimoHarnessTest {
     @Test
     fun sdkPrefixIsHonored() {
         assertEquals(
-            "opencode \"\$(/opt/py -m marimo pair prompt --url 'http://127.0.0.1:2718' --opencode)\"",
+            "'opencode' \"\$('/opt/py' '-m' 'marimo' 'pair' 'prompt' '--url' 'http://127.0.0.1:2718' '--opencode')\"",
             MarimoHarness.OPENCODE.terminalCommand(listOf("/opt/py", "-m", "marimo"), url),
         )
     }
