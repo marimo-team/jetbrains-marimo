@@ -4,10 +4,6 @@ package io.marimo.notebook.telemetry.transport
 
 import io.sentry.SentryEvent
 
-/**
- * Exact-package origin filter and `beforeSend` scrub for crash reports. Foreign throwables are
- * dropped; plugin events have hostname cleared.
- */
 internal object SentryEventSanitizer {
     private const val MARIMO_PACKAGE = "io.marimo.notebook"
 

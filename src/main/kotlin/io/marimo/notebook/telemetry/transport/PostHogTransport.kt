@@ -7,7 +7,6 @@ import com.posthog.server.PostHogConfig
 import com.posthog.server.PostHogInterface
 import io.marimo.notebook.telemetry.PostHogSink
 
-/** PostHog client behind the usage-event [PostHogSink] seam. */
 internal class PostHogTransport(apiKey: String, host: String) : PostHogSink {
     private val client: PostHogInterface = PostHog.with(PostHogConfig(apiKey, host))
 

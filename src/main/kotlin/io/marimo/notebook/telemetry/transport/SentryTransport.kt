@@ -33,7 +33,6 @@ internal fun configureSentryOptions(
     }
 }
 
-/** Sentry client behind the crash-report [SentrySink] seam. */
 internal class SentryTransport(
     dsn: String,
     release: String,
