@@ -29,7 +29,7 @@ class PostHogTransportBodyTest {
         val server = HttpServer.create(InetSocketAddress("127.0.0.1", 0), 0)
         server.executor = executor
         server.createContext("/") { exchange ->
-            val body = decodeBody(exchange.requestBody.readBytes())
+            val body = exchange.requestBody.use { decodeBody(it.readBytes()) }
             if (exchange.requestMethod == "POST" && exchange.requestURI.path.contains("batch")) {
                 bodies += body
                 received.countDown()
