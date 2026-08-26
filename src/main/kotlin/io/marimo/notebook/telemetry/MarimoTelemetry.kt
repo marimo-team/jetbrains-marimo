@@ -10,12 +10,9 @@ import com.intellij.openapi.components.PersistentStateComponent
 import com.intellij.openapi.components.Service
 import com.intellij.openapi.components.State
 import com.intellij.openapi.components.Storage
-import com.posthog.server.PostHog
-import com.posthog.server.PostHogConfig
-import com.posthog.server.PostHogInterface
-import io.sentry.Sentry
-import io.sentry.SentryOptions
-import io.sentry.protocol.User
+import io.marimo.notebook.telemetry.transport.liveTelemetryEnabled
+import io.marimo.notebook.telemetry.transport.postHogSink
+import io.marimo.notebook.telemetry.transport.sentrySink
 import java.util.Properties
 import java.util.UUID
 
@@ -50,39 +47,6 @@ interface SentrySink {
     fun endSession()
 
     fun close()
-}
-
-internal fun createSentryOptions(
-    dsn: String,
-    release: String,
-    environment: String,
-): SentryOptions = SentryOptions().also { configureSentryOptions(it, dsn, release, environment) }
-
-private fun configureSentryOptions(
-    options: SentryOptions,
-    dsn: String,
-    release: String,
-    environment: String,
-) {
-    options.apply {
-        this.dsn = dsn
-        this.release = release
-        this.environment = environment
-        isAttachServerName = false
-        isSendDefaultPii = false
-        isEnableUncaughtExceptionHandler = false
-        // Sessions are driven from the consent lifecycle (allow/revoke/dispose), not the SDK's
-        // process hooks, so a session maps to one consented run rather than JVM start.
-        isEnableAutoSessionTracking = false
-        setBeforeSend { event, _ ->
-            if (SentryOriginFilter.isMarimoOrigin(event.throwable)) {
-                event.serverName = null
-                event
-            } else {
-                null
-            }
-        }
-    }
 }
 
 @Service(Service.Level.APP)
@@ -172,7 +136,7 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     /**
      * Builds both transports on first use and opens exactly one release-health session for the
      * consented run. Returns the live Sentry sink, or null when Sentry is disabled (placeholder
-     * DSN).
+     * DSN). Development builds use no-op sinks unless the artifact was built with live telemetry.
      */
     @Synchronized
     private fun ensureStarted(): SentrySink? {
@@ -220,12 +184,22 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         sentry?.close()
     }
 
-    private fun buildSink(): PostHogSink = RealPostHogSink()
+    private fun buildSink(): PostHogSink =
+        postHogSink(LIVE_TELEMETRY, POSTHOG_API_KEY, POSTHOG_HOST)
 
     // An unset DSN means no crash reporting. Usage events are unaffected. Skipping the transport
     // keeps such a build from crashing on Sentry.init's DSN validation.
     private fun buildSentrySink(): SentrySink? =
-        if (SENTRY_DSN.startsWith("<")) null else RealSentrySink()
+        sentrySink(
+            live = LIVE_TELEMETRY,
+            dsn = SENTRY_DSN,
+            release = "$SENTRY_RELEASE_PREFIX@${pluginVersion()}",
+            environment = environment(),
+            ideName = ideName(),
+            ideVersion = ideVersion(),
+            pluginVersion = pluginVersion(),
+            anonymousId = anonymousId(),
+        )
 
     private fun pluginVersion(): String = PLUGIN_VERSION
 
@@ -256,54 +230,6 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     fun withSentrySinkForTest(sink: SentrySink): MarimoTelemetry {
         this.sentrySink = sink
         return this
-    }
-
-    private class RealPostHogSink : PostHogSink {
-        private val client: PostHogInterface =
-            PostHog.with(PostHogConfig(POSTHOG_API_KEY, POSTHOG_HOST))
-
-        override fun capture(distinctId: String, event: String, properties: Map<String, Any>) {
-            client.capture(distinctId = distinctId, event = event, properties = properties)
-        }
-
-        override fun close() {
-            client.close()
-        }
-    }
-
-    private inner class RealSentrySink : SentrySink {
-        init {
-            Sentry.init { options ->
-                configureSentryOptions(
-                    options,
-                    dsn = SENTRY_DSN,
-                    release = "$SENTRY_RELEASE_PREFIX@${pluginVersion()}",
-                    environment = environment(),
-                )
-            }
-            Sentry.configureScope { scope ->
-                scope.setTag("ide_name", ideName())
-                scope.setTag("ide_version", ideVersion())
-                scope.setTag("plugin_version", pluginVersion())
-                scope.user = User().apply { id = anonymousId() }
-            }
-        }
-
-        override fun captureException(throwable: Throwable) {
-            Sentry.captureException(throwable)
-        }
-
-        override fun startSession() {
-            Sentry.startSession()
-        }
-
-        override fun endSession() {
-            Sentry.endSession()
-        }
-
-        override fun close() {
-            Sentry.close()
-        }
     }
 
     companion object {
@@ -340,6 +266,12 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
 
         private val PLUGIN_VERSION: String by lazy {
             telemetryConfig.getProperty("version")?.takeIf { it.isNotBlank() } ?: "unknown"
+        }
+
+        // Written at build time. Production artifacts set live=true; local and CI builds stay
+        // false unless -Ptelemetry.live=true.
+        private val LIVE_TELEMETRY: Boolean by lazy {
+            liveTelemetryEnabled(telemetryConfig.getProperty("live"))
         }
 
         fun getInstance(): MarimoTelemetry =
