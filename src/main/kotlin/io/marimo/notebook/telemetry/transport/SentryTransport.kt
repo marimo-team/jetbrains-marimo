@@ -2,7 +2,6 @@
 
 package io.marimo.notebook.telemetry.transport
 
-import io.marimo.notebook.telemetry.SentryOriginFilter
 import io.marimo.notebook.telemetry.SentrySink
 import io.sentry.Sentry
 import io.sentry.SentryOptions
@@ -30,14 +29,7 @@ internal fun configureSentryOptions(
         // Sessions are driven from the consent lifecycle (allow/revoke/dispose), not the SDK's
         // process hooks, so a session maps to one consented run rather than JVM start.
         isEnableAutoSessionTracking = false
-        setBeforeSend { event, _ ->
-            if (SentryOriginFilter.isMarimoOrigin(event.throwable)) {
-                event.serverName = null
-                event
-            } else {
-                null
-            }
-        }
+        setBeforeSend { event, _ -> SentryEventSanitizer.beforeSend(event) }
     }
 }
 

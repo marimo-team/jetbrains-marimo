@@ -22,7 +22,7 @@ class MarimoSentryOptionsTest {
     }
 
     @Test
-    fun beforeSendRemovesServerNameFromPluginEvents() {
+    fun wiresSanitizerAsBeforeSend() {
         val throwable =
             RuntimeException("boom").apply {
                 stackTrace =

@@ -35,7 +35,7 @@ interface PostHogSink {
 /**
  * The wire transport for crash reports. The real implementation talks to Sentry; tests inject a
  * recording fake so no network is touched. Foreign exceptions are dropped inside the real transport
- * via [SentryOriginFilter], so callers may hand off any throwable.
+ * sanitizer, so callers may hand off any throwable.
  */
 interface SentrySink {
     fun captureException(throwable: Throwable)
@@ -125,7 +125,7 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     /**
      * Reports [throwable] to Sentry only when consent is [Consent.ALLOWED]; otherwise a
      * network-free no-op. Exceptions that did not originate in plugin code are dropped by the
-     * transport's [SentryOriginFilter] `beforeSend` hook, so callers need not pre-filter.
+     * sanitizer `beforeSend` hook, so callers need not pre-filter.
      */
     fun captureException(throwable: Throwable) {
         if (consent != Consent.ALLOWED) return
