@@ -37,7 +37,7 @@ class NotebookViewRegistry(private val project: Project) : Disposable {
         while (true) {
             when (val current = mounts.get()) {
                 0 -> if (mounts.compareAndSet(0, 1)) return primary
-                else -> return SecondaryNotebookView(lease)
+                else -> return SecondaryNotebookView(project, lease)
             }
         }
     }

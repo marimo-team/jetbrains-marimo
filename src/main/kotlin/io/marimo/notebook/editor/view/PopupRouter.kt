@@ -92,18 +92,29 @@ internal class PopupRouter(
 
 private fun notebookPathFrom(url: String, expectedOrigin: String?): String? {
     if (!isTrustedFileLink(url, expectedOrigin)) return null
-    val query = url.substringAfter('?', "").substringBefore('#')
-    if (query.isEmpty()) return null
+    val query =
+        try {
+            URI(url).rawQuery
+        } catch (_: URISyntaxException) {
+            null
+        }
+    if (query.isNullOrEmpty()) return null
     val encoded =
         query.split('&').firstOrNull { it.startsWith("file=") }?.substringAfter('=', "")
             ?: return null
-    return URLDecoder.decode(encoded, StandardCharsets.UTF_8).ifBlank { null }
+    return try {
+        URLDecoder.decode(encoded, StandardCharsets.UTF_8).ifBlank { null }
+    } catch (_: IllegalArgumentException) {
+        null
+    }
 }
 
 private fun resolveTargetUrl(url: String, expectedOrigin: String): String =
     when {
         url.startsWith("//") -> {
-            val scheme = URI(expectedOrigin).scheme ?: return url
+            val scheme =
+                expectedOrigin.substringBefore(':').takeIf { it == "http" || it == "https" }
+                    ?: return url
             "$scheme:$url"
         }
         ABSOLUTE_URL.containsMatchIn(url) -> url
@@ -126,6 +137,6 @@ private fun isTrustedFileLink(url: String, expectedOrigin: String?): Boolean {
 private fun resolveAgainstOrigin(relativeUrl: String, expectedOrigin: String): String =
     try {
         URI(expectedOrigin).resolve(relativeUrl).toString()
-    } catch (_: URISyntaxException) {
+    } catch (_: Exception) {
         relativeUrl
     }

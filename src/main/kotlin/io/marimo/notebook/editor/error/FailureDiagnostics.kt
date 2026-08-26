@@ -6,6 +6,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
 import io.marimo.notebook.launch.UvLauncher
+import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.environment.MarimoEnvProbe
 import io.marimo.notebook.session.environment.MarimoInstaller
 import io.marimo.notebook.session.environment.MarimoPresence
@@ -19,9 +20,15 @@ object FailureDiagnostics {
      * probing may shell out to the interpreter.
      */
     fun diagnose(project: Project, file: VirtualFile, error: Throwable?): ErrorModel {
-        val probe = project.service<MarimoEnvProbe>()
-        probe.invalidate()
-        val presence = probe.probe(file)
+        val sandbox = project.service<NotebookSessionManager>().isSandbox(file)
+        val presence =
+            if (sandbox) {
+                MarimoPresence.Unknown
+            } else {
+                val probe = project.service<MarimoEnvProbe>()
+                probe.invalidate()
+                probe.probe(file)
+            }
         val uvAvailable = UvLauncher.findUv() != null
         val reason =
             when {
@@ -37,6 +44,7 @@ object FailureDiagnostics {
             Failure.ServerNotStarted(error),
             presence,
             uvAvailable = uvAvailable,
+            sandbox = sandbox,
         )
     }
 

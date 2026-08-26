@@ -13,7 +13,9 @@ import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
 import java.awt.BorderLayout
+import java.awt.Container
 import java.util.concurrent.TimeUnit
+import javax.swing.JLabel
 import javax.swing.JPanel
 
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
@@ -83,6 +85,21 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         )
     }
 
+    fun testSecondaryViewTracksStoppedSession() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("secondary_stop_nb.py", "import marimo\n").virtualFile
+        editor(file)
+        val secondary = editor(file)
+
+        service.stop(file)
+
+        assertTrue(
+            "the secondary split must replace stale notebook content after Stop",
+            labelsIn(secondary.component).any { it.contains("stopped") },
+        )
+    }
+
     fun testDeletedNotebookMakesEditorInvalid() {
         val service = project.service<NotebookSessionManager>()
         service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
@@ -112,6 +129,18 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
         assertFalse(editor.isValid)
         assertEquals(false, validAfterDelete)
+    }
+
+    fun testDeletingContainingDirectoryInvalidatesEditor() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file =
+            myFixture.addFileToProject("deleted_parent/notebook.py", "import marimo\n").virtualFile
+        val editor = editor(file)
+
+        ApplicationManager.getApplication().runWriteAction { file.parent.delete(this) }
+
+        assertFalse("deleting a notebook's parent must invalidate its editor", editor.isValid)
     }
 
     fun testRenamedEditorDetachesTheSession() {
@@ -165,4 +194,11 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
     private fun editor(file: com.intellij.openapi.vfs.VirtualFile): MarimoNotebookEditor =
         MarimoNotebookEditor(project, file).also(editors::add)
+
+    private fun labelsIn(component: java.awt.Component): List<String> = buildList {
+        if (component is JLabel) add(component.text)
+        if (component is Container) {
+            component.components.forEach { addAll(labelsIn(it)) }
+        }
+    }
 }

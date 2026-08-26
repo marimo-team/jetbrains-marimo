@@ -40,6 +40,12 @@ class PopupRouterTest {
     }
 
     @Test
+    fun doesNotReadFileParamFromFragment() {
+        val url = "http://127.0.0.1:5123/#cell?file=%2Ftmp%2Fa.py"
+        assertEquals(MarimoPopup.External(url), classifyMarimoPopup(url, origin))
+    }
+
+    @Test
     fun classifiesExternalUrlWithoutFileParam() {
         val popup = classifyMarimoPopup("https://docs.marimo.io/guides", origin)
         assertEquals(MarimoPopup.External("https://docs.marimo.io/guides"), popup)
@@ -82,8 +88,16 @@ class PopupRouterTest {
     @Test
     fun classifiesIpv6LoopbackFileDeepLinkAsNotebook() {
         val ipv6Origin = serverOrigin("http://[::1]:5123/")!!
+        assertEquals("http://[::1]:5123", ipv6Origin)
         val popup = classifyMarimoPopup("http://[::1]:5123/?file=%2Ftmp%2Fa.py", ipv6Origin)
         assertEquals(MarimoPopup.Notebook("/tmp/a.py"), popup)
+    }
+
+    @Test
+    fun classifiesProtocolRelativeIpv6DeepLinkAsNotebook() {
+        val ipv6Origin = "http://[::1]:5123"
+        val url = "//[::1]:5123/?file=%2Ftmp%2Fa.py"
+        assertEquals(MarimoPopup.Notebook("/tmp/a.py"), classifyMarimoPopup(url, ipv6Origin))
     }
 
     @Test

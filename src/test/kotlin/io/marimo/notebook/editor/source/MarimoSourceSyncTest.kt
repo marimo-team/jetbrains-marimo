@@ -6,8 +6,10 @@ import com.intellij.openapi.command.WriteCommandAction
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.util.io.FileUtil
 import com.intellij.openapi.vfs.LocalFileSystem
+import com.intellij.testFramework.PlatformTestUtil
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
+import java.util.concurrent.CompletableFuture
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
@@ -44,9 +46,34 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
 
         ioFile.writeText(updated)
 
-        refreshMarimoSourceFromDisk(file)
+        val refreshed = CompletableFuture<Boolean>()
+        refreshMarimoSourceFromDisk(file) { refreshed.complete(true) }
+        assertTrue(PlatformTestUtil.waitForFuture(refreshed, 5_000))
 
         assertEquals(updated, document.text)
+    }
+
+    fun testQueuedRefreshAfterPriorReloadStillReadsLatestDiskContent() {
+        val original = "import marimo\napp = marimo.App()\n"
+        val first = "$original# first autosave\n"
+        val second = "$original# second autosave\n"
+
+        ioFile = File(FileUtil.createTempDirectory("marimo-sync", null), "nb.py")
+        ioFile.writeText(original)
+        val file = LocalFileSystem.getInstance().refreshAndFindFileByIoFile(ioFile)!!
+        val document = FileDocumentManager.getInstance().getDocument(file)!!
+        ioFile.writeText(first)
+        val firstRefresh = CompletableFuture<Boolean>()
+        refreshMarimoSourceFromDisk(file) { firstRefresh.complete(true) }
+        assertTrue(PlatformTestUtil.waitForFuture(firstRefresh, 5_000))
+        assertEquals(first, document.text)
+
+        ioFile.writeText(second)
+        val secondRefresh = CompletableFuture<Boolean>()
+        refreshMarimoSourceFromDisk(file) { secondRefresh.complete(true) }
+        assertTrue(PlatformTestUtil.waitForFuture(secondRefresh, 5_000))
+
+        assertEquals(second, document.text)
     }
 
     /**
@@ -90,13 +117,12 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         assertEquals(original, document.text)
 
         ioFile.writeText(autosaved)
-        val modificationStamp = document.modificationStamp
         val refreshStarted = CountDownLatch(1)
         val allowRefresh = CountDownLatch(1)
         val refreshThread = Thread {
             refreshStarted.countDown()
             assertTrue(allowRefresh.await(5, TimeUnit.SECONDS))
-            refreshMarimoSourceFromDisk(file, modificationStamp)
+            refreshMarimoSourceFromDisk(file)
         }
         refreshThread.start()
         assertTrue(refreshStarted.await(5, TimeUnit.SECONDS))
@@ -125,7 +151,6 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         assertEquals(original, document.text)
 
         ioFile.writeText(autosaved)
-        val modificationStamp = document.modificationStamp
         val applyGateEntered = CountDownLatch(1)
         val releaseApply = CountDownLatch(1)
         beforeSourceRefreshApply = Runnable {
@@ -134,7 +159,7 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         }
 
         val refreshThread = Thread {
-            refreshMarimoSourceFromDisk(file, modificationStamp)
+            refreshMarimoSourceFromDisk(file)
         }
         refreshThread.start()
         assertTrue(applyGateEntered.await(5, TimeUnit.SECONDS))
@@ -146,7 +171,7 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
         assertEquals(userEdit, document.text)
         assertFalse(
             "refresh must skip once the EDT apply gate sees a newer modification stamp",
-            applySourceRefreshIfCurrent(file, modificationStamp),
+            applySourceRefreshIfCurrent(file),
         )
     }
 }

@@ -2,8 +2,6 @@
 
 package io.marimo.notebook.editor.source
 
-import com.intellij.openapi.application.ApplicationManager
-import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.fileEditor.FileEditorPolicy
 import com.intellij.openapi.fileEditor.FileEditorProvider
@@ -40,11 +38,7 @@ class MarimoSourceEditorProvider : FileEditorProvider, DumbAware {
             override fun getName(): String = "Source"
 
             override fun selectNotify() {
-                val modificationStamp =
-                    FileDocumentManager.getInstance().getCachedDocument(file)?.modificationStamp
-                ApplicationManager.getApplication().executeOnPooledThread {
-                    refreshMarimoSourceFromDisk(file, modificationStamp)
-                }
+                refreshMarimoSourceFromDisk(file)
                 super.selectNotify()
             }
         }

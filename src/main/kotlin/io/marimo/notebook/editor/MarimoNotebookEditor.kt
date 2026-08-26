@@ -45,7 +45,9 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
             VirtualFileManager.VFS_CHANGES,
             object : BulkFileListener {
                 override fun after(events: List<VFileEvent>) {
-                    if (events.any { it is VFileDeleteEvent && it.file == file }) {
+                    if (
+                        events.any { it is VFileDeleteEvent && (it.file == file || !file.isValid) }
+                    ) {
                         notifyValidityChanged()
                     }
                 }

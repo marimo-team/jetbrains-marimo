@@ -45,10 +45,11 @@ data class ErrorModel(
             failure: Failure,
             presence: MarimoPresence,
             uvAvailable: Boolean,
+            sandbox: Boolean = false,
         ): ErrorModel =
             when (failure) {
                 is Failure.ServerNotStarted ->
-                    serverNotStarted(failure.cause, presence, uvAvailable)
+                    serverNotStarted(failure.cause, presence, uvAvailable, sandbox)
                 is Failure.EditorLoadFailed ->
                     ErrorModel(
                         message = "marimo started, but the editor failed to load.",
@@ -65,6 +66,7 @@ data class ErrorModel(
             cause: Throwable?,
             presence: MarimoPresence,
             uvAvailable: Boolean,
+            sandbox: Boolean,
         ): ErrorModel {
             val (message, actions) =
                 when {
@@ -78,6 +80,9 @@ data class ErrorModel(
                                 ErrorAction.START_IN_SANDBOX,
                                 ErrorAction.OPEN_AS_PYTHON,
                             )
+                    sandbox ->
+                        "marimo couldn't be started in the isolated sandbox." to
+                            listOf(ErrorAction.RETRY, ErrorAction.OPEN_AS_PYTHON)
                     presence is MarimoPresence.Missing ->
                         "marimo isn't installed in the project interpreter." to
                             listOf(

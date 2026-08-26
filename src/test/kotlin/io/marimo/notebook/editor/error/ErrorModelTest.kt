@@ -75,6 +75,20 @@ class ErrorModelTest {
     }
 
     @Test
+    fun sandboxLaunchFailureDoesNotOfferProjectInterpreterInstall() {
+        val model =
+            ErrorModel.of(
+                Failure.ServerNotStarted(RuntimeException("uv launch failed")),
+                MarimoPresence.Missing,
+                uvAvailable = true,
+                sandbox = true,
+            )
+
+        assertFalse(model.actions.contains(ErrorAction.INSTALL))
+        assertFalse(model.actions.contains(ErrorAction.START_IN_SANDBOX))
+    }
+
+    @Test
     fun uvUnavailableExplainsSandboxNeedsUv() {
         val model =
             of(

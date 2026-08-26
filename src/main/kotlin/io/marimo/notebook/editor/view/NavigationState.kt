@@ -25,7 +25,9 @@ internal fun serverOrigin(url: String?): String? {
     val scheme = uri.scheme ?: return null
     if (scheme != "http" && scheme != "https") return null
     val host = uri.host ?: return null
-    return if (uri.port == -1) "$scheme://$host" else "$scheme://$host:${uri.port}"
+    val bareHost = host.removeSurrounding("[", "]")
+    val urlHost = if (bareHost.contains(':')) "[$bareHost]" else bareHost
+    return if (uri.port == -1) "$scheme://$urlHost" else "$scheme://$urlHost:${uri.port}"
 }
 
 /** True when a main-frame load error belongs to the server the view currently renders. */

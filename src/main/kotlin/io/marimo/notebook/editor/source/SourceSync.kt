@@ -6,7 +6,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.fileEditor.FileDocumentManager
 import com.intellij.openapi.vfs.VirtualFile
 
-/** Test hook: runs after the off-EDT pre-check and before the EDT apply gate. */
+/** Test hook: runs before the refresh is queued at the EDT apply gate. */
 internal var beforeSourceRefreshApply: Runnable? = null
 
 /**
@@ -16,41 +16,36 @@ internal var beforeSourceRefreshApply: Runnable? = null
  * never fires the frame-activation event that the platform relies on to refresh externally-changed
  * files. Forcing the refresh reloads the document behind the Source tab.
  *
- * When [modificationStamp] is set, the refresh is skipped if the in-memory document changed after
- * the caller captured the stamp. The final stamp check runs on the EDT immediately before
- * [VirtualFile.refresh] so an edit that begins after the off-EDT pre-check cannot be overwritten.
+ * The refresh is skipped while the in-memory document has an unsaved edit. Clean modification stamp
+ * changes can come from an earlier queued refresh, so they do not block a later request from
+ * reading a newer disk update.
  *
- * Callers must invoke this off the EDT; the VFS events it produces are still applied on the EDT.
+ * The disk scan is asynchronous. The EDT only checks document state and starts the refresh.
  */
-internal fun refreshMarimoSourceFromDisk(file: VirtualFile, modificationStamp: Long? = null) {
-    val documents = FileDocumentManager.getInstance()
-    documents.getCachedDocument(file)?.let { document ->
-        if (modificationStamp != null && document.modificationStamp != modificationStamp) return
-    }
+internal fun refreshMarimoSourceFromDisk(
+    file: VirtualFile,
+    onComplete: () -> Unit = {},
+) {
     beforeSourceRefreshApply?.run()
-    ApplicationManager.getApplication().invokeAndWait {
-        applySourceRefreshIfCurrent(file, modificationStamp)
+    ApplicationManager.getApplication().invokeLater {
+        if (!applySourceRefreshIfCurrent(file, onComplete)) onComplete()
     }
 }
 
 /**
- * Applies a disk refresh when [modificationStamp] still matches the loaded document. Returns false
- * when a newer edit made the stamp stale.
+ * Starts an asynchronous disk refresh unless the loaded document has an unsaved edit. Returns false
+ * when the document must keep its in-memory content.
  */
 internal fun applySourceRefreshIfCurrent(
     file: VirtualFile,
-    modificationStamp: Long? = null,
+    onComplete: () -> Unit = {},
 ): Boolean {
     val documents = FileDocumentManager.getInstance()
     val document = documents.getCachedDocument(file)
-    if (
-        document != null &&
-            modificationStamp != null &&
-            document.modificationStamp != modificationStamp
-    ) {
+    if (document != null && documents.isDocumentUnsaved(document)) {
         return false
     }
-    file.refresh(/* asynchronous= */ false, /* recursive= */ false)
+    file.refresh(/* asynchronous= */ true, /* recursive= */ false, onComplete)
     return true
 }
 
