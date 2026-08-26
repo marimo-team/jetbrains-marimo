@@ -113,13 +113,15 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         if (consent != Consent.ALLOWED) return
         ensureStarted()
         val target = sink ?: return
+        val distinctId = anonymousId()
         val enriched =
             event.properties +
                 mapOf(
                     "plugin_version" to pluginVersion(),
                     "environment" to environment(),
+                    "distinct_id" to distinctId,
                 )
-        target.capture(anonymousId(), event.name, enriched)
+        target.capture(distinctId, event.name, enriched)
     }
 
     /**
