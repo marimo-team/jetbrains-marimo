@@ -14,17 +14,11 @@ import com.intellij.openapi.util.Key
  */
 internal object PairTerminalTabs {
 
-    /** File path of the notebook a pair terminal tab was opened for. */
-    val NOTEBOOK_KEY: Key<String> = Key.create("io.marimo.pair.notebook")
+    data class Identity(val notebookPath: String, val harnessId: String)
 
-    /** Harness id (claude, codex, opencode) the tab was opened for. */
-    val HARNESS_KEY: Key<String> = Key.create("io.marimo.pair.harness")
+    val IDENTITY_KEY: Key<Identity> = Key.create("io.marimo.pair.identity")
 
-    data class Tab(val notebookPath: String?, val harnessId: String?, val alive: Boolean)
-
-    /** Identity stored on the terminal content for a notebook-plus-harness session. */
-    fun contentKey(notebookPath: String, harnessId: String): Pair<String, String> =
-        notebookPath to harnessId
+    data class Tab(val identity: Identity?, val alive: Boolean)
 
     sealed interface Action {
         /** Reuse the live session at [index]. */
@@ -35,9 +29,8 @@ internal object PairTerminalTabs {
     }
 
     fun resolve(tabs: List<Tab>, notebookPath: String, harnessId: String): Action {
-        val match = tabs.indexOfFirst {
-            it.notebookPath == notebookPath && it.harnessId == harnessId
-        }
+        val identity = Identity(notebookPath, harnessId)
+        val match = tabs.indexOfFirst { it.identity == identity }
         return when {
             match < 0 -> Action.Launch(closeIndex = null)
             tabs[match].alive -> Action.Focus(match)

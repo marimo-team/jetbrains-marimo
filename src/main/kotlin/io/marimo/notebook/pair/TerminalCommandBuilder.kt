@@ -7,8 +7,8 @@ package io.marimo.notebook.pair
  * text. The named shell is POSIX `sh` (including Git Bash on Windows). PowerShell and `cmd.exe` are
  * not supported.
  *
- * Prefer [argv] for process APIs. [posixShellString] exists because
- * `TerminalWidget.sendCommandToExecute` takes a single string.
+ * Prefer [argv] for process APIs. Use [posixShellString] only at terminal boundaries that cannot
+ * accept an argument list.
  */
 internal object TerminalCommandBuilder {
 

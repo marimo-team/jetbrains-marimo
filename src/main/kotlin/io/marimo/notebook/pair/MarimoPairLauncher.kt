@@ -68,8 +68,7 @@ object MarimoPairLauncher {
         val contents = contentManager?.contents?.toList().orEmpty()
         val tabs = contents.map {
             PairTerminalTabs.Tab(
-                it.getUserData(PairTerminalTabs.NOTEBOOK_KEY),
-                it.getUserData(PairTerminalTabs.HARNESS_KEY),
+                it.getUserData(PairTerminalTabs.IDENTITY_KEY),
                 isSessionAlive(it),
             )
         }
@@ -112,9 +111,10 @@ object MarimoPairLauncher {
                 closeLease()
                 return false
             }
-            val (notebookPath, harnessId) = PairTerminalTabs.contentKey(file.path, harness.id)
-            content.putUserData(PairTerminalTabs.NOTEBOOK_KEY, notebookPath)
-            content.putUserData(PairTerminalTabs.HARNESS_KEY, harnessId)
+            content.putUserData(
+                PairTerminalTabs.IDENTITY_KEY,
+                PairTerminalTabs.Identity(file.path, harness.id),
+            )
             Disposer.register(content) { closeLease() }
             widget.addTerminationCallback(closeLease, content)
             widget.sendCommandToExecute(command)
