@@ -1,14 +1,14 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.error
 
-import io.marimo.notebook.launch.MarimoPresence
 import io.marimo.notebook.launch.NoInterpreterException
 import io.marimo.notebook.launch.StopCause
 import io.marimo.notebook.launch.UvUnavailableException
+import io.marimo.notebook.session.environment.MarimoPresence
 
 /** An action the error panel can offer; the editor supplies the behaviour for each. */
-enum class MarimoErrorAction {
+enum class ErrorAction {
     RETRY,
     INSTALL,
     START_IN_SANDBOX,
@@ -17,15 +17,15 @@ enum class MarimoErrorAction {
 }
 
 /** Why the marimo editor could not be shown. */
-sealed interface MarimoFailure {
+sealed interface Failure {
     /** The server never produced a URL: marimo missing, no interpreter, or the process crashed. */
-    data class ServerNotStarted(val cause: Throwable?) : MarimoFailure
+    data class ServerNotStarted(val cause: Throwable?) : Failure
 
     /** The server started but the embedded browser failed to load it. */
-    data class EditorLoadFailed(val detail: String?) : MarimoFailure
+    data class EditorLoadFailed(val detail: String?) : Failure
 
     /** The server served this notebook and then stopped: shut down from the page, or died. */
-    data class ServerStopped(val cause: StopCause) : MarimoFailure
+    data class ServerStopped(val cause: StopCause) : Failure
 }
 
 /**
@@ -33,29 +33,30 @@ sealed interface MarimoFailure {
  * Derived from the failure and the interpreter's marimo presence so the message and buttons match
  * the actual cause — e.g. an Install button only when marimo is known to be missing.
  */
-data class MarimoErrorModel(
+data class ErrorModel(
     val message: String,
     val detail: String?,
-    val actions: List<MarimoErrorAction>,
+    val actions: List<ErrorAction>,
     /** Whether the Start-in-Sandbox action is usable (uv present); false renders it disabled. */
     val sandboxEnabled: Boolean = true,
 ) {
     companion object {
         fun of(
-            failure: MarimoFailure,
+            failure: Failure,
             presence: MarimoPresence,
             uvAvailable: Boolean,
-        ): MarimoErrorModel =
+            sandbox: Boolean = false,
+        ): ErrorModel =
             when (failure) {
-                is MarimoFailure.ServerNotStarted ->
-                    serverNotStarted(failure.cause, presence, uvAvailable)
-                is MarimoFailure.EditorLoadFailed ->
-                    MarimoErrorModel(
+                is Failure.ServerNotStarted ->
+                    serverNotStarted(failure.cause, presence, uvAvailable, sandbox)
+                is Failure.EditorLoadFailed ->
+                    ErrorModel(
                         message = "marimo started, but the editor failed to load.",
                         detail = failure.detail.nullIfBlank(),
-                        actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
+                        actions = listOf(ErrorAction.RETRY, ErrorAction.OPEN_AS_PYTHON),
                     )
-                is MarimoFailure.ServerStopped -> serverStopped(failure.cause)
+                is Failure.ServerStopped -> serverStopped(failure.cause)
             }
 
         // A failed launch carries the process's stderr tail (a Python traceback) as its message.
@@ -65,60 +66,64 @@ data class MarimoErrorModel(
             cause: Throwable?,
             presence: MarimoPresence,
             uvAvailable: Boolean,
-        ): MarimoErrorModel {
+            sandbox: Boolean,
+        ): ErrorModel {
             val (message, actions) =
                 when {
                     cause is UvUnavailableException ->
                         "marimo sandbox mode needs uv. Install uv to run in an isolated environment." to
-                            listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON)
+                            listOf(ErrorAction.RETRY, ErrorAction.OPEN_AS_PYTHON)
                     cause is NoInterpreterException ->
                         "No Python interpreter is configured. Configure one to run marimo on it." to
                             listOf(
-                                MarimoErrorAction.RETRY,
-                                MarimoErrorAction.START_IN_SANDBOX,
-                                MarimoErrorAction.OPEN_AS_PYTHON,
+                                ErrorAction.RETRY,
+                                ErrorAction.START_IN_SANDBOX,
+                                ErrorAction.OPEN_AS_PYTHON,
                             )
+                    sandbox ->
+                        "marimo couldn't be started in the isolated sandbox." to
+                            listOf(ErrorAction.RETRY, ErrorAction.OPEN_AS_PYTHON)
                     presence is MarimoPresence.Missing ->
                         "marimo isn't installed in the project interpreter." to
                             listOf(
-                                MarimoErrorAction.INSTALL,
-                                MarimoErrorAction.RETRY,
-                                MarimoErrorAction.START_IN_SANDBOX,
-                                MarimoErrorAction.OPEN_AS_PYTHON,
+                                ErrorAction.INSTALL,
+                                ErrorAction.RETRY,
+                                ErrorAction.START_IN_SANDBOX,
+                                ErrorAction.OPEN_AS_PYTHON,
                             )
                     else ->
                         "marimo couldn't be started." to
-                            listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON)
+                            listOf(ErrorAction.RETRY, ErrorAction.OPEN_AS_PYTHON)
                 }
-            return MarimoErrorModel(
+            return ErrorModel(
                 message = message,
                 detail = null,
                 actions = actions,
-                sandboxEnabled = MarimoErrorAction.START_IN_SANDBOX !in actions || uvAvailable,
+                sandboxEnabled = ErrorAction.START_IN_SANDBOX !in actions || uvAvailable,
             )
         }
 
         // The process output tail is deliberately dropped: it is a Python traceback that belongs in
         // the IDE log, and the headline already names the cause. Close is offered only for a
         // deliberate stop, where being finished with the notebook is the likely intent.
-        private fun serverStopped(cause: StopCause): MarimoErrorModel =
+        private fun serverStopped(cause: StopCause): ErrorModel =
             when (cause) {
                 is StopCause.Deliberate ->
-                    MarimoErrorModel(
+                    ErrorModel(
                         message = "marimo was shut down for this notebook.",
                         detail = "Restart it to keep working, or close the tab.",
                         actions =
                             listOf(
-                                MarimoErrorAction.RETRY,
-                                MarimoErrorAction.CLOSE,
-                                MarimoErrorAction.OPEN_AS_PYTHON,
+                                ErrorAction.RETRY,
+                                ErrorAction.CLOSE,
+                                ErrorAction.OPEN_AS_PYTHON,
                             ),
                     )
                 is StopCause.Unexpected ->
-                    MarimoErrorModel(
+                    ErrorModel(
                         message = "marimo stopped unexpectedly.",
                         detail = "See the IDE log for the process output.",
-                        actions = listOf(MarimoErrorAction.RETRY, MarimoErrorAction.OPEN_AS_PYTHON),
+                        actions = listOf(ErrorAction.RETRY, ErrorAction.OPEN_AS_PYTHON),
                     )
             }
 

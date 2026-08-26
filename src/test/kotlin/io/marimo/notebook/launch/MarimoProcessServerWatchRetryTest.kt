@@ -27,7 +27,7 @@ object WatchPickyProcess {
             while (true) {
                 val socket = server.accept()
                 socket.getOutputStream().apply {
-                    write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                    write(httpResponse("200 OK", MARIMO_PAGE_BODY))
                     flush()
                 }
                 socket.close()
@@ -48,7 +48,7 @@ class MarimoProcessServerWatchRetryTest : BasePlatformTestCase() {
                 command(port, watch = true),
                 "127.0.0.1",
                 port,
-                readinessTimeoutSeconds = 15,
+                readinessTimeoutSeconds = 5,
                 watchFallbackCmd = { command(port, watch = false) },
                 authenticatedUrl = supplied,
             )

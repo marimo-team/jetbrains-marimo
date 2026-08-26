@@ -32,6 +32,7 @@ class MarimoStartupOutputTest {
         val tail =
             diagnosticOutputTail(
                 listOf("URL: http://127.0.0.1:2718?access_token=SECRET", "TOKEN\nprocess exited")
+                    .joinToString(separator = "")
             )
         assertFalse(tail.contains("SECRETTOKEN"))
         assertTrue(tail.contains("<redacted-token>"))

@@ -4,11 +4,14 @@ package io.marimo.notebook.launch
 
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import java.io.File
+import java.io.IOException
 import java.net.ServerSocket
+import java.util.concurrent.ExecutionException
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 
 /** Prints a marimo-style URL banner, then stays alive without binding a socket. */
 object BannerOnlyProcess {
@@ -32,7 +35,7 @@ object ServeThenBannerProcess {
                 while (true) {
                     val socket = server.accept()
                     socket.getOutputStream().apply {
-                        write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                        write(httpResponse("200 OK", MARIMO_PAGE_BODY))
                         flush()
                     }
                     socket.close()
@@ -62,9 +65,7 @@ object UnauthorizedServerProcess {
                 while (true) {
                     val socket = server.accept()
                     socket.getOutputStream().apply {
-                        write(
-                            "HTTP/1.1 401 Unauthorized\r\nContent-Length: 0\r\n\r\n".toByteArray()
-                        )
+                        write(httpResponse("401 Unauthorized", MARIMO_PAGE_BODY))
                         flush()
                     }
                     socket.close()
@@ -79,16 +80,69 @@ object UnauthorizedServerProcess {
     }
 }
 
+/** Accepts connections but never writes a response body. */
+object StallAfterAcceptProcess {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val port = args[0].toInt()
+        Thread {
+            ServerSocket(port).use { server ->
+                while (true) {
+                    server.accept()
+                }
+            }
+        }
+            .apply { isDaemon = true }
+            .start()
+        Thread.sleep(60_000)
+    }
+}
+
 class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
 
     override fun runInDispatchThread(): Boolean = false
 
+    /** A generic HTTP listener on the port must not count as a ready marimo server. */
+    fun testUnrelatedHttpListenerDoesNotCountAsReady() {
+        val port = ServerSocket(0).use { it.localPort }
+        val url = "http://127.0.0.1:$port"
+        val binder = Thread {
+            ServerSocket(port).use { server ->
+                while (true) {
+                    val socket = server.accept()
+                    socket.getOutputStream().apply {
+                        write(httpResponse("200 OK"))
+                        flush()
+                    }
+                    socket.close()
+                }
+            }
+        }
+        binder.isDaemon = true
+        binder.start()
+
+        val handle =
+            startMarimoServer(
+                javaProcess(BannerOnlyProcess::class.java.name, url),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 2,
+            )
+        try {
+            handle.awaitReady().get(5, TimeUnit.SECONDS)
+            fail("readiness must fail when the listener does not serve a marimo page")
+        } catch (e: ExecutionException) {
+            assertTrue(e.cause is IOException)
+        } finally {
+            handle.dispose()
+        }
+    }
+
     /**
-     * marimo prints its URL banner tens of milliseconds before its socket accepts connections.
-     * Readiness must track the socket, not the banner, or JCEF navigates into the gap and gets
-     * ERR_CONNECTION_REFUSED.
+     * marimo prints its URL banner before its socket serves the page. Readiness must track the
+     * marimo page, not the banner, or JCEF navigates into the gap and gets ERR_CONNECTION_REFUSED.
      */
-    fun testAwaitReadyWaitsForSocketBindNotBanner() {
+    fun testAwaitReadyWaitsForMarimoPageNotBanner() {
         val port = ServerSocket(0).use { it.localPort }
         val url = "http://127.0.0.1:$port"
         val bindDelayMs = 750L
@@ -99,7 +153,7 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
                 while (true) {
                     val socket = server.accept()
                     socket.getOutputStream().apply {
-                        write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                        write(httpResponse("200 OK", MARIMO_PAGE_BODY))
                         flush()
                     }
                     socket.close()
@@ -123,7 +177,7 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
 
         assertEquals(url, readyUrl)
         assertTrue(
-            "readiness completed after ${elapsedMs}ms; it must wait for the socket to bind (~${bindDelayMs}ms)",
+            "readiness completed after ${elapsedMs}ms; it must wait for the marimo page (~${bindDelayMs}ms)",
             elapsedMs >= bindDelayMs / 2,
         )
     }
@@ -175,8 +229,8 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
         assertFalse("direct handle disposal must own token-file cleanup", tokenFile.exists())
     }
 
-    /** An anonymous probe of a token-protected server is not logged in; 401 still means "up". */
-    fun testAnyHttpStatusCountsAsReady() {
+    /** A 401 with a marimo page body still counts as ready when the probe can read the page. */
+    fun testMarimoPageBodyCountsAsReadyEvenWith401() {
         val port = ServerSocket(0).use { it.localPort }
         val supplied = "http://127.0.0.1:$port?access_token=T"
         val handle =
@@ -205,5 +259,24 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
         val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
         handle.dispose()
         assertEquals("http://127.0.0.1:$port", readyUrl)
+    }
+
+    fun testStalledResponseDoesNotCountAsReady() {
+        val port = ServerSocket(0).use { it.localPort }
+        val handle =
+            startMarimoServer(
+                javaProcess(StallAfterAcceptProcess::class.java.name, port.toString()),
+                "127.0.0.1",
+                port,
+                readinessTimeoutSeconds = 2,
+            )
+        try {
+            handle.awaitReady().get(5, TimeUnit.SECONDS)
+            fail("readiness must fail when the server accepts but never responds")
+        } catch (e: ExecutionException) {
+            assertTrue(e.cause is IOException)
+        } finally {
+            handle.dispose()
+        }
     }
 }

@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.sessions
 
 import com.intellij.icons.AllIcons
 import com.intellij.openapi.Disposable
@@ -198,7 +198,6 @@ private class SessionCard(
             when (state) {
                 MarimoSessionState.RUNNING -> "RUNNING" to JBColor(0x2E7D32, 0x6FBF73)
                 MarimoSessionState.STARTING -> "STARTING" to JBColor(0x1565C0, 0x6EA8FF)
-                MarimoSessionState.STOPPING -> "STOPPING" to JBColor(0xEF6C00, 0xFFB366)
                 MarimoSessionState.FAILED -> "FAILED" to JBColor(0xC62828, 0xFF7B7B)
                 MarimoSessionState.STOPPED -> "STOPPED" to JBColor.GRAY
             }

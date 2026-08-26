@@ -10,6 +10,7 @@ import com.intellij.openapi.components.service
 import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import io.marimo.notebook.MarimoIcons
+import io.marimo.notebook.editor.error.ErrorPanel
 import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.session.NotebookSessionManager
 
@@ -36,7 +37,7 @@ class RunInSandboxAction : AnAction(), DumbAware {
         e.presentation.isEnabled = hasUv
         e.presentation.description =
             if (hasUv) "Run this marimo notebook in an isolated uv environment (PEP 723 deps)"
-            else MarimoErrorPanel.SANDBOX_NEEDS_UV
+            else ErrorPanel.SANDBOX_NEEDS_UV
     }
 
     override fun actionPerformed(e: AnActionEvent) {

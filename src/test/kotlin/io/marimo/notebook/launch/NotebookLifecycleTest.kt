@@ -6,29 +6,13 @@ import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Test
 
-class MarimoNotebookLifecycleTest {
+class NotebookLifecycleTest {
 
-    /** Runs watchdogs on demand instead of on a timer, so the tests stay deterministic. */
-    private class ManualWatchdog : (Runnable) -> Unit {
-        private val pending = mutableListOf<Runnable>()
-
-        override fun invoke(task: Runnable) {
-            pending.add(task)
-        }
-
-        fun fireAll() {
-            val due = pending.toList()
-            pending.clear()
-            due.forEach(Runnable::run)
-        }
-    }
-
-    private fun lifecycle(watchdog: ManualWatchdog = ManualWatchdog()) =
-        MarimoNotebookLifecycle(scheduleWatchdog = watchdog)
+    private fun lifecycle() = NotebookLifecycle()
 
     private fun runningLifecycle(
         url: String = "http://127.0.0.1:1234"
-    ): Pair<MarimoNotebookLifecycle, ScriptedMarimoServerHandle> {
+    ): Pair<NotebookLifecycle, ScriptedMarimoServerHandle> {
         val l = lifecycle()
         val handle = ScriptedMarimoServerHandle()
         l.attach(handle)
@@ -66,91 +50,31 @@ class MarimoNotebookLifecycleTest {
     }
 
     @Test
-    fun shutdownIntentBecomesStoppingAndKeepsUrl() {
-        val (l, _) = runningLifecycle()
-        l.onShutdownObserved()
-        assertEquals(MarimoNotebookState.Stopping("http://127.0.0.1:1234"), l.state)
-    }
-
-    @Test
-    fun shutdownIntentIsIgnoredWhenNotRunning() {
-        val l = lifecycle()
-        l.onShutdownObserved()
-        assertEquals(
-            "no page to shut down while still starting",
-            MarimoNotebookState.Starting,
-            l.state,
-        )
-    }
-
-    @Test
-    fun rejectedShutdownRevertsToRunning() {
-        val (l, _) = runningLifecycle()
-        l.onShutdownObserved()
-        l.onShutdownRejected()
-        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), l.state)
-    }
-
-    @Test
-    fun processExitAfterIntentIsDeliberate() {
+    fun cleanProcessExitIsDeliberate() {
         val (l, handle) = runningLifecycle()
-        l.onShutdownObserved()
         handle.fireTerminated(exitCode = 0, tail = "")
         assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), l.state)
     }
 
     @Test
-    fun processExitWithoutIntentIsUnexpected() {
-        val (l, handle) = runningLifecycle()
-        handle.fireTerminated(exitCode = 137, tail = "Killed")
-        assertEquals(MarimoNotebookState.Stopped(StopCause.Unexpected(137, "Killed")), l.state)
-    }
-
-    @Test
-    fun watchdogResolvesStoppingEvenWithProcessAlive() {
-        val watchdog = ManualWatchdog()
-        val l = lifecycle(watchdog)
+    fun cleanProcessExitBeforeReadinessIsUnexpected() {
+        val l = lifecycle()
         val handle = ScriptedMarimoServerHandle()
         l.attach(handle)
-        handle.becomeReady("http://127.0.0.1:1234")
-        l.onShutdownObserved()
-        watchdog.fireAll()
-        assertEquals(MarimoNotebookState.Stopped(StopCause.Deliberate), l.state)
-    }
 
-    @Test
-    fun watchdogReportsStoppedOnceWhenDisposeTerminatesSynchronously() {
-        val watchdog = ManualWatchdog()
-        val l = lifecycle(watchdog)
-        val handle = ScriptedMarimoServerHandle(terminateOnDispose = true)
-        l.attach(handle)
-        handle.becomeReady("http://127.0.0.1:1234")
-        val seen = mutableListOf<MarimoNotebookState>()
-        l.addListener { seen.add(it.state) }
-
-        l.onShutdownObserved()
-        watchdog.fireAll()
+        handle.fireTerminated(exitCode = 0, tail = "startup ended")
 
         assertEquals(
-            listOf(
-                MarimoNotebookState.Stopping("http://127.0.0.1:1234"),
-                MarimoNotebookState.Stopped(StopCause.Deliberate),
-            ),
-            seen,
+            MarimoNotebookState.Stopped(StopCause.Unexpected(0, "startup ended")),
+            l.state,
         )
     }
 
     @Test
-    fun watchdogDoesNothingAfterRevert() {
-        val watchdog = ManualWatchdog()
-        val l = lifecycle(watchdog)
-        val handle = ScriptedMarimoServerHandle()
-        l.attach(handle)
-        handle.becomeReady("http://127.0.0.1:1234")
-        l.onShutdownObserved()
-        l.onShutdownRejected()
-        watchdog.fireAll()
-        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:1234"), l.state)
+    fun processExitWithoutCleanCodeIsUnexpected() {
+        val (l, handle) = runningLifecycle()
+        handle.fireTerminated(exitCode = 137, tail = "Killed")
+        assertEquals(MarimoNotebookState.Stopped(StopCause.Unexpected(137, "Killed")), l.state)
     }
 
     /** The headline regression: a late exit event from launch A must not stop launch B. */
@@ -215,25 +139,6 @@ class MarimoNotebookLifecycleTest {
         b.becomeReady("http://127.0.0.1:2222")
 
         a.becomeReady("http://127.0.0.1:1111")
-
-        assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
-    }
-
-    @Test
-    fun staleWatchdogFromAReleasedLaunchCannotStopTheReplacement() {
-        val watchdog = ManualWatchdog()
-        val l = lifecycle(watchdog)
-        val a = ScriptedMarimoServerHandle()
-        l.attach(a)
-        a.becomeReady("http://127.0.0.1:1111")
-        l.onShutdownObserved()
-
-        l.release()
-        val b = ScriptedMarimoServerHandle()
-        l.attach(b)
-        b.becomeReady("http://127.0.0.1:2222")
-
-        watchdog.fireAll()
 
         assertEquals(MarimoNotebookState.Running("http://127.0.0.1:2222"), l.state)
     }

@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.view
 
 import io.marimo.notebook.launch.MarimoNotebookState
 import java.net.URI
@@ -25,7 +25,9 @@ internal fun serverOrigin(url: String?): String? {
     val scheme = uri.scheme ?: return null
     if (scheme != "http" && scheme != "https") return null
     val host = uri.host ?: return null
-    return if (uri.port == -1) "$scheme://$host" else "$scheme://$host:${uri.port}"
+    val bareHost = host.removeSurrounding("[", "]")
+    val urlHost = if (bareHost.contains(':')) "[$bareHost]" else bareHost
+    return if (uri.port == -1) "$scheme://$urlHost" else "$scheme://$urlHost:${uri.port}"
 }
 
 /** True when a main-frame load error belongs to the server the view currently renders. */
@@ -53,4 +55,4 @@ internal fun loadErrorGeneration(failedUrl: String?, snapshot: NavigationSnapsho
 
 /** A terminal or stopping lifecycle owns the panel instead of a pending browser callback. */
 internal fun canRenderNotebookFor(state: MarimoNotebookState): Boolean =
-    state !is MarimoNotebookState.Stopping && state !is MarimoNotebookState.Stopped
+    state !is MarimoNotebookState.Stopped

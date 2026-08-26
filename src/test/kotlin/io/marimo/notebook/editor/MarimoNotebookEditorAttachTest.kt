@@ -4,6 +4,7 @@ package io.marimo.notebook.editor
 
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.fileEditor.FileEditor
 import com.intellij.openapi.util.Disposer
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.editor.view.NotebookViewRegistry
@@ -11,7 +12,11 @@ import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import java.awt.BorderLayout
+import java.awt.Container
 import java.util.concurrent.TimeUnit
+import javax.swing.JLabel
+import javax.swing.JPanel
 
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
@@ -28,6 +33,31 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         }
     }
 
+    fun testSimultaneousSplitsKeepChildrenInSeparateParents() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("two_parent_nb.py", "import marimo\n").virtualFile
+
+        val first = editor(file)
+        val second = editor(file)
+
+        val splitA = JPanel(BorderLayout())
+        val splitB = JPanel(BorderLayout())
+        splitA.add(first.component, BorderLayout.CENTER)
+        assertEquals(1, splitA.componentCount)
+
+        splitB.add(second.component, BorderLayout.CENTER)
+
+        assertEquals(
+            "mounting the second editor must not steal the first split's child",
+            1,
+            splitA.componentCount,
+        )
+        assertEquals(1, splitB.componentCount)
+        assertSame(first.component, splitA.getComponent(0))
+        assertSame(second.component, splitB.getComponent(0))
+    }
+
     fun testEditorsAttachAndDetachTheSession() {
         val service = project.service<NotebookSessionManager>()
         service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
@@ -39,7 +69,11 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
         val second = editor(file)
         assertEquals("a split shares one session", 1, service.sessions().size)
-        assertSame("a split reuses the registry's primary view", first.component, second.component)
+        assertNotSame(
+            "a second split gets its own browser while the primary is mounted elsewhere",
+            first.component,
+            second.component,
+        )
 
         second.dispose()
         assertNull(service.peek(file)!!.expiresAtMillis)
@@ -49,6 +83,64 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
             "closing the final tab must arm the background TTL",
             service.peek(file)!!.expiresAtMillis,
         )
+    }
+
+    fun testSecondaryViewTracksStoppedSession() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("secondary_stop_nb.py", "import marimo\n").virtualFile
+        editor(file)
+        val secondary = editor(file)
+
+        service.stop(file)
+
+        assertTrue(
+            "the secondary split must replace stale notebook content after Stop",
+            labelsIn(secondary.component).any { it.contains("stopped") },
+        )
+    }
+
+    fun testDeletedNotebookMakesEditorInvalid() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("deleted_nb.py", "import marimo\n").virtualFile
+        val editor = editor(file)
+
+        assertTrue(editor.isValid)
+
+        ApplicationManager.getApplication().runWriteAction { file.delete(this) }
+
+        assertFalse("deleted notebook must invalidate its editor", editor.isValid)
+    }
+
+    fun testDeletedNotebookFiresValidPropertyChange() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file = myFixture.addFileToProject("deleted_prop_nb.py", "import marimo\n").virtualFile
+        val editor = editor(file)
+        var validAfterDelete: Boolean? = null
+        editor.addPropertyChangeListener { event ->
+            if (event.propertyName == FileEditor.getPropValid()) {
+                validAfterDelete = event.newValue as Boolean
+            }
+        }
+
+        ApplicationManager.getApplication().runWriteAction { file.delete(this) }
+
+        assertFalse(editor.isValid)
+        assertEquals(false, validAfterDelete)
+    }
+
+    fun testDeletingContainingDirectoryInvalidatesEditor() {
+        val service = project.service<NotebookSessionManager>()
+        service.planner = LaunchPlanner(FakeLauncher(), FakeLauncher())
+        val file =
+            myFixture.addFileToProject("deleted_parent/notebook.py", "import marimo\n").virtualFile
+        val editor = editor(file)
+
+        ApplicationManager.getApplication().runWriteAction { file.parent.delete(this) }
+
+        assertFalse("deleting a notebook's parent must invalidate its editor", editor.isValid)
     }
 
     fun testRenamedEditorDetachesTheSession() {
@@ -102,4 +194,11 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
     private fun editor(file: com.intellij.openapi.vfs.VirtualFile): MarimoNotebookEditor =
         MarimoNotebookEditor(project, file).also(editors::add)
+
+    private fun labelsIn(component: java.awt.Component): List<String> = buildList {
+        if (component is JLabel) add(component.text)
+        if (component is Container) {
+            component.components.forEach { addAll(labelsIn(it)) }
+        }
+    }
 }

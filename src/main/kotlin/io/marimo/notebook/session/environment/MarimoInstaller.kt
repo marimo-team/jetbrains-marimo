@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.launch
+package io.marimo.notebook.session.environment
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.CapturingProcessHandler
@@ -10,6 +10,8 @@ import com.intellij.openapi.progress.ProcessCanceledException
 import com.intellij.openapi.progress.ProgressManager
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.launch.SdkPythonResolver
+import io.marimo.notebook.launch.UvLauncher
 import io.marimo.notebook.telemetry.MarimoTelemetry
 import io.marimo.notebook.telemetry.TelemetryEvent
 

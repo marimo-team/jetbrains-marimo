@@ -4,9 +4,7 @@ package io.marimo.notebook.launch
 
 import com.intellij.openapi.Disposable
 import com.intellij.openapi.util.Disposer
-import com.intellij.util.concurrency.AppExecutorUtil
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.TimeUnit
 
 /** A lifecycle transition identified by its launch generation and resulting state. */
 data class LifecycleStateUpdate(val generation: Long, val state: MarimoNotebookState)
@@ -28,15 +26,8 @@ internal class LifecycleTransition(
  * generation that registered them, and a callback whose generation is no longer current changes
  * nothing. A slow exit or readiness event from a replaced server therefore cannot repaint or stop
  * its replacement. [release] and [stop] advance the generation for the same reason.
- *
- * [scheduleWatchdog] is injectable so tests resolve timeouts on demand instead of waiting.
  */
-class MarimoNotebookLifecycle(
-    private val scheduleWatchdog: (Runnable) -> Unit = { task ->
-        AppExecutorUtil.getAppScheduledExecutorService()
-            .schedule(task, STOPPING_TIMEOUT_MS, TimeUnit.MILLISECONDS)
-    }
-) : Disposable {
+class NotebookLifecycle : Disposable {
 
     @Volatile
     var state: MarimoNotebookState = MarimoNotebookState.Starting
@@ -104,31 +95,6 @@ class MarimoNotebookLifecycle(
     }
 
     /**
-     * The page asked marimo to shut down. Optimistic: resolved by process exit or by the watchdog.
-     */
-    fun onShutdownObserved() {
-        val gen = synchronized(lock) { generation }
-        val moved =
-            setState(gen) {
-                (state as? MarimoNotebookState.Running)?.let {
-                    MarimoNotebookState.Stopping(it.url)
-                }
-            }
-        if (moved) scheduleWatchdog(Runnable { onStoppingTimedOut(gen) })
-    }
-
-    /**
-     * marimo refused the shutdown, so the page is still alive. Only an explicit rejection reverts —
-     * a request that never gets a response is the expected shape of a successful shutdown.
-     */
-    fun onShutdownRejected() {
-        val gen = synchronized(lock) { generation }
-        setState(gen) {
-            (state as? MarimoNotebookState.Stopping)?.let { MarimoNotebookState.Running(it.url) }
-        }
-    }
-
-    /**
      * Kill the server and reset to a new launch state. Callbacks from it become stale by
      * generation.
      */
@@ -179,32 +145,14 @@ class MarimoNotebookLifecycle(
     private fun onProcessTerminated(gen: Long, exitCode: Int, outputTail: String) {
         setState(gen) {
             when (state) {
-                is MarimoNotebookState.Stopping -> MarimoNotebookState.Stopped(StopCause.Deliberate)
                 is MarimoNotebookState.Stopped,
                 is MarimoNotebookState.Failed -> null
-                else -> MarimoNotebookState.Stopped(StopCause.Unexpected(exitCode, outputTail))
+                else ->
+                    if (exitCode == 0 && state is MarimoNotebookState.Running)
+                        MarimoNotebookState.Stopped(StopCause.Deliberate)
+                    else MarimoNotebookState.Stopped(StopCause.Unexpected(exitCode, outputTail))
             }
         }
-    }
-
-    /**
-     * Intent was observed, so the page is dead whether or not the process is: marimo may have
-     * closed just this session. Restarting from here releases the process first, so claiming
-     * stopped while it lingers is safe.
-     */
-    private fun onStoppingTimedOut(gen: Long) {
-        val timedOut =
-            synchronized(lock) {
-                if (gen != generation || state !is MarimoNotebookState.Stopping) return
-                val handleToDispose = handle
-                handle = null
-                val next = MarimoNotebookState.Stopped(StopCause.Deliberate)
-                state = next
-                handleToDispose to LifecycleStateUpdate(gen, next)
-            }
-        val (handleToDispose, update) = timedOut
-        handleToDispose?.let { Disposer.dispose(it) }
-        listeners.forEach { it(update) }
     }
 
     /**
@@ -241,8 +189,4 @@ class MarimoNotebookLifecycle(
         }
 
     override fun dispose() = release()
-
-    companion object {
-        const val STOPPING_TIMEOUT_MS = 5_000L
-    }
 }

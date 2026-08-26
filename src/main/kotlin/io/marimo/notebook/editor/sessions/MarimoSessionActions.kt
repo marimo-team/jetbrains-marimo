@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.sessions
 
 import com.intellij.openapi.actionSystem.ActionUpdateThread
 import com.intellij.openapi.actionSystem.AnAction
@@ -12,6 +12,8 @@ import com.intellij.openapi.fileEditor.FileEditorManager
 import com.intellij.openapi.project.DumbAware
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import io.marimo.notebook.editor.EditorAvailability
+import io.marimo.notebook.editor.MARIMO_NOTEBOOK_EDITOR_TYPE
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.SessionSnapshot
 

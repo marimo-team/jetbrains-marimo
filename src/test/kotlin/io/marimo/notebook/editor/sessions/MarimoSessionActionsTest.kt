@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.editor
+package io.marimo.notebook.editor.sessions
 
 import io.marimo.notebook.session.MarimoLaunchContext
 import io.marimo.notebook.session.MarimoSessionState
@@ -33,7 +33,6 @@ class MarimoSessionActionsTest {
     fun liveStatesEnableRestartAndStop() {
         assertTrue(canControlSession(snapshot(MarimoSessionState.STARTING)))
         assertTrue(canControlSession(snapshot(MarimoSessionState.RUNNING)))
-        assertTrue(canControlSession(snapshot(MarimoSessionState.STOPPING)))
     }
 
     @Test

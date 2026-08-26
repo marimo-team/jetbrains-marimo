@@ -17,9 +17,9 @@ import io.marimo.notebook.launch.LaunchDecision
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
-import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
 import io.marimo.notebook.launch.NoInterpreterException
+import io.marimo.notebook.launch.NotebookLifecycle
 import io.marimo.notebook.launch.NotebookWorkDir
 import io.marimo.notebook.launch.SdkLauncher
 import io.marimo.notebook.launch.UvLauncher
@@ -113,7 +113,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     /**
      * The server lifecycle retained for this notebook across editor reopenings. Creates a session.
      */
-    fun lifecycleFor(file: VirtualFile): MarimoNotebookLifecycle = sessionFor(file).lifecycle
+    fun lifecycleFor(file: VirtualFile): NotebookLifecycle = sessionFor(file).lifecycle
 
     /**
      * Returns the authenticated startup URL for [file]. If no server is live, this call starts one.

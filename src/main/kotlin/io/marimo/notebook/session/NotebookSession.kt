@@ -6,8 +6,8 @@ import com.intellij.openapi.Disposable
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.pointers.VirtualFilePointer
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager
-import io.marimo.notebook.launch.MarimoNotebookLifecycle
 import io.marimo.notebook.launch.MarimoNotebookState
+import io.marimo.notebook.launch.NotebookLifecycle
 import java.util.EnumMap
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.atomic.AtomicBoolean
@@ -16,13 +16,12 @@ import java.util.concurrent.atomic.AtomicBoolean
 enum class MarimoSessionState {
     STARTING,
     RUNNING,
-    STOPPING,
     STOPPED,
     FAILED;
 
     /** True while a server process exists for the session. */
     val isLive: Boolean
-        get() = this == STARTING || this == RUNNING || this == STOPPING
+        get() = this == STARTING || this == RUNNING
 }
 
 /** The launch settings one server process was started with. Carries no credentials. */
@@ -86,7 +85,7 @@ internal class NotebookSession(
 
     fun matches(file: VirtualFile): Boolean = filePointer.file === file || fileUrl == file.url
 
-    val lifecycle = MarimoNotebookLifecycle()
+    val lifecycle = NotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
     var launchContext: MarimoLaunchContext? = null
     var inFlightReadyUrl: CompletableFuture<String>? = null
@@ -122,7 +121,6 @@ internal class NotebookSession(
                 when (lifecycle.state) {
                     is MarimoNotebookState.Starting -> MarimoSessionState.STARTING
                     is MarimoNotebookState.Running -> MarimoSessionState.RUNNING
-                    is MarimoNotebookState.Stopping -> MarimoSessionState.STOPPING
                     is MarimoNotebookState.Stopped -> MarimoSessionState.STOPPED
                     is MarimoNotebookState.Failed -> MarimoSessionState.FAILED
                 },

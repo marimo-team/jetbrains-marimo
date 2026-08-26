@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.launch
+package io.marimo.notebook.session.environment
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull

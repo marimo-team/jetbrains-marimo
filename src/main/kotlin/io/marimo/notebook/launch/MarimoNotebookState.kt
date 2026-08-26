@@ -7,8 +7,6 @@ sealed interface MarimoNotebookState {
 
     data class Running(val url: String) : MarimoNotebookState
 
-    data class Stopping(val url: String) : MarimoNotebookState
-
     data class Stopped(val cause: StopCause) : MarimoNotebookState
 
     data class Failed(val error: Throwable) : MarimoNotebookState

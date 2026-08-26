@@ -23,7 +23,7 @@ object ServeThenExitProcess {
         ServerSocket(port).use { server ->
             val socket = server.accept()
             socket.getOutputStream().apply {
-                write("HTTP/1.1 200 OK\r\nContent-Length: 0\r\n\r\n".toByteArray())
+                write(httpResponse("200 OK", MARIMO_PAGE_BODY))
                 flush()
             }
             socket.close()
@@ -46,7 +46,7 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
                 command(port, exitCode = 3),
                 "127.0.0.1",
                 port,
-                readinessTimeoutSeconds = 15,
+                readinessTimeoutSeconds = 5,
                 authenticatedUrl = authUrl,
             )
 
@@ -61,13 +61,13 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             reported.countDown()
         }
 
-        val readyUrl = handle.awaitReady().get(15, TimeUnit.SECONDS)
+        val readyUrl = handle.awaitReady().get(5, TimeUnit.SECONDS)
         assertEquals(
             "readiness must deliver the plugin-supplied authenticated URL",
             authUrl,
             readyUrl,
         )
-        assertTrue("process exit was never reported", reported.await(15, TimeUnit.SECONDS))
+        assertTrue("process exit was never reported", reported.await(5, TimeUnit.SECONDS))
         Thread.sleep(300)
 
         assertEquals(1, calls.get())
