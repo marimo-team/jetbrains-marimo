@@ -11,6 +11,7 @@ import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -24,6 +25,12 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
             val entry = delayMillis to task
             pending.add(entry)
             return TtlCancellable { pending.remove(entry) }
+        }
+
+        fun fireAll() {
+            val due = pending.toList()
+            pending.clear()
+            due.forEach { it.second.run() }
         }
     }
 
@@ -95,6 +102,37 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
         assertTrue(ttl.pending.isEmpty())
         assertNull(manager.statusFor(file)?.expiresAtMillis)
         assertNotNull(manager.statusFor(file))
+    }
+
+    fun testSecondDetachAfterReattachDoesNotDoubleFireTtl() {
+        val file = notebook("reattach_ttl_lease.py")
+        val events = mutableListOf<NotebookSessionEvent>()
+        manager.addSessionEventListener(testRootDisposable, events::add)
+
+        val first = acquire(file, LeaseOwner.EDITOR_TAB)
+        assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles.single().becomeReady()
+        first.readyUrl().get(5, TimeUnit.SECONDS)
+
+        first.close()
+        assertEquals(1, ttl.pending.size)
+
+        val second = acquire(file, LeaseOwner.EDITOR_TAB)
+        assertTrue(ttl.pending.isEmpty())
+        assertEquals(first.sessionId, second.sessionId)
+
+        second.close()
+        assertEquals("the second close must arm exactly one TTL", 1, ttl.pending.size)
+
+        ttl.fireAll()
+
+        assertEquals(listOf(NotebookSessionEvent.Ended(first.sessionId)), events)
+        assertNull(manager.statusFor(file))
+        assertFalse(sdk.handles.single().isAlive)
+
+        ttl.fireAll()
+        assertEquals("expiry must be single-shot", 1, events.size)
+        assertTrue(ttl.pending.isEmpty())
     }
 
     fun testExpiredLeaseCannotCreateANewSession() {
