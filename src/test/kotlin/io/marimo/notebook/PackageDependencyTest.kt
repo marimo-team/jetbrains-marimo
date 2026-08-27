@@ -9,8 +9,8 @@ import org.junit.Assert.fail
 import org.junit.Test
 
 /**
- * Guardrail for the import graph in ARCHITECTURE.md (Package dependencies). Same-package and root
- * types (`MarimoLocalhost`, `MarimoBundle`, `MarimoIcons`) are always allowed.
+ * Guardrail for plugin-package imports. Same-package and root types (`MarimoLocalhost`,
+ * `MarimoBundle`, `MarimoIcons`) are always allowed.
  */
 class PackageDependencyTest {
 
@@ -49,6 +49,19 @@ class PackageDependencyTest {
         )
     }
 
+    @Test
+    fun notebookevilIsExternal() {
+        val source =
+            """
+            package io.marimo.notebook.detect
+
+            import io.marimo.notebookevil.Evil
+            """
+                .trimIndent()
+        val hits = forbiddenImportsIn(source, "injected.kt")
+        assertTrue(hits.joinToString("\n"), hits.isEmpty())
+    }
+
     companion object {
         private val MAIN_KOTLIN = Path.of("src/main/kotlin")
 
@@ -59,7 +72,6 @@ class PackageDependencyTest {
         private val LAYERS =
             setOf("detect", "launch", "session", "editor", "pair", "settings", "telemetry")
 
-        // Allowed edges. Matches the mermaid diagram in ARCHITECTURE.md (Package dependencies).
         // Key imports values. Empty means no other named layer.
         private val ALLOWED: Map<String, Set<String>> =
             mapOf(
@@ -98,7 +110,7 @@ class PackageDependencyTest {
             }
 
         private fun layerOf(qualified: String): String? {
-            if (!qualified.startsWith(PLUGIN_PREFIX)) return null
+            if (qualified != PLUGIN_PREFIX && !qualified.startsWith("$PLUGIN_PREFIX.")) return null
             if (qualified == PLUGIN_PREFIX) return ROOT
             val first = qualified.removePrefix("$PLUGIN_PREFIX.").substringBefore('.')
             return when {

@@ -38,9 +38,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * Several UI owners share one marimo process per notebook. This service counts leases, starts the
- * process through launch/, and arms TTL after the last suppressing owner closes. [peek] does not
- * start a server.
+ * Several UI owners share one marimo process per notebook. This service counts leases, starts that
+ * process, and arms TTL after the last suppressing owner closes. [peek] does not start a server.
  */
 @Service(Service.Level.PROJECT)
 class NotebookSessionManager(private val project: Project) : Disposable {
