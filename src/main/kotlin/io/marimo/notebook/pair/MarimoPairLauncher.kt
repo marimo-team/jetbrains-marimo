@@ -18,6 +18,10 @@ import org.jetbrains.plugins.terminal.LocalTerminalDirectRunner
 import org.jetbrains.plugins.terminal.TerminalTabState
 import org.jetbrains.plugins.terminal.TerminalToolWindowManager
 
+/**
+ * A harness terminal needs a live notebook URL. When the session is ready, this type starts or
+ * reuses that terminal and holds a `PAIR_TERMINAL` lease for the tab.
+ */
 object MarimoPairLauncher {
 
     /** Ensure the server is up, then open a terminal running [harness] with the pair prompt. */

@@ -25,8 +25,9 @@ import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
 /**
- * Thin [FileEditor] over a per-session notebook view. The registry owns the primary browser; a
- * second simultaneous split gets its own [SecondaryNotebookView] on the same session URL.
+ * A split or a reopen must not tear down the marimo session. This [FileEditor] holds an
+ * `EDITOR_TAB` lease and borrows the registry view. The editor package is the JCEF UI: tabs, the
+ * Sessions tool window, and session actions.
  */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {

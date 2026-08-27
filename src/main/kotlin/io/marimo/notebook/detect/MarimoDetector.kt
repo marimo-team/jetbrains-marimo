@@ -7,8 +7,8 @@ import com.intellij.openapi.vfs.VfsUtilCore
 import com.intellij.openapi.vfs.VirtualFile
 
 /**
- * Cheap, PSI-free check that a file is a marimo notebook. Runs inside FileEditorProvider.accept(),
- * where PSI is not guaranteed available, so we sniff the file header text only.
+ * `FileEditorProvider.accept` cannot rely on PSI. This type sniffs the file header so the IDE can
+ * pick the marimo editor without a parse.
  */
 object MarimoDetector {
     private const val SNIFF_BYTES = 4096

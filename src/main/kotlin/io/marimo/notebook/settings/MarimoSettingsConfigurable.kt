@@ -14,6 +14,10 @@ import io.marimo.notebook.session.SessionSettings.Companion.MIN_BACKGROUND_TTL_M
 import io.marimo.notebook.telemetry.Consent
 import io.marimo.notebook.telemetry.MarimoTelemetry
 
+/**
+ * Consent, token auth, and background TTL are user choices. This configurable is the Tools settings
+ * page that writes those stores.
+ */
 class MarimoSettingsConfigurable :
     BoundConfigurable(MarimoBundle.message("telemetry.settings.title")) {
     private val telemetry = MarimoTelemetry.getInstance()
