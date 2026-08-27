@@ -145,15 +145,18 @@ Requires [uv](https://docs.astral.sh/uv/) and the
    the changelog, and get it merged. This is the review gate for the notes.
 
 6. **Dry-run the release.** In the Actions tab, run the **Release** workflow
-   against `main` with **Dry run** left enabled. It builds the plugin and prints
-   the exact release notes to the run summary without publishing anything. Read
-   them. Nothing is tagged and no approval is needed.
+   against `main` with **Dry run** left enabled. It builds the production zip,
+   runs check and Plugin Verifier, and prints the release notes. The run summary
+   has two SHA-256 lines: one from the build job and one from a second job that
+   downloads that zip the way publish will. They must be identical. Nothing is
+   tagged and no approval is needed.
 
 7. **Publish.** Run **Release** again with **Dry run** turned off. The run pauses
    for approval, because the publishing job is gated by the `release`
-   environment's protection rules. Approve it, and the same run signs and uploads
-   the plugin to the JetBrains Marketplace, then creates the tag, the GitHub
-   release, and the attached plugin zip in one final step.
+   environment's protection rules. Approve it. That run stores the verified zip,
+   uploads it to the JetBrains Marketplace (registry), then creates the tag, the
+   GitHub release, and the signed asset last. The publish summary reprints the
+   same SHA-256; the job fails if the bytes differ.
 
 There is no third step and no tag to push: **CI creates the tag**, at the end of
 the run that publishes. The approval is a pause inside that run, not a separate

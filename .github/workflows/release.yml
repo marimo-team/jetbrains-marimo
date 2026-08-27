@@ -2,12 +2,12 @@
 #
 # The version comes from gradle.properties and the notes from the matching CHANGELOG.md section,
 # both landed by the release pull request; see CONTRIBUTING.md "Releasing" for the runbook.
-# Marketplace upload happens before the GitHub tag. If tagging fails after Marketplace
-# accepts the version, do not re-run publish; resume from the signed artifact as documented
-# in the runbook.
+# Order on a real publish: store the verified zip (asset), upload to Marketplace
+# (registry), then create the GitHub tag and release last. Notifications follow.
 #
-# Run with 'dry_run' enabled (the default) to build the production zip, verify it, and
-# preview the exact release notes without publishing anything.
+# Run with 'dry_run' enabled (the default) to build the production zip, verify it,
+# preview the notes, and reprint the zip SHA-256 from a second job that downloads
+# the artifact the way publish does. Nothing is uploaded to Marketplace or tagged.
 #
 # Running the publishPlugin task requires all the following secrets to be provided: PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD, CERTIFICATE_CHAIN.
 # See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html for more information.
@@ -17,7 +17,7 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run — build and preview the release notes without publishing"
+        description: "Dry run — build, verify, and preview notes and zip SHA-256 without publishing"
         required: true
         default: true
         type: boolean
@@ -174,7 +174,47 @@ jobs:
             build/distributions/*.zip
             build/tmp/plugin.sha256
 
-  # Publish the plugin to JetBrains Marketplace, then tag and announce it.
+  # Dry run only: download the preview zip the same way publish does and print
+  # its SHA-256. The two summary lines must match. No Marketplace, no tag.
+  confirm:
+    name: Confirm Archive Identity
+    if: ${{ inputs.dry_run }}
+    needs: preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Download Plugin Archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+
+      - name: Verify Plugin Archive Checksum
+        run: |
+          mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
+          mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
+          if [ "${#zips[@]}" -ne 1 ] || [ "${#sums[@]}" -ne 1 ]; then
+            echo "::error::Expected one zip and one plugin.sha256 in plugin-archive"
+            find build/ci-archive -type f -print || true
+            exit 1
+          fi
+          ZIP="${zips[0]}"
+          SUM="${sums[0]}"
+          EXPECTED=$(awk '{print $1}' "$SUM")
+          ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): expected $EXPECTED, got $ACTUAL"
+            exit 1
+          fi
+          {
+            echo "#### Plugin archive (publish)"
+            echo
+            echo "- File: \`$(basename "$ZIP")\`"
+            echo "- SHA-256: \`$ACTUAL\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Marketplace (registry) first, GitHub tag and release last.
   publish:
     name: Publish Plugin
     if: ${{ inputs.dry_run == false }}
@@ -291,8 +331,7 @@ jobs:
           path: build/distributions/*-signed.zip
           if-no-files-found: ignore
 
-      # Creates the tag, the release, and the Marketplace-signed asset in one step, only after
-      # the Marketplace has accepted the plugin. A failed publish therefore leaves nothing to undo.
+      # GitHub tag, release, and signed asset last — after Marketplace has the plugin.
       - name: Tag and Create GitHub Release
         id: release
         env:
