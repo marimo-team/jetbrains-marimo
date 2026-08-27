@@ -206,35 +206,90 @@ jobs:
         with:
           cache-read-only: true
 
-      # Reuse the notes the preview job rendered, so the published release matches the preview
+      # Reuse the notes and zip the preview job produced, so Marketplace and GitHub
+      # get the verified archive instead of a second Gradle package.
       - name: Download Release Notes
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-note
           path: build/tmp
 
-      # Publish the plugin to JetBrains Marketplace
+      - name: Download Plugin Archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+
+      - name: Verify Plugin Archive Checksum
+        id: verified
+        run: |
+          mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
+          mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
+          if [ "${#zips[@]}" -ne 1 ] || [ "${#sums[@]}" -ne 1 ]; then
+            echo "::error::Expected one zip and one plugin.sha256 in plugin-archive"
+            find build/ci-archive -type f -print || true
+            exit 1
+          fi
+          ZIP="${zips[0]}"
+          SUM="${sums[0]}"
+          EXPECTED=$(awk '{print $1}' "$SUM")
+          ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
+          if [ "$EXPECTED" != "$ACTUAL" ]; then
+            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): expected $EXPECTED, got $ACTUAL"
+            exit 1
+          fi
+          mkdir -p build/distributions
+          cp "$ZIP" "build/distributions/$(basename "$ZIP")"
+          {
+            echo "#### Plugin archive (publish)"
+            echo
+            echo "- File: \`$(basename "$ZIP")\`"
+            echo "- SHA-256: \`$ACTUAL\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "zip=build/distributions/$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
+
+      # Sign and upload the downloaded zip. Fail if Gradle replaces those bytes.
       - name: Publish Plugin
         env:
           PUBLISH_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_PUBLISH_TOKEN }}
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
-        run: ./gradlew publishPlugin -Ptelemetry.env=production
+          ZIP: ${{ steps.verified.outputs.zip }}
+          EXPECTED_SHA: ${{ steps.verified.outputs.sha256 }}
+        run: |
+          BEFORE=$(sha256sum "$ZIP" | awk '{print $1}')
+          ./gradlew publishPlugin -Pplugin.reuseArchive="$ZIP"
+          AFTER=$(sha256sum "$ZIP" | awk '{print $1}')
+          if [ "$BEFORE" != "$AFTER" ] || [ "$AFTER" != "$EXPECTED_SHA" ]; then
+            echo "::error::Plugin archive changed during publish; refusing to ship a rebuilt zip"
+            echo "before=$BEFORE after=$AFTER expected=$EXPECTED_SHA"
+            exit 1
+          fi
+          BASE="${ZIP%.zip}"
+          SIGNED="$BASE-signed.zip"
+          if [ ! -f "$SIGNED" ]; then
+            echo "::error::Signed archive missing at $SIGNED"
+            exit 1
+          fi
+          echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
+        id: publish
 
-      # Creates the tag, the release, and the asset in one step, only after the Marketplace
-      # has accepted the plugin. A failed publish therefore leaves nothing to undo.
+      # Creates the tag, the release, and the Marketplace-signed asset in one step, only after
+      # the Marketplace has accepted the plugin. A failed publish therefore leaves nothing to undo.
       - name: Tag and Create GitHub Release
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.preflight.outputs.version }}
+          SIGNED: ${{ steps.publish.outputs.signed }}
         run: |
           URL=$(gh release create "$VERSION" \
             --target "${{ github.sha }}" \
             --title "$VERSION" \
             --notes-file ./build/tmp/release_note.txt \
-            ./build/distributions/*)
+            "$SIGNED")
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       # Notify Slack about the release outcome

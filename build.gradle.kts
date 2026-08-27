@@ -4,6 +4,7 @@ import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.SignPluginTask
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
 plugins {
@@ -148,5 +149,14 @@ dependencies {
         bundledPlugin("PythonCore")
         bundledPlugin("org.jetbrains.plugins.terminal")
         testFramework(TestFrameworkType.Platform)
+    }
+}
+
+// Publish signs this zip instead of assembling a second archive.
+val reusePluginArchive = providers.gradleProperty("plugin.reuseArchive")
+
+tasks.withType<SignPluginTask>().configureEach {
+    if (reusePluginArchive.isPresent) {
+        archiveFile.set(layout.projectDirectory.file(reusePluginArchive.get()))
     }
 }
