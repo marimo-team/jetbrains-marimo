@@ -5,8 +5,8 @@
 # Nothing is tagged until the Marketplace has accepted the plugin: the final step creates the tag,
 # the GitHub release, and the asset together, so a failed publish leaves no trace to clean up.
 #
-# Run with 'dry_run' enabled (the default) to build the plugin and preview the exact release notes
-# without publishing anything.
+# Run with 'dry_run' enabled (the default) to build the production zip, verify it, and
+# preview the exact release notes without publishing anything.
 #
 # Running the publishPlugin task requires all the following secrets to be provided: PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD, CERTIFICATE_CHAIN.
 # See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html for more information.
@@ -70,9 +70,9 @@ jobs:
             exit 1
           fi
 
-  # Builds the plugin and renders the notes in both modes, so a dry run proves the release
-  # would succeed and shows exactly what would ship. The notes are passed to the publish job
-  # as an artifact, so what you preview is what gets published.
+  # Builds the production plugin once, runs check and Plugin Verifier against that
+  # configuration, and uploads the zip plus its SHA-256. A dry run proves the same
+  # archive that would ship. The notes are an artifact so preview matches publish.
   preview:
     name: Build and Preview Notes
     needs: preflight
@@ -104,8 +104,33 @@ jobs:
         with:
           cache-read-only: true
 
-      - name: Build Plugin
-        run: ./gradlew buildPlugin
+      # One Gradle invocation so check, verifyPlugin, and the zip share the production
+      # telemetry configuration. A later publish must reuse this zip, not rebuild.
+      - name: Build and Verify Production Plugin
+        run: ./gradlew check verifyPlugin buildPlugin -Ptelemetry.env=production
+
+      - name: Record Plugin Archive Checksum
+        id: archive
+        run: |
+          shopt -s nullglob
+          zips=(build/distributions/*.zip)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one plugin zip, found ${#zips[@]}"
+            ls -la build/distributions || true
+            exit 1
+          fi
+          ZIP="${zips[0]}"
+          SHA=$(sha256sum "$ZIP" | awk '{print $1}')
+          mkdir -p build/tmp
+          printf '%s  %s\n' "$SHA" "$(basename "$ZIP")" > build/tmp/plugin.sha256
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+          {
+            echo "#### Plugin archive"
+            echo
+            echo "- File: \`$(basename "$ZIP")\`"
+            echo "- SHA-256: \`$SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Fails when CHANGELOG.md has no section for this version, which is the mistake most
       # likely to be caught here rather than halfway through a real release.
@@ -138,7 +163,9 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: plugin-archive
-          path: build/distributions/*
+          path: |
+            build/distributions/*.zip
+            build/tmp/plugin.sha256
 
   # Publish the plugin to JetBrains Marketplace, then tag and announce it.
   publish:
