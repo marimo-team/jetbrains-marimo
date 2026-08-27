@@ -5,7 +5,6 @@ package io.marimo.notebook.launch
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
-import java.util.concurrent.atomic.AtomicReference
 
 /** Serves HTTP on a loopback port until [close], so the accept thread cannot outlive the test. */
 internal class LoopbackHttpServer(handler: (Socket) -> Unit) : AutoCloseable {
@@ -26,32 +25,42 @@ internal class LoopbackHttpServer(handler: (Socket) -> Unit) : AutoCloseable {
 }
 
 /**
- * Frees [port], waits [bindDelayMs], then binds and serves until [close]. [bound] counts down once
- * the delayed socket is listening.
+ * Frees [port], waits [bindGate] and [bindDelayMs], then binds and serves until [close]. [bound]
+ * counts down once the delayed socket is listening.
  */
 internal class DelayedLoopbackHttpServer(
-    bindDelayMs: Long,
+    bindDelayMs: Long = 0L,
+    bindGate: CountDownLatch? = null,
     handler: (Socket) -> Unit,
 ) : AutoCloseable {
     val port: Int = ServerSocket(0).use { it.localPort }
     val bound = CountDownLatch(1)
-    private val live = AtomicReference<ServerSocket?>()
+    private val lock = Any()
+    private var closed = false
+    private var live: ServerSocket? = null
 
     init {
         Thread {
             try {
+                bindGate?.await()
                 if (bindDelayMs > 0) Thread.sleep(bindDelayMs)
-                ServerSocket(port).use { server ->
-                    live.set(server)
-                    bound.countDown()
+                val server =
+                    synchronized(lock) {
+                        if (closed) return@Thread
+                        ServerSocket(port).also { live = it }
+                    }
+                bound.countDown()
+                try {
                     acceptLoop(server, handler)
+                } finally {
+                    server.close()
                 }
             } catch (_: InterruptedException) {
                 Thread.currentThread().interrupt()
             } catch (_: Exception) {
                 // Closed before bind, or the test finished.
             } finally {
-                live.set(null)
+                synchronized(lock) { live = null }
             }
         }
             .apply {
@@ -61,7 +70,11 @@ internal class DelayedLoopbackHttpServer(
     }
 
     override fun close() {
-        live.getAndSet(null)?.close()
+        synchronized(lock) {
+            closed = true
+            live?.close()
+            live = null
+        }
     }
 }
 
