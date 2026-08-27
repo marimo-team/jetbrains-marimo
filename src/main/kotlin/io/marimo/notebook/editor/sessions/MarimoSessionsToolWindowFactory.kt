@@ -118,8 +118,8 @@ private class SessionCard(
     init {
         val launch = snapshot.launch
         val url = launch?.let { MarimoLocalhost.rootUrl(it.port) } ?: "Not started yet"
-        val canControl = snapshot.state.isLive
-        val copyUrlAvailable = launch != null && !launch.tokenAuthEnabled
+        val canControl = canControlSession(snapshot)
+        val copyUrlAvailable = canCopySessionUrl(snapshot)
 
         border =
             BorderFactory.createCompoundBorder(
