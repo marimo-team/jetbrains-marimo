@@ -51,14 +51,18 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             )
 
         val reported = CountDownLatch(1)
+        val extra = CountDownLatch(1)
         val calls = AtomicInteger()
         val code = AtomicInteger(-1)
         var tail = ""
         handle.onTerminated { exitCode, outputTail ->
-            calls.incrementAndGet()
-            code.set(exitCode)
-            tail = outputTail
-            reported.countDown()
+            if (calls.incrementAndGet() == 1) {
+                code.set(exitCode)
+                tail = outputTail
+                reported.countDown()
+            } else {
+                extra.countDown()
+            }
         }
 
         val readyUrl = handle.awaitReady().get(5, TimeUnit.SECONDS)
@@ -68,7 +72,7 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             readyUrl,
         )
         assertTrue("process exit was never reported", reported.await(5, TimeUnit.SECONDS))
-        Thread.sleep(300)
+        assertFalse("termination must be reported once", extra.await(0, TimeUnit.MILLISECONDS))
 
         assertEquals(1, calls.get())
         assertEquals(3, code.get())

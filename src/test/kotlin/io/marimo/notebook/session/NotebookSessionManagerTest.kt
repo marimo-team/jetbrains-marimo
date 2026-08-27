@@ -116,6 +116,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
     private lateinit var ttl: ManualTtl
+    private lateinit var seams: SessionManagerSeams
     private val leases = mutableListOf<NotebookSessionLease>()
 
     private val manager: NotebookSessionManager
@@ -139,6 +140,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
+        seams = SessionManagerSeams(manager)
         sdk = FakeLauncher("fake-sdk")
         uv = FakeLauncher("fake-uv")
         manager.planner = LaunchPlanner(sdk, uv)
@@ -153,6 +155,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
             leases.forEach(NotebookSessionLease::close)
             manager.sessions().forEach { manager.stopUrl(it.fileUrl) }
         } finally {
+            seams.restore()
             super.tearDown()
         }
     }

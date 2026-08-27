@@ -9,6 +9,7 @@ import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import io.marimo.notebook.session.SessionManagerSeams
 import io.marimo.notebook.session.SessionSettings
 import io.marimo.notebook.session.TtlCancellable
 import io.marimo.notebook.session.TtlScheduler
@@ -31,12 +32,14 @@ class MarimoPairSessionTest : BasePlatformTestCase() {
 
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
+    private lateinit var seams: SessionManagerSeams
 
     private val manager: NotebookSessionManager
         get() = project.service<NotebookSessionManager>()
 
     override fun setUp() {
         super.setUp()
+        seams = SessionManagerSeams(manager)
         sdk = FakeLauncher("fake-sdk").also { it.canLaunch = false }
         uv = FakeLauncher("fake-uv")
         manager.planner = LaunchPlanner(sdk, uv)
@@ -46,6 +49,7 @@ class MarimoPairSessionTest : BasePlatformTestCase() {
         try {
             manager.sessions().forEach { manager.stopUrl(it.fileUrl) }
         } finally {
+            seams.restore()
             super.tearDown()
         }
     }

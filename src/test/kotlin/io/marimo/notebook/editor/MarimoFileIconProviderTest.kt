@@ -9,6 +9,7 @@ import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import io.marimo.notebook.session.SessionManagerSeams
 import io.marimo.notebook.session.SessionSettings
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.TimeUnit
@@ -19,11 +20,19 @@ import org.junit.Assert.assertTrue
 
 class MarimoFileIconProviderTest : BasePlatformTestCase() {
 
+    private lateinit var seams: SessionManagerSeams
+
+    override fun setUp() {
+        super.setUp()
+        seams = SessionManagerSeams(project.service())
+    }
+
     override fun tearDown() {
         try {
             val service = project.service<NotebookSessionManager>()
             service.sessions().forEach { service.stopUrl(it.fileUrl) }
         } finally {
+            seams.restore()
             super.tearDown()
         }
     }

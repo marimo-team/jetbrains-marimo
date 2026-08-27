@@ -23,12 +23,12 @@ object BannerOnlyProcess {
     }
 }
 
-/** Binds and serves immediately, then prints the banner only after a delay. */
+/** Binds and serves immediately, then prints the banner only after [bannerGatePath] exists. */
 object ServeThenBannerProcess {
     @JvmStatic
     fun main(args: Array<String>) {
         val port = args[0].toInt()
-        val bannerDelayMs = args[1].toLong()
+        val bannerGatePath = args[1]
         val banner = args[2]
         Thread {
             ServerSocket(port).use { server ->
@@ -44,8 +44,11 @@ object ServeThenBannerProcess {
         }
             .apply { isDaemon = true }
             .start()
-        Thread.sleep(bannerDelayMs)
         if (banner.isNotEmpty()) {
+            val gate = File(bannerGatePath)
+            while (!gate.exists()) {
+                Thread.sleep(20)
+            }
             println("        ➜  URL: $banner")
             System.out.flush()
         }
@@ -104,38 +107,30 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
 
     /** A generic HTTP listener on the port must not count as a ready marimo server. */
     fun testUnrelatedHttpListenerDoesNotCountAsReady() {
-        val port = ServerSocket(0).use { it.localPort }
-        val url = "http://127.0.0.1:$port"
-        val binder = Thread {
-            ServerSocket(port).use { server ->
-                while (true) {
-                    val socket = server.accept()
-                    socket.getOutputStream().apply {
-                        write(httpResponse("200 OK"))
-                        flush()
-                    }
-                    socket.close()
-                }
+        LoopbackHttpServer { socket ->
+            socket.getOutputStream().apply {
+                write(httpResponse("200 OK"))
+                flush()
             }
         }
-        binder.isDaemon = true
-        binder.start()
-
-        val handle =
-            startMarimoServer(
-                javaProcess(BannerOnlyProcess::class.java.name, url),
-                "127.0.0.1",
-                port,
-                readinessTimeoutSeconds = 2,
-            )
-        try {
-            handle.awaitReady().get(5, TimeUnit.SECONDS)
-            fail("readiness must fail when the listener does not serve a marimo page")
-        } catch (e: ExecutionException) {
-            assertTrue(e.cause is IOException)
-        } finally {
-            handle.dispose()
-        }
+            .use { listener ->
+                val url = "http://127.0.0.1:${listener.port}"
+                val handle =
+                    startMarimoServer(
+                        javaProcess(BannerOnlyProcess::class.java.name, url),
+                        "127.0.0.1",
+                        listener.port,
+                        readinessTimeoutSeconds = 2,
+                    )
+                try {
+                    handle.awaitReady().get(5, TimeUnit.SECONDS)
+                    fail("readiness must fail when the listener does not serve a marimo page")
+                } catch (e: ExecutionException) {
+                    assertTrue(e.cause is IOException)
+                } finally {
+                    handle.dispose()
+                }
+            }
     }
 
     /**
@@ -143,55 +138,45 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
      * marimo page, not the banner, or JCEF navigates into the gap and gets ERR_CONNECTION_REFUSED.
      */
     fun testAwaitReadyWaitsForMarimoPageNotBanner() {
-        val port = ServerSocket(0).use { it.localPort }
-        val url = "http://127.0.0.1:$port"
-        val bindDelayMs = 750L
-
-        val binder = Thread {
-            Thread.sleep(bindDelayMs)
-            ServerSocket(port).use { server ->
-                while (true) {
-                    val socket = server.accept()
-                    socket.getOutputStream().apply {
-                        write(httpResponse("200 OK", MARIMO_PAGE_BODY))
-                        flush()
-                    }
-                    socket.close()
+        DelayedLoopbackHttpServer(bindDelayMs = 750L) { socket ->
+                socket.getOutputStream().apply {
+                    write(httpResponse("200 OK", MARIMO_PAGE_BODY))
+                    flush()
                 }
             }
-        }
-        binder.isDaemon = true
-        binder.start()
+            .use { listener ->
+                val url = "http://127.0.0.1:${listener.port}"
+                val handle =
+                    startMarimoServer(
+                        javaProcess(BannerOnlyProcess::class.java.name, url),
+                        "127.0.0.1",
+                        listener.port,
+                        readinessTimeoutSeconds = 10,
+                    )
+                val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
+                handle.dispose()
 
-        val handle =
-            startMarimoServer(
-                javaProcess(BannerOnlyProcess::class.java.name, url),
-                "127.0.0.1",
-                port,
-                readinessTimeoutSeconds = 10,
-            )
-        val start = System.nanoTime()
-        val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
-        val elapsedMs = (System.nanoTime() - start) / 1_000_000
-        handle.dispose()
-
-        assertEquals(url, readyUrl)
-        assertTrue(
-            "readiness completed after ${elapsedMs}ms; it must wait for the marimo page (~${bindDelayMs}ms)",
-            elapsedMs >= bindDelayMs / 2,
-        )
+                assertEquals(url, readyUrl)
+                assertEquals(
+                    "readiness must observe the delayed marimo page, not the banner",
+                    0L,
+                    listener.bound.count,
+                )
+            }
     }
 
     /** When the plugin supplies the URL, readiness must not wait for a delayed banner. */
     fun testSuppliedAuthenticatedUrlDoesNotWaitForTheBanner() {
         val port = ServerSocket(0).use { it.localPort }
         val supplied = "http://127.0.0.1:$port?access_token=supplied"
+        val bannerGate = File.createTempFile("marimo-banner-gate-", ".txt")
+        check(bannerGate.delete())
         val handle =
             startMarimoServer(
                 javaProcess(
                     ServeThenBannerProcess::class.java.name,
                     port.toString(),
-                    "750",
+                    bannerGate.absolutePath,
                     "http://127.0.0.1:$port?access_token=late",
                 ),
                 "127.0.0.1",
@@ -199,16 +184,13 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
                 readinessTimeoutSeconds = 10,
                 authenticatedUrl = supplied,
             )
-        val start = System.nanoTime()
-        val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
-        val elapsedMs = (System.nanoTime() - start) / 1_000_000
-        handle.dispose()
-
-        assertEquals(supplied, readyUrl)
-        assertTrue(
-            "completed after ${elapsedMs}ms; it must not wait for the delayed banner (~750ms)",
-            elapsedMs < 600,
-        )
+        try {
+            val readyUrl = handle.awaitReady().get(10, TimeUnit.SECONDS)
+            assertEquals(supplied, readyUrl)
+            assertFalse("readiness must finish before the banner gate exists", bannerGate.exists())
+        } finally {
+            handle.dispose()
+        }
     }
 
     fun testDirectHandleDisposeDeletesTheTokenPasswordFile() {
@@ -251,7 +233,7 @@ class MarimoProcessServerReadinessTest : BasePlatformTestCase() {
         val port = ServerSocket(0).use { it.localPort }
         val handle =
             startMarimoServer(
-                javaProcess(ServeThenBannerProcess::class.java.name, port.toString(), "0", ""),
+                javaProcess(ServeThenBannerProcess::class.java.name, port.toString(), "", ""),
                 "127.0.0.1",
                 port,
                 readinessTimeoutSeconds = 2,

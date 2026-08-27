@@ -37,6 +37,7 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
     private lateinit var ttl: ManualTtl
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
+    private lateinit var seams: SessionManagerSeams
     private val leases = mutableListOf<NotebookSessionLease>()
 
     private val manager: NotebookSessionManager
@@ -44,6 +45,7 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
+        seams = SessionManagerSeams(manager)
         sdk = FakeLauncher("fake-sdk")
         uv = FakeLauncher("fake-uv")
         manager.planner = LaunchPlanner(sdk, uv)
@@ -56,6 +58,7 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
             leases.forEach(NotebookSessionLease::close)
             manager.sessions().forEach { manager.stopUrl(it.fileUrl) }
         } finally {
+            seams.restore()
             super.tearDown()
         }
     }
@@ -110,9 +113,10 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
         manager.addSessionEventListener(testRootDisposable, events::add)
 
         val first = acquire(file, LeaseOwner.EDITOR_TAB)
+        val readyUrl = first.readyUrl()
         assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
         sdk.handles.single().becomeReady()
-        first.readyUrl().get(5, TimeUnit.SECONDS)
+        readyUrl.get(5, TimeUnit.SECONDS)
 
         first.close()
         assertEquals(1, ttl.pending.size)

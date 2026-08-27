@@ -22,6 +22,23 @@ import java.util.concurrent.atomic.AtomicReference
 
 class NotebookSessionManagerReuseTest : BasePlatformTestCase() {
 
+    private lateinit var seams: SessionManagerSeams
+
+    override fun setUp() {
+        super.setUp()
+        seams = SessionManagerSeams(project.service())
+    }
+
+    override fun tearDown() {
+        try {
+            val manager = project.service<NotebookSessionManager>()
+            manager.sessions().forEach { manager.stopUrl(it.fileUrl) }
+        } finally {
+            seams.restore()
+            super.tearDown()
+        }
+    }
+
     private class TrackingHandle(private val disposed: CountDownLatch) : MarimoServerHandle {
         private val delegate = ScriptedMarimoServerHandle()
 
