@@ -159,16 +159,44 @@ There is no third step and no tag to push: **CI creates the tag**, at the end of
 the run that publishes. The approval is a pause inside that run, not a separate
 dispatch. Never push a version tag by hand.
 
-Because the tag comes last, a failed publish leaves nothing to clean up — no
-orphan tag, no release announcing a version that did not ship. Fix the cause and
-run the workflow again. The workflow also refuses to start when
-`gradle.properties` names a version that already has a release, which is what
-catches a forgotten version bump.
+The workflow refuses to start when `gradle.properties` names a version that
+already has a GitHub release, which is what catches a forgotten version bump.
+It also queues behind any in-flight Release run and will not cancel that run
+(`cancel-in-progress: false`), so a publish that has already reached Marketplace
+is not killed mid-tag.
+
+If **Marketplace accepted the upload** and **tagging or the GitHub release
+failed**, do not dispatch Release again. A second publish uploads the same
+Marketplace version and can fail while leaving the tag still missing.
+
+Resume by creating only the GitHub release from this failed run:
+
+1. Confirm the version on
+   [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/index?xmlId=io.marimo.notebook).
+2. From the failed Actions run, download the `signed-plugin-archive` artifact
+   and the `release-note` artifact.
+3. Create the tag, GitHub release, and asset with the same commit the run used:
+
+   ```bash
+   gh release create "<version>" \
+     --repo marimo-team/jetbrains-marimo \
+     --target "<commit sha from the failed run>" \
+     --title "<version>" \
+     --notes-file release_note.txt \
+     <signed zip from signed-plugin-archive>
+   ```
+
+If Marketplace did **not** accept the upload, fix the cause and dispatch
+Release again with **Dry run** turned off. That case still has no tag to clean
+up.
 
 ### Do not
 
 - Hand-write a `## [<version>]` heading in `CHANGELOG.md`. Step 4 owns that.
-- Push a version tag. Step 7 owns that.
+- Push a version tag, except the resume `gh release create` above when
+  Marketplace already accepted the version and tagging failed.
+- Re-dispatch **Release** with Dry run off after Marketplace has accepted that
+  version. Resume tagging from `signed-plugin-archive` instead.
 - Edit the notes in the GitHub release UI and expect them to persist.
   `CHANGELOG.md` in the repo is the only source of truth — corrections go through
   a pull request.

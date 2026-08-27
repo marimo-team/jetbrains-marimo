@@ -2,8 +2,9 @@
 #
 # The version comes from gradle.properties and the notes from the matching CHANGELOG.md section,
 # both landed by the release pull request; see CONTRIBUTING.md "Releasing" for the runbook.
-# Nothing is tagged until the Marketplace has accepted the plugin: the final step creates the tag,
-# the GitHub release, and the asset together, so a failed publish leaves no trace to clean up.
+# Marketplace upload happens before the GitHub tag. If tagging fails after Marketplace
+# accepts the version, do not re-run publish; resume from the signed artifact as documented
+# in the runbook.
 #
 # Run with 'dry_run' enabled (the default) to build the production zip, verify it, and
 # preview the exact release notes without publishing anything.
@@ -20,6 +21,12 @@ on:
         required: true
         default: true
         type: boolean
+
+# One release at a time. Do not cancel an in-flight publish after Marketplace has
+# accepted the version, or tagging cannot finish from this run.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 permissions: {}
 
@@ -275,6 +282,14 @@ jobs:
           fi
           echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
         id: publish
+
+      - name: Upload Signed Plugin Archive
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: signed-plugin-archive
+          path: build/distributions/*-signed.zip
+          if-no-files-found: ignore
 
       # Creates the tag, the release, and the Marketplace-signed asset in one step, only after
       # the Marketplace has accepted the plugin. A failed publish therefore leaves nothing to undo.
