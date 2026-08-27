@@ -22,6 +22,7 @@ maintainers, not just the immediate task.
 | Command | What it does |
 |---|---|
 | `./gradlew runIde` | Launch a sandboxed IDE with the plugin loaded |
+| `./gradlew runIde -Ptelemetry.live=true` | Same, but send opt-in events to PostHog/Sentry |
 | `./gradlew test` | Run the test suite |
 | `./gradlew spotlessCheck` | Check Kotlin formatting and license headers |
 | `./gradlew spotlessApply` | Format Kotlin and insert or fix license headers |

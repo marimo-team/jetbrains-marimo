@@ -28,7 +28,12 @@ Sent to PostHog (US region, `https://us.i.posthog.com`). Usage events are **full
 carry only the fields listed below.
 
 Every event also includes: the anonymous identifier, the plugin version, and a build marker
-(`development` or `production`).
+(`development` or `production`). The PostHog Java server SDK adds `$lib` and `$lib_version`
+(the library name and version). It does not attach GeoIP fields or `$ip`.
+
+Local `runIde` builds, CI plugin zips, and any other non-production artifact **do not send**
+usage events or crash reports, even after opt-in. They use no-op sinks unless the artifact was
+built with `-Ptelemetry.env=production` or `-Ptelemetry.live=true`.
 
 | Event | When it is sent | Properties |
 |---|---|---|

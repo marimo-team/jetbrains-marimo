@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.telemetry
+package io.marimo.notebook.telemetry.transport
 
 import io.sentry.Hint
 import io.sentry.SentryEvent
@@ -22,7 +22,7 @@ class MarimoSentryOptionsTest {
     }
 
     @Test
-    fun beforeSendRemovesServerNameFromPluginEvents() {
+    fun wiresSanitizerAsBeforeSend() {
         val throwable =
             RuntimeException("boom").apply {
                 stackTrace =

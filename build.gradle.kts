@@ -35,15 +35,21 @@ detekt {
 
 // The telemetry environment is fixed when the artifact is built: only the release workflow passes
 // -Ptelemetry.env=production. Every other build — local runIde, side-loaded buildPlugin zips, CI
-// checks — stays "development", so analytics can exclude non-release traffic. Generated into a
-// bundled resource so it travels with the plugin and can't be spoofed by the runtime environment.
+// checks — stays "development". Live PostHog/Sentry clients are off unless this is a production
+// artifact or the build passes -Ptelemetry.live=true, so local opt-in cannot pollute analytics.
 val telemetryEnv = providers.gradleProperty("telemetry.env").orElse("development").get()
+val telemetryLive =
+    providers
+        .gradleProperty("telemetry.live")
+        .orElse(if (telemetryEnv == "production") "true" else "false")
+        .get()
 val telemetryResourcesDir = layout.buildDirectory.dir("generated/telemetry-resources")
 
 val generateTelemetryConfig =
     tasks.register<WriteProperties>("generateTelemetryConfig") {
         destinationFile = telemetryResourcesDir.map { it.file("telemetry.properties") }
         property("environment", telemetryEnv)
+        property("live", telemetryLive)
         // Baked in so the runtime reports the plugin's own version without querying an internal
         // platform API.
         property("version", providers.provider { project.version.toString() })

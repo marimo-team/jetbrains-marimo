@@ -1,6 +1,6 @@
 /* Copyright 2026 Marimo. All rights reserved. */
 
-package io.marimo.notebook.telemetry
+package io.marimo.notebook.settings
 
 import com.intellij.openapi.options.BoundConfigurable
 import com.intellij.openapi.ui.DialogPanel
@@ -11,8 +11,10 @@ import com.intellij.ui.dsl.builder.panel
 import io.marimo.notebook.MarimoBundle
 import io.marimo.notebook.session.SessionSettings
 import io.marimo.notebook.session.SessionSettings.Companion.MIN_BACKGROUND_TTL_MINUTES
+import io.marimo.notebook.telemetry.Consent
+import io.marimo.notebook.telemetry.MarimoTelemetry
 
-class MarimoTelemetryConfigurable :
+class MarimoSettingsConfigurable :
     BoundConfigurable(MarimoBundle.message("telemetry.settings.title")) {
     private val telemetry = MarimoTelemetry.getInstance()
     private val sessions = SessionSettings.getInstance()

@@ -28,6 +28,15 @@ Run the plugin in a sandboxed IDE:
 This launches a separate PyCharm instance with the plugin loaded. Open a marimo
 `.py` file there to try it out.
 
+Local and CI builds use no-op telemetry sinks even if you opt in, so they do not
+write to PostHog or Sentry. A production artifact (`-Ptelemetry.env=production`)
+uses the real backends. To send from a development build while debugging
+telemetry, pass `-Ptelemetry.live=true` (events still carry `environment=development`):
+
+```bash
+./gradlew runIde -Ptelemetry.live=true
+```
+
 Normal notebook launches use the configured project interpreter and run
 `<python> -m marimo`. The **Start marimo in Sandbox** action instead uses uv to
 run marimo in an isolated environment.

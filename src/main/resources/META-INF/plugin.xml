@@ -49,7 +49,7 @@
         <internalFileTemplate name="marimo Notebook"/>
         <applicationConfigurable
             parentId="tools"
-            instance="io.marimo.notebook.telemetry.MarimoTelemetryConfigurable"
+            instance="io.marimo.notebook.settings.MarimoSettingsConfigurable"
             id="io.marimo.notebook.telemetry.settings"
             displayName="marimo"/>
     </extensions>
