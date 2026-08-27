@@ -148,15 +148,30 @@ Requires [uv](https://docs.astral.sh/uv/) and the
    against `main` with **Dry run** left enabled. It builds the production zip,
    runs check and Plugin Verifier, and prints the release notes. The run summary
    has two SHA-256 lines: one from the build job and one from a second job that
-   downloads that zip the way publish will. They must be identical. Nothing is
-   tagged and no approval is needed.
+   downloads that zip. They must be identical. Record these values from the
+   **Confirm Archive Identity** summary:
 
-7. **Publish.** Run **Release** again with **Dry run** turned off. The run pauses
-   for approval, because the publishing job is gated by the `release`
-   environment's protection rules. Approve it. That run stores the verified zip,
-   uploads it to the JetBrains Marketplace (registry), then creates the tag, the
-   GitHub release, and the signed asset last. The publish summary reprints the
-   same SHA-256; the job fails if the bytes differ.
+   - Workflow run ID
+   - SHA-256
+   - Commit
+
+   Nothing is tagged and no approval is needed.
+
+7. **Publish.** On the **same `main` commit** as that dry run, run **Release**
+   again with:
+
+   - **Dry run** turned off
+   - **source_run_id** set to the dry-run workflow run ID
+   - **expected_sha256** set to the dry-run SHA-256
+
+   The run does not build. It downloads that dry-run zip, checks that the
+   selected run is this repository's Release workflow, that its commit matches
+   this dispatch, and that the zip SHA-256 matches `expected_sha256`. Any of
+   those mismatches fails before Marketplace access. The run then pauses for
+   approval, because the publishing job is gated by the `release` environment's
+   protection rules. Approve it. That job signs the downloaded zip, uploads it
+   to the JetBrains Marketplace (registry), then creates the tag, the GitHub
+   release, and the signed asset last.
 
 There is no third step and no tag to push: **CI creates the tag**, at the end of
 the run that publishes. The approval is a pause inside that run, not a separate

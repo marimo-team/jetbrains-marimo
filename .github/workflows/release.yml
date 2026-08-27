@@ -7,7 +7,12 @@
 #
 # Run with 'dry_run' enabled (the default) to build the production zip, verify it,
 # preview the notes, and reprint the zip SHA-256 from a second job that downloads
-# the artifact the way publish does. Nothing is uploaded to Marketplace or tagged.
+# the artifact. Nothing is uploaded to Marketplace or tagged. Record the run ID
+# and SHA-256 from that summary.
+#
+# A real publish (dry_run off) does not build. It selects the successful dry-run
+# run ID, checks repository, commit, and SHA-256, then signs and publishes that
+# zip. Order: verified zip, Marketplace, GitHub tag and release.
 #
 # Running the publishPlugin task requires all the following secrets to be provided: PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD, CERTIFICATE_CHAIN.
 # See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html for more information.
@@ -21,6 +26,14 @@ on:
         required: true
         default: true
         type: boolean
+      source_run_id:
+        description: "Successful dry-run Release run ID whose verified zip to publish"
+        required: false
+        type: string
+      expected_sha256:
+        description: "SHA-256 of that dry-run zip, from the dry-run summary"
+        required: false
+        type: string
 
 # One release at a time. Do not cancel an in-flight publish after Marketplace has
 # accepted the version, or tagging cannot finish from this run.
@@ -77,11 +90,31 @@ jobs:
             exit 1
           fi
 
+      - name: Require Dry-Run Identity
+        if: ${{ inputs.dry_run == false }}
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+        run: |
+          if [ -z "$SOURCE_RUN_ID" ] || [ -z "$EXPECTED_SHA" ]; then
+            echo "::error::Real publish requires source_run_id and expected_sha256 from the approved dry run"
+            exit 1
+          fi
+          if ! [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::source_run_id must be a numeric workflow run ID"
+            exit 1
+          fi
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo "::error::expected_sha256 must be a 64-character hex SHA-256"
+            exit 1
+          fi
+
   # Builds the production plugin once, runs check and Plugin Verifier against that
   # configuration, and uploads the zip plus its SHA-256. A dry run proves the same
   # archive that would ship. The notes are an artifact so preview matches publish.
   preview:
     name: Build and Preview Notes
+    if: ${{ inputs.dry_run }}
     needs: preflight
     runs-on: ubuntu-latest
     permissions:
@@ -191,6 +224,9 @@ jobs:
           path: build/ci-archive
 
       - name: Verify Plugin Archive Checksum
+        env:
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
         run: |
           mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
           mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
@@ -212,13 +248,113 @@ jobs:
             echo
             echo "- File: \`$(basename "$ZIP")\`"
             echo "- SHA-256: \`$ACTUAL\`"
+            echo "- Workflow run ID: \`$WORKFLOW_RUN_ID\`"
+            echo "- Commit: \`$WORKFLOW_COMMIT\`"
           } >> "$GITHUB_STEP_SUMMARY"
+
+  # Real publish only: take the approved dry-run zip. Fail here, before the
+  # release environment and Marketplace, if the run, commit, or SHA differs.
+  select:
+    name: Select Dry-Run Archive
+    if: ${{ inputs.dry_run == false }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha256: ${{ steps.verified.outputs.sha256 }}
+      zip_name: ${{ steps.verified.outputs.zip_name }}
+    steps:
+      - name: Verify Source Run Identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          RUN=$(gh api "repos/${{ github.repository }}/actions/runs/${SOURCE_RUN_ID}")
+          HEAD_SHA=$(printf '%s' "$RUN" | jq -r .head_sha)
+          CONCLUSION=$(printf '%s' "$RUN" | jq -r .conclusion)
+          WORKFLOW_PATH=$(printf '%s' "$RUN" | jq -r .path)
+          if [ "$HEAD_SHA" != "$EXPECTED_COMMIT" ]; then
+            echo "::error::Selected run commit $HEAD_SHA does not match this dispatch $EXPECTED_COMMIT"
+            exit 1
+          fi
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Selected run conclusion is $CONCLUSION, not success"
+            exit 1
+          fi
+          if [ "$WORKFLOW_PATH" != ".github/workflows/release.yml" ]; then
+            echo "::error::Selected run is not the Release workflow ($WORKFLOW_PATH)"
+            exit 1
+          fi
+
+      - name: Download Dry-Run Release Notes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-note
+          path: build/tmp
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Download Dry-Run Plugin Archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify Plugin Archive Checksum
+        id: verified
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SELECTED_COMMIT: ${{ github.sha }}
+        run: |
+          mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
+          mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
+          if [ "${#zips[@]}" -ne 1 ] || [ "${#sums[@]}" -ne 1 ]; then
+            echo "::error::Expected one zip and one plugin.sha256 in plugin-archive"
+            find build/ci-archive -type f -print || true
+            exit 1
+          fi
+          ZIP="${zips[0]}"
+          SUM="${sums[0]}"
+          RECORDED=$(awk '{print $1}' "$SUM")
+          ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
+          if [ "$RECORDED" != "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED_SHA" ]; then
+            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): recorded $RECORDED, actual $ACTUAL, expected $EXPECTED_SHA"
+            exit 1
+          fi
+          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
+          echo "zip_name=$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+          {
+            echo "#### Selected dry-run archive"
+            echo
+            echo "- Source run: \`$SOURCE_RUN_ID\`"
+            echo "- File: \`$(basename "$ZIP")\`"
+            echo "- SHA-256: \`$ACTUAL\`"
+            echo "- Commit: \`$SELECTED_COMMIT\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Release Notes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-note
+          path: build/tmp/release_note.txt
+
+      - name: Upload Plugin Archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: plugin-archive
+          path: build/ci-archive
 
   # Marketplace (registry) first, GitHub tag and release last.
   publish:
     name: Publish Plugin
     if: ${{ inputs.dry_run == false }}
-    needs: [preflight, preview]
+    needs: [preflight, select]
     runs-on: ubuntu-latest
     # Scopes the publishing/signing secrets to this job and gates it behind the environment's
     # protection rules (configure required reviewers on the 'release' environment for manual approval).
@@ -253,8 +389,8 @@ jobs:
         with:
           cache-read-only: true
 
-      # Reuse the notes and zip the preview job produced, so Marketplace and GitHub
-      # get the verified archive instead of a second Gradle package.
+      # Reuse the notes and zip the select job copied from the approved dry run.
+      # Marketplace and GitHub get that archive. This job does not build.
       - name: Download Release Notes
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -269,6 +405,8 @@ jobs:
 
       - name: Verify Plugin Archive Checksum
         id: verified
+        env:
+          SELECTED_SHA: ${{ needs.select.outputs.sha256 }}
         run: |
           mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
           mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
@@ -281,8 +419,8 @@ jobs:
           SUM="${sums[0]}"
           EXPECTED=$(awk '{print $1}' "$SUM")
           ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
-          if [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): expected $EXPECTED, got $ACTUAL"
+          if [ "$EXPECTED" != "$ACTUAL" ] || [ "$ACTUAL" != "$SELECTED_SHA" ]; then
+            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): recorded $EXPECTED, actual $ACTUAL, selected $SELECTED_SHA"
             exit 1
           fi
           mkdir -p build/distributions

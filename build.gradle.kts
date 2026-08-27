@@ -1,9 +1,12 @@
 import dev.detekt.gradle.extensions.FailOnSeverity
+import org.gradle.api.Task
+import org.gradle.api.tasks.TaskProvider
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
 import org.jetbrains.intellij.platform.gradle.IntelliJPlatformType
 import org.jetbrains.intellij.platform.gradle.TestFrameworkType
+import org.jetbrains.intellij.platform.gradle.tasks.PublishPluginTask
 import org.jetbrains.intellij.platform.gradle.tasks.SignPluginTask
 import org.jetbrains.intellij.platform.gradle.tasks.VerifyPluginTask
 
@@ -152,11 +155,23 @@ dependencies {
     }
 }
 
-// Publish signs this zip instead of assembling a second archive.
+// Sign the downloaded zip. Drop the plugin's assemble-before-publish edge.
 val reusePluginArchive = providers.gradleProperty("plugin.reuseArchive")
 
-tasks.withType<SignPluginTask>().configureEach {
-    if (reusePluginArchive.isPresent) {
-        archiveFile.set(layout.projectDirectory.file(reusePluginArchive.get()))
+if (reusePluginArchive.isPresent) {
+    val reusedArchive = layout.projectDirectory.file(reusePluginArchive.get())
+    val signPlugin = tasks.named<SignPluginTask>("signPlugin")
+    signPlugin.configure { archiveFile.set(reusedArchive) }
+    tasks.named<PublishPluginTask>("publishPlugin").configure {
+        archiveFile.set(signPlugin.flatMap { it.signedArchiveFile })
+        setDependsOn(dependsOn.filterNot { dependencyName(it) == "buildPlugin" })
     }
 }
+
+fun dependencyName(dependency: Any): String? =
+    when (dependency) {
+        is Task -> dependency.name
+        is TaskProvider<*> -> dependency.name
+        is String -> dependency
+        else -> null
+    }
