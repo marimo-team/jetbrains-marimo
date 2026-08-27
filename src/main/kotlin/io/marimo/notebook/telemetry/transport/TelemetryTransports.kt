@@ -41,9 +41,8 @@ internal fun sentrySink(
     ideVersion: String,
     pluginVersion: String,
     anonymousId: String,
-): SentrySink? {
+): SentrySink {
     if (!live) return NoOpSentrySink
-    if (dsn.startsWith("<")) return null
     return SentryTransport(
         dsn = dsn,
         release = release,

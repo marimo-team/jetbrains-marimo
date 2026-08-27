@@ -43,7 +43,7 @@ class TelemetryTransportsTest {
                 anonymousId = "id",
             )
         assertSame(NoOpSentrySink, sink)
-        requireNotNull(sink).apply {
+        sink.apply {
             captureException(RuntimeException("boom"))
             startSession()
             endSession()
