@@ -135,17 +135,12 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         target.captureException(throwable)
     }
 
-    /**
-     * Builds both transports on first use and opens exactly one release-health session for the
-     * consented run. Returns the live Sentry sink, or null when Sentry is disabled (placeholder
-     * DSN). Development builds use no-op sinks unless the artifact was built with live telemetry.
-     */
     @Synchronized
     private fun ensureStarted(): SentrySink? {
         if (consent != Consent.ALLOWED) return null
         ensureAnonymousId()
         if (sink == null) sink = buildSink()
-        val target = sentrySink ?: buildSentrySink()?.also { sentrySink = it } ?: return null
+        val target = sentrySink ?: buildSentrySink().also { sentrySink = it }
         if (!sentrySessionActive) {
             target.startSession()
             sentrySessionActive = true
@@ -189,9 +184,7 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
     private fun buildSink(): PostHogSink =
         postHogSink(LIVE_TELEMETRY, POSTHOG_API_KEY, POSTHOG_HOST)
 
-    // An unset DSN means no crash reporting. Usage events are unaffected. Skipping the transport
-    // keeps such a build from crashing on Sentry.init's DSN validation.
-    private fun buildSentrySink(): SentrySink? =
+    private fun buildSentrySink(): SentrySink =
         sentrySink(
             live = LIVE_TELEMETRY,
             dsn = SENTRY_DSN,

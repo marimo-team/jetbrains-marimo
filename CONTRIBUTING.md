@@ -145,30 +145,76 @@ Requires [uv](https://docs.astral.sh/uv/) and the
    the changelog, and get it merged. This is the review gate for the notes.
 
 6. **Dry-run the release.** In the Actions tab, run the **Release** workflow
-   against `main` with **Dry run** left enabled. It builds the plugin and prints
-   the exact release notes to the run summary without publishing anything. Read
-   them. Nothing is tagged and no approval is needed.
+   against `main` with **Dry run** left enabled. It builds the production zip,
+   runs check and Plugin Verifier, and prints the release notes. The run summary
+   has two SHA-256 lines: one from the build job and one from a second job that
+   downloads that zip. They must be identical. Record these values from the
+   **Confirm Archive Identity** summary:
 
-7. **Publish.** Run **Release** again with **Dry run** turned off. The run pauses
-   for approval, because the publishing job is gated by the `release`
-   environment's protection rules. Approve it, and the same run signs and uploads
-   the plugin to the JetBrains Marketplace, then creates the tag, the GitHub
-   release, and the attached plugin zip in one final step.
+   - Workflow run ID
+   - SHA-256
+   - Commit
+
+   Nothing is tagged and no approval is needed.
+
+7. **Publish.** On the **same `main` commit** as that dry run, run **Release**
+   again with:
+
+   - **Dry run** turned off
+   - **source_run_id** set to the dry-run workflow run ID
+   - **expected_sha256** set to the dry-run SHA-256
+
+   The run does not build. It downloads that dry-run zip, checks that the
+   selected run is this repository's Release workflow, that its commit matches
+   this dispatch, and that the zip SHA-256 matches `expected_sha256`. Any of
+   those mismatches fails before Marketplace access. The run then pauses for
+   approval, because the publishing job is gated by the `release` environment's
+   protection rules. Approve it. That job signs the downloaded zip, uploads it
+   to the JetBrains Marketplace (registry), then creates the tag, the GitHub
+   release, and the signed asset last.
 
 There is no third step and no tag to push: **CI creates the tag**, at the end of
 the run that publishes. The approval is a pause inside that run, not a separate
 dispatch. Never push a version tag by hand.
 
-Because the tag comes last, a failed publish leaves nothing to clean up — no
-orphan tag, no release announcing a version that did not ship. Fix the cause and
-run the workflow again. The workflow also refuses to start when
-`gradle.properties` names a version that already has a release, which is what
-catches a forgotten version bump.
+The workflow refuses to start when `gradle.properties` names a version that
+already has a GitHub release, which is what catches a forgotten version bump.
+It also queues behind any in-flight Release run and will not cancel that run
+(`cancel-in-progress: false`), so a publish that has already reached Marketplace
+is not killed mid-tag.
+
+If **Marketplace accepted the upload** and **tagging or the GitHub release
+failed**, do not dispatch Release again. A second publish uploads the same
+Marketplace version and can fail while leaving the tag still missing.
+
+Resume by creating only the GitHub release from this failed run:
+
+1. Confirm the version on
+   [JetBrains Marketplace](https://plugins.jetbrains.com/plugin/index?xmlId=io.marimo.notebook).
+2. From the failed Actions run, download the `signed-plugin-archive` artifact
+   and the `release-note` artifact.
+3. Create the tag, GitHub release, and asset with the same commit the run used:
+
+   ```bash
+   gh release create "<version>" \
+     --repo marimo-team/jetbrains-marimo \
+     --target "<commit sha from the failed run>" \
+     --title "<version>" \
+     --notes-file release_note.txt \
+     <signed zip from signed-plugin-archive>
+   ```
+
+If Marketplace did **not** accept the upload, fix the cause and dispatch
+Release again with **Dry run** turned off. That case still has no tag to clean
+up.
 
 ### Do not
 
 - Hand-write a `## [<version>]` heading in `CHANGELOG.md`. Step 4 owns that.
-- Push a version tag. Step 7 owns that.
+- Push a version tag, except the resume `gh release create` above when
+  Marketplace already accepted the version and tagging failed.
+- Re-dispatch **Release** with Dry run off after Marketplace has accepted that
+  version. Resume tagging from `signed-plugin-archive` instead.
 - Edit the notes in the GitHub release UI and expect them to persist.
   `CHANGELOG.md` in the repo is the only source of truth — corrections go through
   a pull request.

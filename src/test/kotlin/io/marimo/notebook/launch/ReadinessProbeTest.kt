@@ -2,8 +2,6 @@
 
 package io.marimo.notebook.launch
 
-import java.net.ServerSocket
-import java.net.Socket
 import java.nio.charset.StandardCharsets
 import java.util.concurrent.CompletableFuture
 import java.util.concurrent.ExecutionException
@@ -72,36 +70,39 @@ class ReadinessProbeTest {
 
     @Test
     fun crossOriginRedirectDoesNotCountAsReady() {
-        val destination = serve { socket ->
+        LoopbackHttpServer { socket ->
             socket.getOutputStream().use { output ->
                 output.write(httpResponse("200 OK", MARIMO_PAGE_BODY))
             }
         }
-        val redirect = serve { socket ->
-            val response =
-                "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:${destination.localPort}/\r\nContent-Length: 0\r\n\r\n"
-            socket.getOutputStream().use { output ->
-                output.write(response.toByteArray(StandardCharsets.UTF_8))
+            .use { destination ->
+                LoopbackHttpServer { socket ->
+                    val response =
+                        "HTTP/1.1 302 Found\r\nLocation: http://127.0.0.1:${destination.port}/\r\nContent-Length: 0\r\n\r\n"
+                    socket.getOutputStream().use { output ->
+                        output.write(response.toByteArray(StandardCharsets.UTF_8))
+                    }
+                }
+                    .use { redirect ->
+                        val ready = CompletableFuture<Void?>()
+                        ReadinessProbe.pollUntilReady(
+                            "http://127.0.0.1:${redirect.port}/",
+                            ready,
+                            1,
+                        )
+                        try {
+                            ready.get(3, TimeUnit.SECONDS)
+                            fail("readiness must not follow a redirect to another origin")
+                        } catch (_: ExecutionException) {
+                            // Expected timeout: the redirect body is not a marimo page.
+                        }
+                    }
             }
-        }
-        try {
-            val ready = CompletableFuture<Void?>()
-            ReadinessProbe.pollUntilReady("http://127.0.0.1:${redirect.localPort}/", ready, 1)
-            try {
-                ready.get(3, TimeUnit.SECONDS)
-                fail("readiness must not follow a redirect to another origin")
-            } catch (_: ExecutionException) {
-                // Expected timeout: the redirect body is not a marimo page.
-            }
-        } finally {
-            redirect.close()
-            destination.close()
-        }
     }
 
     @Test
     fun endlessResponseBodyCannotOutliveReadinessDeadline() {
-        val server = serve { socket ->
+        LoopbackHttpServer { socket ->
             socket.getOutputStream().use { output ->
                 output.write(
                     "HTTP/1.1 200 OK\r\nContent-Type: text/plain\r\n\r\n"
@@ -114,35 +115,15 @@ class ReadinessProbeTest {
                 }
             }
         }
-        try {
-            val ready = CompletableFuture<Void?>()
-            ReadinessProbe.pollUntilReady("http://127.0.0.1:${server.localPort}/", ready, 1)
-            try {
-                ready.get(3, TimeUnit.SECONDS)
-                fail("an endless non-marimo body must fail readiness")
-            } catch (_: ExecutionException) {
-                // Expected timeout after bounded reads.
-            }
-        } finally {
-            server.close()
-        }
-    }
-
-    private fun serve(handler: (Socket) -> Unit): ServerSocket {
-        val server = ServerSocket(0)
-        Thread {
-            while (!server.isClosed) {
+            .use { server ->
+                val ready = CompletableFuture<Void?>()
+                ReadinessProbe.pollUntilReady("http://127.0.0.1:${server.port}/", ready, 1)
                 try {
-                    server.accept().use(handler)
-                } catch (e: Exception) {
-                    if (!server.isClosed) throw e
+                    ready.get(3, TimeUnit.SECONDS)
+                    fail("an endless non-marimo body must fail readiness")
+                } catch (_: ExecutionException) {
+                    // Expected timeout after bounded reads.
                 }
             }
-        }
-            .apply {
-                isDaemon = true
-                start()
-            }
-        return server
     }
 }

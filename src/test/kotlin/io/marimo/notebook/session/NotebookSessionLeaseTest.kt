@@ -11,6 +11,7 @@ import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
 import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.TimeUnit
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -25,11 +26,18 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
             pending.add(entry)
             return TtlCancellable { pending.remove(entry) }
         }
+
+        fun fireAll() {
+            val due = pending.toList()
+            pending.clear()
+            due.forEach { it.second.run() }
+        }
     }
 
     private lateinit var ttl: ManualTtl
     private lateinit var sdk: FakeLauncher
     private lateinit var uv: FakeLauncher
+    private lateinit var seams: SessionManagerSeams
     private val leases = mutableListOf<NotebookSessionLease>()
 
     private val manager: NotebookSessionManager
@@ -37,6 +45,7 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
 
     override fun setUp() {
         super.setUp()
+        seams = SessionManagerSeams(manager)
         sdk = FakeLauncher("fake-sdk")
         uv = FakeLauncher("fake-uv")
         manager.planner = LaunchPlanner(sdk, uv)
@@ -49,6 +58,7 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
             leases.forEach(NotebookSessionLease::close)
             manager.sessions().forEach { manager.stopUrl(it.fileUrl) }
         } finally {
+            seams.restore()
             super.tearDown()
         }
     }
@@ -95,6 +105,38 @@ class NotebookSessionLeaseTest : BasePlatformTestCase() {
         assertTrue(ttl.pending.isEmpty())
         assertNull(manager.statusFor(file)?.expiresAtMillis)
         assertNotNull(manager.statusFor(file))
+    }
+
+    fun testSecondDetachAfterReattachDoesNotDoubleFireTtl() {
+        val file = notebook("reattach_ttl_lease.py")
+        val events = mutableListOf<NotebookSessionEvent>()
+        manager.addSessionEventListener(testRootDisposable, events::add)
+
+        val first = acquire(file, LeaseOwner.EDITOR_TAB)
+        val readyUrl = first.readyUrl()
+        assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles.single().becomeReady()
+        readyUrl.get(5, TimeUnit.SECONDS)
+
+        first.close()
+        assertEquals(1, ttl.pending.size)
+
+        val second = acquire(file, LeaseOwner.EDITOR_TAB)
+        assertTrue(ttl.pending.isEmpty())
+        assertEquals(first.sessionId, second.sessionId)
+
+        second.close()
+        assertEquals("the second close must arm exactly one TTL", 1, ttl.pending.size)
+
+        ttl.fireAll()
+
+        assertEquals(listOf(NotebookSessionEvent.Ended(first.sessionId)), events)
+        assertNull(manager.statusFor(file))
+        assertFalse(sdk.handles.single().isAlive)
+
+        ttl.fireAll()
+        assertEquals("expiry must be single-shot", 1, events.size)
+        assertTrue(ttl.pending.isEmpty())
     }
 
     fun testExpiredLeaseCannotCreateANewSession() {

@@ -12,6 +12,7 @@ import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.session.LeaseOwner
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.NotebookSessionManagerTest.FakeLauncher
+import io.marimo.notebook.session.SessionManagerSeams
 import java.awt.BorderLayout
 import java.awt.Container
 import java.util.concurrent.TimeUnit
@@ -21,14 +22,21 @@ import javax.swing.JPanel
 class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
 
     private val editors = mutableListOf<MarimoNotebookEditor>()
+    private lateinit var seams: SessionManagerSeams
 
     // Light projects and their services are reused across tests; drain what this class created.
+    override fun setUp() {
+        super.setUp()
+        seams = SessionManagerSeams(project.service())
+    }
+
     override fun tearDown() {
         try {
             editors.forEach(Disposer::dispose)
             val service = project.service<NotebookSessionManager>()
             service.sessions().forEach { service.stopUrl(it.fileUrl) }
         } finally {
+            seams.restore()
             super.tearDown()
         }
     }

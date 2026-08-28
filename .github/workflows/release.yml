@@ -2,11 +2,17 @@
 #
 # The version comes from gradle.properties and the notes from the matching CHANGELOG.md section,
 # both landed by the release pull request; see CONTRIBUTING.md "Releasing" for the runbook.
-# Nothing is tagged until the Marketplace has accepted the plugin: the final step creates the tag,
-# the GitHub release, and the asset together, so a failed publish leaves no trace to clean up.
+# Order on a real publish: store the verified zip (asset), upload to Marketplace
+# (registry), then create the GitHub tag and release last. Notifications follow.
 #
-# Run with 'dry_run' enabled (the default) to build the plugin and preview the exact release notes
-# without publishing anything.
+# Run with 'dry_run' enabled (the default) to build the production zip, verify it,
+# preview the notes, and reprint the zip SHA-256 from a second job that downloads
+# the artifact. Nothing is uploaded to Marketplace or tagged. Record the run ID
+# and SHA-256 from that summary.
+#
+# A real publish (dry_run off) does not build. It selects the successful dry-run
+# run ID, checks repository, commit, and SHA-256, then signs and publishes that
+# zip. Order: verified zip, Marketplace, GitHub tag and release.
 #
 # Running the publishPlugin task requires all the following secrets to be provided: PUBLISH_TOKEN, PRIVATE_KEY, PRIVATE_KEY_PASSWORD, CERTIFICATE_CHAIN.
 # See https://plugins.jetbrains.com/docs/intellij/plugin-signing.html for more information.
@@ -16,10 +22,24 @@ on:
   workflow_dispatch:
     inputs:
       dry_run:
-        description: "Dry run — build and preview the release notes without publishing"
+        description: "Dry run — build, verify, and preview notes and zip SHA-256 without publishing"
         required: true
         default: true
         type: boolean
+      source_run_id:
+        description: "Successful dry-run Release run ID whose verified zip to publish"
+        required: false
+        type: string
+      expected_sha256:
+        description: "SHA-256 of that dry-run zip, from the dry-run summary"
+        required: false
+        type: string
+
+# One release at a time. Do not cancel an in-flight publish after Marketplace has
+# accepted the version, or tagging cannot finish from this run.
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
 
 permissions: {}
 
@@ -70,11 +90,31 @@ jobs:
             exit 1
           fi
 
-  # Builds the plugin and renders the notes in both modes, so a dry run proves the release
-  # would succeed and shows exactly what would ship. The notes are passed to the publish job
-  # as an artifact, so what you preview is what gets published.
+      - name: Require Dry-Run Identity
+        if: ${{ inputs.dry_run == false }}
+        env:
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+        run: |
+          if [ -z "$SOURCE_RUN_ID" ] || [ -z "$EXPECTED_SHA" ]; then
+            echo "::error::Real publish requires source_run_id and expected_sha256 from the approved dry run"
+            exit 1
+          fi
+          if ! [[ "$SOURCE_RUN_ID" =~ ^[0-9]+$ ]]; then
+            echo "::error::source_run_id must be a numeric workflow run ID"
+            exit 1
+          fi
+          if ! [[ "$EXPECTED_SHA" =~ ^[a-fA-F0-9]{64}$ ]]; then
+            echo "::error::expected_sha256 must be a 64-character hex SHA-256"
+            exit 1
+          fi
+
+  # Builds the production plugin once, runs check and Plugin Verifier against that
+  # configuration, and uploads the zip plus its SHA-256. A dry run proves the same
+  # archive that would ship. The notes are an artifact so preview matches publish.
   preview:
     name: Build and Preview Notes
+    if: ${{ inputs.dry_run }}
     needs: preflight
     runs-on: ubuntu-latest
     permissions:
@@ -104,8 +144,33 @@ jobs:
         with:
           cache-read-only: true
 
-      - name: Build Plugin
-        run: ./gradlew buildPlugin
+      # One Gradle invocation so check, verifyPlugin, and the zip share the production
+      # telemetry configuration. A later publish must reuse this zip, not rebuild.
+      - name: Build and Verify Production Plugin
+        run: ./gradlew check verifyPlugin buildPlugin -Ptelemetry.env=production
+
+      - name: Record Plugin Archive Checksum
+        id: archive
+        run: |
+          shopt -s nullglob
+          zips=(build/distributions/*.zip)
+          if [ "${#zips[@]}" -ne 1 ]; then
+            echo "::error::Expected exactly one plugin zip, found ${#zips[@]}"
+            ls -la build/distributions || true
+            exit 1
+          fi
+          ZIP="${zips[0]}"
+          SHA=$(sha256sum "$ZIP" | awk '{print $1}')
+          mkdir -p build/tmp
+          printf '%s  %s\n' "$SHA" "$(basename "$ZIP")" > build/tmp/plugin.sha256
+          echo "sha256=$SHA" >> "$GITHUB_OUTPUT"
+          echo "file=$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+          {
+            echo "#### Plugin archive"
+            echo
+            echo "- File: \`$(basename "$ZIP")\`"
+            echo "- SHA-256: \`$SHA\`"
+          } >> "$GITHUB_STEP_SUMMARY"
 
       # Fails when CHANGELOG.md has no section for this version, which is the mistake most
       # likely to be caught here rather than halfway through a real release.
@@ -138,13 +203,144 @@ jobs:
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
         with:
           name: plugin-archive
-          path: build/distributions/*
+          path: |
+            build/distributions/*.zip
+            build/tmp/plugin.sha256
 
-  # Publish the plugin to JetBrains Marketplace, then tag and announce it.
+  # Dry run only: download the preview zip the same way publish does and print
+  # its SHA-256. The two summary lines must match. No Marketplace, no tag.
+  confirm:
+    name: Confirm Archive Identity
+    if: ${{ inputs.dry_run }}
+    needs: preview
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - name: Fetch Sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Download Plugin Archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+
+      - name: Verify Plugin Archive Checksum
+        env:
+          WORKFLOW_RUN_ID: ${{ github.run_id }}
+          WORKFLOW_COMMIT: ${{ github.sha }}
+        run: |
+          eval "$(scripts/verify_plugin_archive.sh build/ci-archive)"
+          {
+            echo "#### Plugin archive (publish)"
+            echo
+            echo "- File: \`$file\`"
+            echo "- SHA-256: \`$sha256\`"
+            echo "- Workflow run ID: \`$WORKFLOW_RUN_ID\`"
+            echo "- Commit: \`$WORKFLOW_COMMIT\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  # Real publish only: take the approved dry-run zip. Fail here, before the
+  # release environment and Marketplace, if the run, commit, or SHA differs.
+  select:
+    name: Select Dry-Run Archive
+    if: ${{ inputs.dry_run == false }}
+    needs: preflight
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      sha256: ${{ steps.verified.outputs.sha256 }}
+      zip_name: ${{ steps.verified.outputs.zip_name }}
+    steps:
+      - name: Fetch Sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
+      - name: Verify Source Run Identity
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          EXPECTED_COMMIT: ${{ github.sha }}
+        run: |
+          RUN=$(gh api "repos/${{ github.repository }}/actions/runs/${SOURCE_RUN_ID}")
+          HEAD_SHA=$(printf '%s' "$RUN" | jq -r .head_sha)
+          CONCLUSION=$(printf '%s' "$RUN" | jq -r .conclusion)
+          WORKFLOW_PATH=$(printf '%s' "$RUN" | jq -r .path)
+          if [ "$HEAD_SHA" != "$EXPECTED_COMMIT" ]; then
+            echo "::error::Selected run commit $HEAD_SHA does not match this dispatch $EXPECTED_COMMIT"
+            exit 1
+          fi
+          if [ "$CONCLUSION" != "success" ]; then
+            echo "::error::Selected run conclusion is $CONCLUSION, not success"
+            exit 1
+          fi
+          if [ "$WORKFLOW_PATH" != ".github/workflows/release.yml" ]; then
+            echo "::error::Selected run is not the Release workflow ($WORKFLOW_PATH)"
+            exit 1
+          fi
+          JOBS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/jobs")
+          CONFIRM=$(printf '%s' "$JOBS" | jq -r '.jobs[] | select(.name == "Confirm Archive Identity") | .conclusion' | head -n 1)
+          if [ "$CONFIRM" != "success" ]; then
+            echo "::error::Selected run is not a successful dry run (Confirm Archive Identity conclusion: ${CONFIRM:-missing})"
+            exit 1
+          fi
+
+      - name: Download Dry-Run Release Notes
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: release-note
+          path: build/tmp
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Download Dry-Run Plugin Archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{ inputs.source_run_id }}
+
+      - name: Verify Plugin Archive Checksum
+        id: verified
+        env:
+          EXPECTED_SHA: ${{ inputs.expected_sha256 }}
+          SOURCE_RUN_ID: ${{ inputs.source_run_id }}
+          SELECTED_COMMIT: ${{ github.sha }}
+        run: |
+          eval "$(scripts/verify_plugin_archive.sh build/ci-archive "$EXPECTED_SHA")"
+          {
+            echo "#### Selected dry-run archive"
+            echo
+            echo "- Source run: \`$SOURCE_RUN_ID\`"
+            echo "- File: \`$file\`"
+            echo "- SHA-256: \`$sha256\`"
+            echo "- Commit: \`$SELECTED_COMMIT\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload Release Notes
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: release-note
+          path: build/tmp/release_note.txt
+
+      - name: Upload Plugin Archive
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+
+  # Marketplace (registry) first, GitHub tag and release last.
   publish:
     name: Publish Plugin
     if: ${{ inputs.dry_run == false }}
-    needs: [preflight, preview]
+    needs: [preflight, select]
     runs-on: ubuntu-latest
     # Scopes the publishing/signing secrets to this job and gates it behind the environment's
     # protection rules (configure required reviewers on the 'release' environment for manual approval).
@@ -179,35 +375,85 @@ jobs:
         with:
           cache-read-only: true
 
-      # Reuse the notes the preview job rendered, so the published release matches the preview
+      # Reuse the notes and zip the select job copied from the approved dry run.
+      # Marketplace and GitHub get that archive. This job does not build.
       - name: Download Release Notes
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
           name: release-note
           path: build/tmp
 
-      # Publish the plugin to JetBrains Marketplace
+      - name: Download Plugin Archive
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
+        with:
+          name: plugin-archive
+          path: build/ci-archive
+
+      - name: Verify Plugin Archive Checksum
+        id: verified
+        env:
+          SELECTED_SHA: ${{ needs.select.outputs.sha256 }}
+        run: |
+          eval "$(scripts/verify_plugin_archive.sh build/ci-archive "$SELECTED_SHA")"
+          mkdir -p build/distributions
+          cp "$zip" "build/distributions/$file"
+          echo "zip=build/distributions/$file" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
+          {
+            echo "#### Plugin archive (publish)"
+            echo
+            echo "- File: \`$file\`"
+            echo "- SHA-256: \`$sha256\`"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      # Sign and upload the downloaded zip. Fail if Gradle replaces those bytes.
       - name: Publish Plugin
         env:
           PUBLISH_TOKEN: ${{ secrets.JETBRAINS_MARKETPLACE_PUBLISH_TOKEN }}
           CERTIFICATE_CHAIN: ${{ secrets.CERTIFICATE_CHAIN }}
           PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
           PRIVATE_KEY_PASSWORD: ${{ secrets.PRIVATE_KEY_PASSWORD }}
-        run: ./gradlew publishPlugin -Ptelemetry.env=production
+          ZIP: ${{ steps.verified.outputs.zip }}
+          EXPECTED_SHA: ${{ steps.verified.outputs.sha256 }}
+        run: |
+          BEFORE=$(sha256sum "$ZIP" | awk '{print $1}')
+          ./gradlew publishPlugin -Pplugin.reuseArchive="$ZIP"
+          AFTER=$(sha256sum "$ZIP" | awk '{print $1}')
+          if [ "$BEFORE" != "$AFTER" ] || [ "$AFTER" != "$EXPECTED_SHA" ]; then
+            echo "::error::Plugin archive changed during publish; refusing to ship a rebuilt zip"
+            echo "before=$BEFORE after=$AFTER expected=$EXPECTED_SHA"
+            exit 1
+          fi
+          BASE="${ZIP%.zip}"
+          SIGNED="$BASE-signed.zip"
+          if [ ! -f "$SIGNED" ]; then
+            echo "::error::Signed archive missing at $SIGNED"
+            exit 1
+          fi
+          echo "signed=$SIGNED" >> "$GITHUB_OUTPUT"
+        id: publish
 
-      # Creates the tag, the release, and the asset in one step, only after the Marketplace
-      # has accepted the plugin. A failed publish therefore leaves nothing to undo.
+      - name: Upload Signed Plugin Archive
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7
+        with:
+          name: signed-plugin-archive
+          path: build/distributions/*-signed.zip
+          if-no-files-found: ignore
+
+      # GitHub tag, release, and signed asset last — after Marketplace has the plugin.
       - name: Tag and Create GitHub Release
         id: release
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           VERSION: ${{ needs.preflight.outputs.version }}
+          SIGNED: ${{ steps.publish.outputs.signed }}
         run: |
           URL=$(gh release create "$VERSION" \
             --target "${{ github.sha }}" \
             --title "$VERSION" \
             --notes-file ./build/tmp/release_note.txt \
-            ./build/distributions/*)
+            "$SIGNED")
           echo "url=$URL" >> "$GITHUB_OUTPUT"
 
       # Notify Slack about the release outcome
