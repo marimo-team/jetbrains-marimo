@@ -23,7 +23,6 @@ object BannerOnlyProcess {
     }
 }
 
-/** Binds and serves immediately, then prints the banner only after [bannerGatePath] exists. */
 object ServeThenBannerProcess {
     @JvmStatic
     fun main(args: Array<String>) {
