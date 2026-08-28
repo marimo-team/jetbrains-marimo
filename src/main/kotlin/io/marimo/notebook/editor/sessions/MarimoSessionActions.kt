@@ -20,7 +20,6 @@ import io.marimo.notebook.session.SessionSnapshot
 /** True when a session exists whose process is alive, so Restart and Stop have a target. */
 internal fun canControlSession(status: SessionSnapshot?): Boolean = status?.state?.isLive == true
 
-/** True when the Sessions card can copy a token-free loopback URL. */
 internal fun canCopySessionUrl(status: SessionSnapshot?): Boolean {
     val launch = status?.launch ?: return false
     return !launch.tokenAuthEnabled

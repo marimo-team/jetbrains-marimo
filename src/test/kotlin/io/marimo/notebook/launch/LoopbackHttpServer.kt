@@ -2,13 +2,17 @@
 
 package io.marimo.notebook.launch
 
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CountDownLatch
 
+internal fun bindLoopback(port: Int = 0): ServerSocket =
+    ServerSocket(port, 0, InetAddress.getLoopbackAddress())
+
 /** Serves HTTP on a loopback port until [close], so the accept thread cannot outlive the test. */
 internal class LoopbackHttpServer(handler: (Socket) -> Unit) : AutoCloseable {
-    private val server = ServerSocket(0)
+    private val server = bindLoopback()
     val port: Int = server.localPort
 
     init {
@@ -33,7 +37,7 @@ internal class DelayedLoopbackHttpServer(
     bindGate: CountDownLatch? = null,
     handler: (Socket) -> Unit,
 ) : AutoCloseable {
-    val port: Int = ServerSocket(0).use { it.localPort }
+    val port: Int = bindLoopback().use { it.localPort }
     val bound = CountDownLatch(1)
     private val lock = Any()
     private var closed = false
@@ -47,7 +51,7 @@ internal class DelayedLoopbackHttpServer(
                 val server =
                     synchronized(lock) {
                         if (closed) return@Thread
-                        ServerSocket(port).also { live = it }
+                        bindLoopback(port).also { live = it }
                     }
                 bound.countDown()
                 try {

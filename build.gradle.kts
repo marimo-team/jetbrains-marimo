@@ -155,7 +155,6 @@ dependencies {
     }
 }
 
-// Sign the downloaded zip. Drop the plugin's assemble-before-publish edge.
 val reusePluginArchive = providers.gradleProperty("plugin.reuseArchive")
 
 if (reusePluginArchive.isPresent) {

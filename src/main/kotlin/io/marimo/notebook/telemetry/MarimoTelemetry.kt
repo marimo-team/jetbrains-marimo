@@ -135,11 +135,6 @@ class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>
         target.captureException(throwable)
     }
 
-    /**
-     * Builds both transports on first use and opens exactly one release-health session for the
-     * consented run. Development builds use no-op sinks unless the artifact was built with live
-     * telemetry.
-     */
     @Synchronized
     private fun ensureStarted(): SentrySink? {
         if (consent != Consent.ALLOWED) return null

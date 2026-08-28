@@ -51,7 +51,7 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             )
 
         val reported = CountDownLatch(1)
-        val extra = CountDownLatch(1)
+        val duplicateTermination = CountDownLatch(1)
         val calls = AtomicInteger()
         val code = AtomicInteger(-1)
         var tail = ""
@@ -61,7 +61,7 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
                 tail = outputTail
                 reported.countDown()
             } else {
-                extra.countDown()
+                duplicateTermination.countDown()
             }
         }
 
@@ -72,7 +72,10 @@ class MarimoProcessServerExitTest : BasePlatformTestCase() {
             readyUrl,
         )
         assertTrue("process exit was never reported", reported.await(5, TimeUnit.SECONDS))
-        assertFalse("termination must be reported once", extra.await(0, TimeUnit.MILLISECONDS))
+        assertFalse(
+            "termination must be reported once",
+            duplicateTermination.await(0, TimeUnit.MILLISECONDS),
+        )
 
         assertEquals(1, calls.get())
         assertEquals(3, code.get())

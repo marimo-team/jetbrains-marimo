@@ -11,9 +11,8 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 /**
- * Restart and Stop enablement is table-driven over every session state, including a missing
- * snapshot. Tool-window layout, JCEF notebook views, and click handlers stay out of this suite:
- * they need a realized browser and a live tool window, which the light fixture does not provide.
+ * Tool-window layout, JCEF notebook views, and click handlers stay out of this suite: they need a
+ * realized browser and a live tool window, which the light fixture does not provide.
  */
 class MarimoSessionActionsTest {
 

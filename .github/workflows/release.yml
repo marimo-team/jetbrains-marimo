@@ -284,6 +284,12 @@ jobs:
             echo "::error::Selected run is not the Release workflow ($WORKFLOW_PATH)"
             exit 1
           fi
+          JOBS=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${SOURCE_RUN_ID}/jobs")
+          CONFIRM=$(printf '%s' "$JOBS" | jq -r '.jobs[] | select(.name == "Confirm Archive Identity") | .conclusion' | head -n 1)
+          if [ "$CONFIRM" != "success" ]; then
+            echo "::error::Selected run is not a successful dry run (Confirm Archive Identity conclusion: ${CONFIRM:-missing})"
+            exit 1
+          fi
 
       - name: Download Dry-Run Release Notes
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
