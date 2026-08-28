@@ -217,6 +217,11 @@ jobs:
     permissions:
       contents: read
     steps:
+      - name: Fetch Sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       - name: Download Plugin Archive
         uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8
         with:
@@ -228,26 +233,12 @@ jobs:
           WORKFLOW_RUN_ID: ${{ github.run_id }}
           WORKFLOW_COMMIT: ${{ github.sha }}
         run: |
-          mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
-          mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
-          if [ "${#zips[@]}" -ne 1 ] || [ "${#sums[@]}" -ne 1 ]; then
-            echo "::error::Expected one zip and one plugin.sha256 in plugin-archive"
-            find build/ci-archive -type f -print || true
-            exit 1
-          fi
-          ZIP="${zips[0]}"
-          SUM="${sums[0]}"
-          EXPECTED=$(awk '{print $1}' "$SUM")
-          ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
-          if [ "$EXPECTED" != "$ACTUAL" ]; then
-            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): expected $EXPECTED, got $ACTUAL"
-            exit 1
-          fi
+          eval "$(scripts/verify_plugin_archive.sh build/ci-archive)"
           {
             echo "#### Plugin archive (publish)"
             echo
-            echo "- File: \`$(basename "$ZIP")\`"
-            echo "- SHA-256: \`$ACTUAL\`"
+            echo "- File: \`$file\`"
+            echo "- SHA-256: \`$sha256\`"
             echo "- Workflow run ID: \`$WORKFLOW_RUN_ID\`"
             echo "- Commit: \`$WORKFLOW_COMMIT\`"
           } >> "$GITHUB_STEP_SUMMARY"
@@ -266,6 +257,11 @@ jobs:
       sha256: ${{ steps.verified.outputs.sha256 }}
       zip_name: ${{ steps.verified.outputs.zip_name }}
     steps:
+      - name: Fetch Sources
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          persist-credentials: false
+
       - name: Verify Source Run Identity
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -312,29 +308,13 @@ jobs:
           SOURCE_RUN_ID: ${{ inputs.source_run_id }}
           SELECTED_COMMIT: ${{ github.sha }}
         run: |
-          mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
-          mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
-          if [ "${#zips[@]}" -ne 1 ] || [ "${#sums[@]}" -ne 1 ]; then
-            echo "::error::Expected one zip and one plugin.sha256 in plugin-archive"
-            find build/ci-archive -type f -print || true
-            exit 1
-          fi
-          ZIP="${zips[0]}"
-          SUM="${sums[0]}"
-          RECORDED=$(awk '{print $1}' "$SUM")
-          ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
-          if [ "$RECORDED" != "$ACTUAL" ] || [ "$ACTUAL" != "$EXPECTED_SHA" ]; then
-            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): recorded $RECORDED, actual $ACTUAL, expected $EXPECTED_SHA"
-            exit 1
-          fi
-          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
-          echo "zip_name=$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
+          eval "$(scripts/verify_plugin_archive.sh build/ci-archive "$EXPECTED_SHA")"
           {
             echo "#### Selected dry-run archive"
             echo
             echo "- Source run: \`$SOURCE_RUN_ID\`"
-            echo "- File: \`$(basename "$ZIP")\`"
-            echo "- SHA-256: \`$ACTUAL\`"
+            echo "- File: \`$file\`"
+            echo "- SHA-256: \`$sha256\`"
             echo "- Commit: \`$SELECTED_COMMIT\`"
           } >> "$GITHUB_STEP_SUMMARY"
 
@@ -408,31 +388,17 @@ jobs:
         env:
           SELECTED_SHA: ${{ needs.select.outputs.sha256 }}
         run: |
-          mapfile -t zips < <(find build/ci-archive -name '*.zip' -type f)
-          mapfile -t sums < <(find build/ci-archive -name 'plugin.sha256' -type f)
-          if [ "${#zips[@]}" -ne 1 ] || [ "${#sums[@]}" -ne 1 ]; then
-            echo "::error::Expected one zip and one plugin.sha256 in plugin-archive"
-            find build/ci-archive -type f -print || true
-            exit 1
-          fi
-          ZIP="${zips[0]}"
-          SUM="${sums[0]}"
-          EXPECTED=$(awk '{print $1}' "$SUM")
-          ACTUAL=$(sha256sum "$ZIP" | awk '{print $1}')
-          if [ "$EXPECTED" != "$ACTUAL" ] || [ "$ACTUAL" != "$SELECTED_SHA" ]; then
-            echo "::error::SHA-256 mismatch for $(basename "$ZIP"): recorded $EXPECTED, actual $ACTUAL, selected $SELECTED_SHA"
-            exit 1
-          fi
+          eval "$(scripts/verify_plugin_archive.sh build/ci-archive "$SELECTED_SHA")"
           mkdir -p build/distributions
-          cp "$ZIP" "build/distributions/$(basename "$ZIP")"
+          cp "$zip" "build/distributions/$file"
+          echo "zip=build/distributions/$file" >> "$GITHUB_OUTPUT"
+          echo "sha256=$sha256" >> "$GITHUB_OUTPUT"
           {
             echo "#### Plugin archive (publish)"
             echo
-            echo "- File: \`$(basename "$ZIP")\`"
-            echo "- SHA-256: \`$ACTUAL\`"
+            echo "- File: \`$file\`"
+            echo "- SHA-256: \`$sha256\`"
           } >> "$GITHUB_STEP_SUMMARY"
-          echo "zip=build/distributions/$(basename "$ZIP")" >> "$GITHUB_OUTPUT"
-          echo "sha256=$ACTUAL" >> "$GITHUB_OUTPUT"
 
       # Sign and upload the downloaded zip. Fail if Gradle replaces those bytes.
       - name: Publish Plugin
