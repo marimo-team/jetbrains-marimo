@@ -24,11 +24,7 @@ import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
-/**
- * A split or a reopen must not tear down the marimo session. This [FileEditor] holds an
- * `EDITOR_TAB` lease and borrows the registry view. The editor package is the JCEF UI: tabs, the
- * Sessions tool window, and session actions.
- */
+/** A split or a reopen must not tear down the marimo session. */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
