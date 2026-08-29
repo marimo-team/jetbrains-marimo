@@ -8,10 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
 
-/**
- * Guardrail for plugin-package imports. Same-package and root types (`MarimoLocalhost`,
- * `MarimoBundle`, `MarimoIcons`) are always allowed.
- */
+/** Production imports must stay inside the documented package graph. */
 class PackageDependencyTest {
 
     @Test
@@ -72,7 +69,7 @@ class PackageDependencyTest {
         private val LAYERS =
             setOf("detect", "launch", "session", "editor", "pair", "settings", "telemetry")
 
-        // Key imports values. Empty means no other named layer.
+        // Same arrows as the mermaid diagram in ARCHITECTURE.md (Package dependencies).
         private val ALLOWED: Map<String, Set<String>> =
             mapOf(
                 "detect" to emptySet(),
