@@ -63,8 +63,8 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
 
     /**
      * Hand any pending Source-tab edits to the marimo server, which only sees them once they reach
-     * disk. Unlike the Source tab's disk refresh, this stays on the EDT: writing the document
-     * requires it, and the document is already in memory, so there is no disk scan to move off.
+     * disk. The save is queued for the next EDT turn because the platform does not permit document
+     * writes from inside the editor-selection callback.
      */
     override fun selectNotify() {
         flushMarimoSourceToDisk(file)

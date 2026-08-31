@@ -58,11 +58,14 @@ internal fun applySourceRefreshIfCurrent(
  * notebook tab keeps focus inside the same frame, and idle autosave is off by default — so without
  * this the server never learns that anything changed.
  *
- * Does nothing when the file has no loaded document (the Source tab was never opened) or when the
- * document has no unsaved changes. Must be called on the EDT.
+ * The save runs on the next EDT turn so callers inside editor-selection callbacks leave that
+ * write-unsafe context first. It does nothing when the file has no loaded document or when the
+ * document no longer has unsaved changes.
  */
 internal fun flushMarimoSourceToDisk(file: VirtualFile) {
-    val documents = FileDocumentManager.getInstance()
-    val document = documents.getCachedDocument(file) ?: return
-    documents.saveDocument(document)
+    ApplicationManager.getApplication().invokeLater {
+        val documents = FileDocumentManager.getInstance()
+        val document = documents.getCachedDocument(file) ?: return@invokeLater
+        if (documents.isDocumentUnsaved(document)) documents.saveDocument(document)
+    }
 }
