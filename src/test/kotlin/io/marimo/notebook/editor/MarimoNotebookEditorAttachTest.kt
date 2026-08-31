@@ -200,6 +200,25 @@ class MarimoNotebookEditorAttachTest : BasePlatformTestCase() {
         }
     }
 
+    fun testReopeningAStoppedNotebookStartsAFreshProcess() {
+        val service = project.service<NotebookSessionManager>()
+        val sdk = FakeLauncher("fake-sdk")
+        service.planner = LaunchPlanner(sdk, FakeLauncher("fake-uv"))
+        val file = myFixture.addFileToProject("reopen_stopped_nb.py", "import marimo\n").virtualFile
+        val first = editor(file)
+        assertTrue("initial launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles.single().becomeReady()
+
+        service.stop(file)
+        first.dispose()
+        editor(file)
+
+        assertTrue(
+            "reopening the notebook must start a fresh process",
+            sdk.secondLaunch.await(1, TimeUnit.SECONDS),
+        )
+    }
+
     private fun editor(file: com.intellij.openapi.vfs.VirtualFile): MarimoNotebookEditor =
         MarimoNotebookEditor(project, file).also(editors::add)
 

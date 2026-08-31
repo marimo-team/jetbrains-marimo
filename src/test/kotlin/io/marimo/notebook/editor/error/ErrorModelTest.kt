@@ -169,6 +169,7 @@ class ErrorModelTest {
     fun stopMessageDistinguishesDeliberateFromCrash() {
         val deliberate = of(Failure.ServerStopped(StopCause.Deliberate), MarimoPresence.Unknown)
         val crashed = of(Failure.ServerStopped(StopCause.Unexpected(1, "")), MarimoPresence.Unknown)
+        assertEquals("marimo was shut down.", deliberate.message)
         assertFalse(
             "the two causes must not read identically",
             deliberate.message == crashed.message,

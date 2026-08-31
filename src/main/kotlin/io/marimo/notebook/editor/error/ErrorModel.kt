@@ -110,7 +110,7 @@ data class ErrorModel(
             when (cause) {
                 is StopCause.Deliberate ->
                     ErrorModel(
-                        message = "marimo was shut down for this notebook.",
+                        message = "marimo was shut down.",
                         detail = "Restart it to keep working, or close the tab.",
                         actions =
                             listOf(
