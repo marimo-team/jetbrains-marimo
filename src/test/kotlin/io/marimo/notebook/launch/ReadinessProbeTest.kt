@@ -101,6 +101,42 @@ class ReadinessProbeTest {
     }
 
     @Test
+    fun followsSameOriginTokenRedirectWithSessionCookie() {
+        LoopbackHttpServer { socket ->
+            val headers = mutableListOf<String>()
+            val reader = socket.getInputStream().bufferedReader(StandardCharsets.UTF_8)
+            while (true) {
+                val line = reader.readLine() ?: break
+                if (line.isEmpty()) break
+                headers.add(line)
+            }
+            val response =
+                if (headers.any { it.startsWith("Cookie:") && it.contains("session=ready") }) {
+                    httpResponse("200 OK", MARIMO_PAGE_BODY)
+                } else {
+                    ("HTTP/1.1 303 See Other\r\n" +
+                            "Location: /\r\n" +
+                            "Set-Cookie: session=ready; Path=/; HttpOnly\r\n" +
+                            "Content-Length: 0\r\n\r\n")
+                        .toByteArray(StandardCharsets.UTF_8)
+                }
+            socket.getOutputStream().use { output ->
+                output.write(response)
+            }
+        }
+            .use { server ->
+                val ready = CompletableFuture<Void?>()
+                ReadinessProbe.pollUntilReady(
+                    "http://127.0.0.1:${server.port}/?access_token=TOKEN",
+                    ready,
+                    1,
+                )
+
+                ready.get(3, TimeUnit.SECONDS)
+            }
+    }
+
+    @Test
     fun endlessResponseBodyCannotOutliveReadinessDeadline() {
         LoopbackHttpServer { socket ->
             socket.getOutputStream().use { output ->

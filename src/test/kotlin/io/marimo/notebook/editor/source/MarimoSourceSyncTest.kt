@@ -82,7 +82,7 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
      * (idle autosave is off by default, and moving to the notebook tab never deactivates the IDE
      * frame). Selecting the notebook tab must therefore flush the document itself.
      */
-    fun testFlushWritesEditedDocumentToDisk() {
+    fun testFlushDefersEditedDocumentSaveToWriteSafeContext() {
         val original = "import marimo\napp = marimo.App()\n"
         val edited =
             "import marimo\napp = marimo.App()\n\n\n@app.cell\ndef _():\n    x = 1\n    return\n"
@@ -97,6 +97,12 @@ class MarimoSourceSyncTest : BasePlatformTestCase() {
 
         flushMarimoSourceToDisk(file)
 
+        assertEquals(
+            "the save must be queued outside the selection callback",
+            original,
+            ioFile.readText(),
+        )
+        PlatformTestUtil.dispatchAllEventsInIdeEventQueue()
         assertEquals(edited, ioFile.readText())
     }
 

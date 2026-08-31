@@ -25,7 +25,7 @@ A JetBrains plugin that opens [marimo](https://marimo.io) notebooks in PyCharm. 
 - Each PR has one category label. CI groups release notes by that label. Write changelog entries only in a `release:` PR.
 - Add tests for behavior changes. `./gradlew check` must pass before a PR.
 - Bind the server to `127.0.0.1`. Use the per-launch password file. `--no-token` is a settings opt-out.
-- Sandbox starts need `uv` on `PATH`.
+- Sandbox starts need `uv`; the plugin checks `PATH` and common install locations.
 
 ## Packages
 

@@ -18,6 +18,7 @@ import io.marimo.notebook.editor.view.NotebookEditorView
 import io.marimo.notebook.editor.view.NotebookViewRegistry
 import io.marimo.notebook.editor.view.SecondaryNotebookView
 import io.marimo.notebook.session.LeaseOwner
+import io.marimo.notebook.session.MarimoSessionState
 import io.marimo.notebook.session.NotebookSessionLease
 import io.marimo.notebook.session.NotebookSessionManager
 import java.beans.PropertyChangeListener
@@ -31,7 +32,10 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     private val sessionManager = project.service<NotebookSessionManager>()
     private val viewRegistry = project.service<NotebookViewRegistry>()
     private val lease: NotebookSessionLease = sessionManager.acquire(file, LeaseOwner.EDITOR_TAB)
-    private val view: NotebookEditorView = viewRegistry.viewFor(lease)
+    private val view: NotebookEditorView = lease.let {
+        if (it.status().state == MarimoSessionState.STOPPED) it.restart()
+        viewRegistry.viewFor(it)
+    }
     private val propertyChangeSupport = PropertyChangeSupport(this)
     private val vfsConnection = project.messageBus.connect()
     private var disposed = false
@@ -59,8 +63,8 @@ class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
 
     /**
      * Hand any pending Source-tab edits to the marimo server, which only sees them once they reach
-     * disk. Unlike the Source tab's disk refresh, this stays on the EDT: writing the document
-     * requires it, and the document is already in memory, so there is no disk scan to move off.
+     * disk. The save is queued for the next EDT turn because the platform does not permit document
+     * writes from inside the editor-selection callback.
      */
     override fun selectNotify() {
         flushMarimoSourceToDisk(file)
