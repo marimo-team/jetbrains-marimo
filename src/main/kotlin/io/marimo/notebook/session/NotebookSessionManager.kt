@@ -38,10 +38,8 @@ import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicLong
 
 /**
- * The project's notebook session manager. One [NotebookSession] per file owns that notebook's
- * marimo process, launch mode, and owner leases. Owners retain the session without owning its
- * process. Status reads are side-effect-free, so painting an icon or updating an action can never
- * start a server.
+ * Several UI owners share one marimo process per notebook. The last suppressing owner must leave a
+ * delay before that process exits.
  */
 @Service(Service.Level.PROJECT)
 class NotebookSessionManager(private val project: Project) : Disposable {

@@ -20,12 +20,9 @@ internal class LifecycleTransition(
 }
 
 /**
- * The state of one notebook's marimo server, and the only place allowed to change it.
- *
- * Every [attach] starts a new launch generation. Callbacks registered against a handle carry the
- * generation that registered them, and a callback whose generation is no longer current changes
- * nothing. A slow exit or readiness event from a replaced server therefore cannot repaint or stop
- * its replacement. [release] and [stop] advance the generation for the same reason.
+ * A replaced marimo process can still emit ready or exit events. This type is the only writer of
+ * [MarimoNotebookState]. Each attach, release, or stop increases a generation so a stale callback
+ * is a no-op.
  */
 class NotebookLifecycle : Disposable {
 

@@ -49,6 +49,10 @@ interface SentrySink {
     fun close()
 }
 
+/**
+ * Usage events and crash reports must honor consent. This service is the policy layer. Transports
+ * are adapters behind that policy.
+ */
 @Service(Service.Level.APP)
 @State(name = "MarimoTelemetry", storages = [Storage("marimo-telemetry.xml")])
 class MarimoTelemetry : PersistentStateComponent<MarimoTelemetry.PersistedState>, Disposable {

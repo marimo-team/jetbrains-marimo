@@ -24,10 +24,7 @@ import java.beans.PropertyChangeListener
 import java.beans.PropertyChangeSupport
 import javax.swing.JComponent
 
-/**
- * Thin [FileEditor] over a per-session notebook view. The registry owns the primary browser; a
- * second simultaneous split gets its own [SecondaryNotebookView] on the same session URL.
- */
+/** A split or a reopen must not tear down the marimo session. */
 class MarimoNotebookEditor(project: Project, private val file: VirtualFile) :
     UserDataHolderBase(), FileEditor {
 
