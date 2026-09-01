@@ -37,6 +37,12 @@
 
     <resource-bundle>messages.MarimoBundle</resource-bundle>
 
+    <extensionPoints>
+        <extensionPoint qualifiedName="io.marimo.notebook.launchEnvContributor"
+                        interface="io.marimo.notebook.launch.LaunchEnvContributor"
+                        dynamic="true"/>
+    </extensionPoints>
+
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>
         <fileEditorProvider implementation="io.marimo.notebook.editor.source.MarimoSourceEditorProvider"/>

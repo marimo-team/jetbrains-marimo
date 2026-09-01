@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import io.marimo.notebook.launch.LaunchEnvContribution
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
@@ -190,6 +191,33 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals(sdk.handles.single().authUrl, url.get())
     }
 
+    fun testLaunchEnvContributionReachesTheRequestAndTheLaunchContext() {
+        manager.launchEnvCollector = {
+            LaunchEnvContribution(
+                env = mapOf("PGHOST" to "db.internal"),
+                labels = listOf("Orders DB (postgresql, primary)"),
+            )
+        }
+        val file = notebook("env_nb.py")
+        launch(file)
+        assertEquals("db.internal", sdk.requests.single().extraEnv["PGHOST"])
+        assertEquals(
+            listOf("Orders DB (postgresql, primary)"),
+            manager.statusFor(file)!!.launch!!.launchEnvLabels,
+        )
+    }
+
+    fun testSnapshotsNeverRenderEnvValues() {
+        manager.launchEnvCollector = {
+            LaunchEnvContribution(mapOf("PGPASSWORD" to "supersecret"), listOf("Orders DB"))
+        }
+        val file = notebook("env_secret_nb.py")
+        launch(file)
+        sdk.handles.single().becomeReady()
+        val rendered = manager.statusFor(file).toString()
+        assertFalse("snapshots may be logged anywhere: $rendered", rendered.contains("supersecret"))
+    }
+
     fun testLaunchContextRetainsTheTokenAuthModeFromItsLaunch() {
         val settings = SessionSettings.getInstance()
         val before = settings.state.tokenAuthEnabled
@@ -325,6 +353,18 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
             listOf(NotebookSessionEvent.Restarted(sessionId)),
             events,
         )
+    }
+
+    fun testRestartRecollectsTheLaunchEnvironment() {
+        var calls = 0
+        manager.launchEnvCollector = {
+            calls++
+            LaunchEnvContribution(emptyMap())
+        }
+        val file = runningNotebook("env_recollect_nb.py")
+        manager.restart(file)
+        assertTrue(sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertEquals("every restart must recompute the environment", 2, calls)
     }
 
     fun testReleaseClearsLaunchContext() {

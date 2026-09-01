@@ -33,6 +33,8 @@ data class MarimoLaunchContext(
     val sandbox: Boolean,
     /** True when this launched server requires an access token. */
     val tokenAuthEnabled: Boolean,
+    /** Labels for injected data sources. These labels contain names only, never values. */
+    val launchEnvLabels: List<String> = emptyList(),
 )
 
 /**

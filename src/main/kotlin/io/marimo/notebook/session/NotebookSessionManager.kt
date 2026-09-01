@@ -14,6 +14,8 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
 import io.marimo.notebook.MarimoLocalhost
 import io.marimo.notebook.launch.LaunchDecision
+import io.marimo.notebook.launch.LaunchEnvContribution
+import io.marimo.notebook.launch.LaunchEnvContributor
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
@@ -52,6 +54,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
 
     internal var tokenPasswordFileWriter: (String) -> File = ::writeTokenPasswordFile
+
+    internal var launchEnvCollector: (VirtualFile) -> LaunchEnvContribution = { notebook ->
+        LaunchEnvContributor.collect(project, notebook)
+    }
 
     internal var ttlScheduler = TtlScheduler { delayMillis, task ->
         val future =
@@ -162,12 +168,14 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         var tokenFile: File? = null
         try {
             val planned = planLaunch(session, file)
+            val launchEnv = launchEnvCollector(file)
             val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
             val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
             tokenFile = token?.let(tokenPasswordFileWriter)
             val request =
                 planned.request.copy(
                     tokenPasswordFile = tokenFile?.absolutePath,
+                    extraEnv = launchEnv.env,
                     authenticatedUrl =
                         token?.let {
                             MarimoLocalhost.authenticatedUrl(
@@ -192,6 +200,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                                 launcherInfo = launcherInfo,
                                 sandbox = request.sandbox,
                                 tokenAuthEnabled = tokenAuthEnabled,
+                                launchEnvLabels = launchEnv.labels,
                             )
                         Disposer.register(session.lifecycle, handle)
                         session.lifecycle.prepareAttach(handle)
