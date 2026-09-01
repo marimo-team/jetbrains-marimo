@@ -24,11 +24,15 @@ class DataSourceExposureStore : PersistentStateComponent<DataSourceExposureStore
         var familyPrimary: Boolean = false
     }
 
-    class State {
-        /** True after the user answers the prompt or applies the dialog. */
+    class NotebookExposure {
+        var notebookPath: String = ""
         var decisionRecorded: Boolean = false
-        var neverForThisProject: Boolean = false
         var entries: MutableList<ExposureEntry> = mutableListOf()
+    }
+
+    class State {
+        var neverForThisProject: Boolean = false
+        var notebooks: MutableList<NotebookExposure> = mutableListOf()
     }
 
     private var current = State()
@@ -39,32 +43,50 @@ class DataSourceExposureStore : PersistentStateComponent<DataSourceExposureStore
         current = state
     }
 
-    fun decisionRecorded(): Boolean = current.decisionRecorded
+    fun decisionRecorded(notebookPath: String): Boolean =
+        notebook(notebookPath)?.decisionRecorded == true
 
     fun neverForThisProject(): Boolean = current.neverForThisProject
 
-    fun exposedIds(): Set<String> =
-        current.entries.filter { it.exposed }.mapTo(mutableSetOf()) { it.dataSourceId }
+    fun exposedIds(notebookPath: String): Set<String> =
+        notebook(notebookPath)
+            ?.entries
+            .orEmpty()
+            .filter { it.exposed }
+            .mapTo(mutableSetOf()) {
+                it.dataSourceId
+            }
 
-    fun primaryIds(): Set<String> =
-        current.entries
+    fun primaryIds(notebookPath: String): Set<String> =
+        notebook(notebookPath)
+            ?.entries
+            .orEmpty()
             .filter { it.exposed && it.familyPrimary }
             .mapTo(mutableSetOf()) { it.dataSourceId }
 
     fun recordNever() {
-        current.decisionRecorded = true
         current.neverForThisProject = true
-        current.entries.clear()
+        current.notebooks.clear()
     }
 
     /** Replaces the decision. Returns true when the effective exposure set changes. */
-    fun recordExposures(entries: List<ExposureEntry>): Boolean {
-        val before = fingerprint(current.entries)
-        current.decisionRecorded = true
+    fun recordExposures(notebookPath: String, entries: List<ExposureEntry>): Boolean {
+        val notebook = notebook(notebookPath) ?: addNotebook(notebookPath)
+        val before = fingerprint(notebook.entries)
+        notebook.decisionRecorded = true
         current.neverForThisProject = false
-        current.entries = entries.toMutableList()
-        return before != fingerprint(current.entries)
+        notebook.entries = entries.toMutableList()
+        return before != fingerprint(notebook.entries)
     }
+
+    private fun notebook(notebookPath: String): NotebookExposure? =
+        current.notebooks.firstOrNull { it.notebookPath == notebookPath }
+
+    private fun addNotebook(notebookPath: String): NotebookExposure =
+        NotebookExposure().also {
+            it.notebookPath = notebookPath
+            current.notebooks.add(it)
+        }
 
     private fun fingerprint(entries: List<ExposureEntry>): Set<Triple<String, Boolean, Boolean>> =
         entries.mapTo(mutableSetOf()) { Triple(it.dataSourceId, it.exposed, it.familyPrimary) }

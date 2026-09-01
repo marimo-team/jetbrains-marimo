@@ -55,6 +55,13 @@ class CandidatesTest {
     }
 
     @Test
+    fun postgresWithoutAUsernameExplainsWhyQuickAddIsUnavailable() {
+        val candidate = Candidates.from(facts(username = null, authProviderId = "no-auth"))
+
+        assertTrue(candidate.unsupportedReason!!.contains("username"))
+    }
+
+    @Test
     fun storedPrimaryWinsOtherwiseFirstByName() {
         val a = Candidates.from(facts(id = "a", name = "Beta"))
         val b = Candidates.from(facts(id = "b", name = "Alpha"))

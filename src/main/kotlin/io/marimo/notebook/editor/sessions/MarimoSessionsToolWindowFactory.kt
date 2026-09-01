@@ -19,6 +19,8 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.MarimoLocalhost
+import io.marimo.notebook.MarimoToolWindowTabProvider
+import io.marimo.notebook.editor.MarimoNotebookSelection
 import io.marimo.notebook.session.MarimoSessionState
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.SessionSnapshot
@@ -43,9 +45,20 @@ class MarimoSessionsToolWindowFactory : ToolWindowFactory, DumbAware {
         val panel = MarimoSessionsPanel(project, service)
         service.addSessionsListener(panel) { panel.refresh() }
         panel.refresh()
-        val content = ContentFactory.getInstance().createContent(panel, "", false)
+        val content = ContentFactory.getInstance().createContent(panel, "Sessions", false)
+        content.putUserData(MarimoToolWindowTabProvider.CONTENT_ID_KEY, "sessions")
         content.setDisposer(panel)
         toolWindow.contentManager.addContent(content)
+        MarimoToolWindowTabProvider.registeredTabs(project) {
+                MarimoNotebookSelection.selected(project)
+            }
+            .forEach { tab ->
+                val contributed =
+                    ContentFactory.getInstance().createContent(tab.component, tab.title, false)
+                contributed.putUserData(MarimoToolWindowTabProvider.CONTENT_ID_KEY, tab.id)
+                if (tab.component is Disposable) contributed.setDisposer(tab.component)
+                toolWindow.contentManager.addContent(contributed)
+            }
     }
 }
 

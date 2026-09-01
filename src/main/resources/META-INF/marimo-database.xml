@@ -4,4 +4,8 @@
         <launchEnvContributor
             implementation="io.marimo.notebook.datasource.DataSourceEnvContributor"/>
     </extensions>
+    <extensions defaultExtensionNs="io.marimo.notebook">
+        <toolWindowTabProvider
+            implementation="io.marimo.notebook.datasource.DataSourceToolWindowTabProvider"/>
+    </extensions>
 </idea-plugin>

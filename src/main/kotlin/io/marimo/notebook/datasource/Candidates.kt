@@ -33,20 +33,24 @@ object Candidates {
 
     fun from(facts: IdeDataSourceFacts): CandidateDataSource {
         val endpoint = JdbcUrl.parse(facts.url)
+        val family = endpoint?.let { DbFamily.fromScheme(it.scheme) }
+        val username = facts.username?.trim()?.takeIf { it.isNotEmpty() }
         val reason =
             when {
                 facts.authProviderId !in SUPPORTED_AUTH ->
                     "uses IDE auth '${facts.authProviderId}'. " +
                         "Only user/password sources map to environment variables"
                 endpoint == null -> "the JDBC URL has no host/port form the plugin can map"
+                family == DbFamily.POSTGRES && username == null ->
+                    "PostgreSQL Quick add requires a username"
                 else -> null
             }
         return CandidateDataSource(
             id = facts.id,
             displayName = facts.displayName,
             endpoint = endpoint,
-            family = endpoint?.let { DbFamily.fromScheme(it.scheme) },
-            username = facts.username?.trim()?.takeIf { it.isNotEmpty() },
+            family = family,
+            username = username,
             unsupportedReason = reason,
         )
     }

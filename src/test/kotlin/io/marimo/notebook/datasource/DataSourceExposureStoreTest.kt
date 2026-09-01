@@ -9,6 +9,9 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class DataSourceExposureStoreTest {
+    private val ordersNotebook = "notebooks/orders.py"
+    private val reportNotebook = "notebooks/report.py"
+
     private fun entry(id: String, exposed: Boolean, primary: Boolean) =
         DataSourceExposureStore.ExposureEntry().apply {
             dataSourceId = id
@@ -19,40 +22,65 @@ class DataSourceExposureStoreTest {
     @Test
     fun recordExposuresMarksTheDecisionAndReportsChanges() {
         val store = DataSourceExposureStore()
-        assertFalse(store.decisionRecorded())
-        assertTrue(store.recordExposures(listOf(entry("pg-1", exposed = true, primary = true))))
-        assertTrue(store.decisionRecorded())
-        assertEquals(setOf("pg-1"), store.exposedIds())
-        assertEquals(setOf("pg-1"), store.primaryIds())
+        assertFalse(store.decisionRecorded(ordersNotebook))
+        assertTrue(
+            store.recordExposures(
+                ordersNotebook,
+                listOf(entry("pg-1", exposed = true, primary = true)),
+            )
+        )
+        assertTrue(store.decisionRecorded(ordersNotebook))
+        assertEquals(setOf("pg-1"), store.exposedIds(ordersNotebook))
+        assertEquals(setOf("pg-1"), store.primaryIds(ordersNotebook))
         assertFalse(
             "an identical decision must not report a change",
-            store.recordExposures(listOf(entry("pg-1", exposed = true, primary = true))),
+            store.recordExposures(
+                ordersNotebook,
+                listOf(entry("pg-1", exposed = true, primary = true)),
+            ),
         )
+    }
+
+    @Test
+    fun exposureIsIsolatedByNotebookPath() {
+        val store = DataSourceExposureStore()
+        store.recordExposures(
+            ordersNotebook,
+            listOf(entry("pg-1", exposed = true, primary = true)),
+        )
+
+        assertEquals(setOf("pg-1"), store.exposedIds(ordersNotebook))
+        assertTrue(store.exposedIds(reportNotebook).isEmpty())
+        assertFalse(store.decisionRecorded(reportNotebook))
     }
 
     @Test
     fun neverForThisProjectClearsExposures() {
         val store = DataSourceExposureStore()
-        store.recordExposures(listOf(entry("pg-1", exposed = true, primary = true)))
+        store.recordExposures(
+            ordersNotebook,
+            listOf(entry("pg-1", exposed = true, primary = true)),
+        )
         store.recordNever()
-        assertTrue(store.decisionRecorded())
+        assertFalse(store.decisionRecorded(ordersNotebook))
         assertTrue(store.neverForThisProject())
-        assertTrue(store.exposedIds().isEmpty())
+        assertTrue(store.exposedIds(ordersNotebook).isEmpty())
     }
 
     @Test
     fun stateRoundTripsThroughXmlSerialization() {
         val store = DataSourceExposureStore()
         store.recordExposures(
+            ordersNotebook,
             listOf(
                 entry("pg-1", exposed = true, primary = true),
                 entry("pg-2", exposed = false, primary = false),
-            )
+            ),
         )
         val element = XmlSerializer.serialize(store.state)
         val copy = XmlSerializer.deserialize(element, DataSourceExposureStore.State::class.java)
         val reloaded = DataSourceExposureStore().apply { loadState(copy) }
-        assertEquals(setOf("pg-1"), reloaded.exposedIds())
-        assertTrue(reloaded.decisionRecorded())
+        assertEquals(setOf("pg-1"), reloaded.exposedIds(ordersNotebook))
+        assertTrue(reloaded.decisionRecorded(ordersNotebook))
     }
 }

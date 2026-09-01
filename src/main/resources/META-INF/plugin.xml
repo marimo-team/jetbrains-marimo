@@ -42,6 +42,9 @@
         <extensionPoint qualifiedName="io.marimo.notebook.launchEnvContributor"
                         interface="io.marimo.notebook.launch.LaunchEnvContributor"
                         dynamic="true"/>
+        <extensionPoint qualifiedName="io.marimo.notebook.toolWindowTabProvider"
+                        interface="io.marimo.notebook.MarimoToolWindowTabProvider"
+                        dynamic="true"/>
     </extensionPoints>
 
     <extensions defaultExtensionNs="com.intellij">

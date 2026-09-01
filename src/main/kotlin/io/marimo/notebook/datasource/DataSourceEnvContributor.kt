@@ -8,19 +8,29 @@ import io.marimo.notebook.datasource.ide.IdeDataSourceCatalog
 import io.marimo.notebook.launch.LaunchEnvContribution
 import io.marimo.notebook.launch.LaunchEnvContributor
 
-/** Feeds consented IDE data sources into each marimo launch for this project. */
-class DataSourceEnvContributor : LaunchEnvContributor {
+/** Feeds consented IDE data sources into the selected marimo notebook launch. */
+class DataSourceEnvContributor(
+    private val candidates: (Project) -> List<CandidateDataSource> =
+        IdeDataSourceCatalog::candidates,
+    private val password: (Project, String) -> String? = IdeDataSourceCatalog::password,
+    private val notebookKey: (Project, VirtualFile) -> String? = NotebookExposureKey::from,
+) : LaunchEnvContributor {
     override fun contribute(project: Project, notebook: VirtualFile): LaunchEnvContribution? {
+        val notebookKey = notebookKey(project, notebook) ?: return null
         val store = DataSourceExposureStore.getInstance(project)
         if (store.neverForThisProject()) return null
-        val exposedIds = store.exposedIds()
+        if (!store.decisionRecorded(notebookKey)) {
+            val mappable = candidates(project).count { it.supported }
+            if (mappable > 0) DataSourceConsentPrompt.offer(project, notebookKey, mappable)
+            return null
+        }
+        val exposedIds = store.exposedIds(notebookKey)
         if (exposedIds.isEmpty()) return null
 
-        val exposed =
-            IdeDataSourceCatalog.candidates(project).filter { it.supported && it.id in exposedIds }
+        val exposed = candidates(project).filter { it.supported && it.id in exposedIds }
         if (exposed.isEmpty()) return null
 
-        val primaries = Candidates.effectivePrimaries(exposed, store.primaryIds())
+        val primaries = Candidates.effectivePrimaries(exposed, store.primaryIds(notebookKey))
         val sources = exposed.map { candidate ->
             val endpoint = requireNotNull(candidate.endpoint)
             ExposedDataSource(
@@ -31,7 +41,7 @@ class DataSourceEnvContributor : LaunchEnvContributor {
                 port = endpoint.port,
                 username = candidate.username,
                 database = endpoint.database,
-                password = IdeDataSourceCatalog.password(project, candidate.id),
+                password = password(project, candidate.id),
                 familyPrimary = candidate.id in primaries,
             )
         }
