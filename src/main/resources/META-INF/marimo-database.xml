@@ -1,3 +1,7 @@
 <!-- Loaded only when the Database Tools plugin (com.intellij.database) is enabled. -->
 <idea-plugin>
+    <extensions defaultExtensionNs="io.marimo.notebook">
+        <launchEnvContributor
+            implementation="io.marimo.notebook.datasource.DataSourceEnvContributor"/>
+    </extensions>
 </idea-plugin>
