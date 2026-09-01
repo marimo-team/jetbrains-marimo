@@ -22,6 +22,8 @@ data class LaunchRequest(
     val authenticatedUrl: String? = null,
     /** Working directory for the server process; the service resolves and records it per launch. */
     val workDir: String? = null,
+    /** Extra server environment entries. Values can hold credentials, so never log this map. */
+    val extraEnv: Map<String, String> = emptyMap(),
 )
 
 /** Owns a spawned marimo process; the lifecycle service drives readiness and disposal. */
