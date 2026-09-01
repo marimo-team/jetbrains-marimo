@@ -42,3 +42,17 @@ Source is `src/main/kotlin/io/marimo/notebook/`. Tests mirror that tree. Wiring 
 **Architecture** (layers, leases, lifecycle, TTL, generation, plugin.xml, imports, threading): [ARCHITECTURE.md](ARCHITECTURE.md).
 
 **Contributing** (PRs, changelog, releasing): [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Agent skills
+
+### Issue tracker
+
+Internal work lives in Linear (team `Engineering`, key `MO`). GitHub Issues collect external reports, which sync into Linear. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Triage happens in Linear: statuses `Triage` and `Canceled`, plus the labels mapped in `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Single-context layout: one `CONTEXT.md` and `docs/adr/` at the repo root. See `docs/agents/domain.md`.
