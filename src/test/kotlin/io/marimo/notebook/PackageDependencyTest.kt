@@ -67,11 +67,21 @@ class PackageDependencyTest {
         private const val ROOT = "root"
 
         private val LAYERS =
-            setOf("detect", "launch", "session", "editor", "pair", "settings", "telemetry")
+            setOf(
+                "datasource",
+                "detect",
+                "launch",
+                "session",
+                "editor",
+                "pair",
+                "settings",
+                "telemetry",
+            )
 
         // Same arrows as the mermaid diagram in ARCHITECTURE.md (Package dependencies).
         private val ALLOWED: Map<String, Set<String>> =
             mapOf(
+                "datasource" to setOf("launch", "session", "telemetry"),
                 "detect" to emptySet(),
                 "launch" to emptySet(),
                 "session" to setOf("launch", "telemetry"),
