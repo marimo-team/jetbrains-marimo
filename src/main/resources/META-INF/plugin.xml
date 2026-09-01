@@ -34,6 +34,7 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.python</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
+    <depends optional="true" config-file="marimo-database.xml">com.intellij.database</depends>
 
     <resource-bundle>messages.MarimoBundle</resource-bundle>
 
