@@ -25,57 +25,57 @@ class DataSourceExposureSelectionTest {
             DataSourceExposureSelection(
                 candidates = listOf(postgres("new-id", "Orders DB")),
                 exposedIds = setOf("deleted-id"),
-                primaryIds = setOf("deleted-id"),
+                defaultIds = setOf("deleted-id"),
             )
 
         assertEquals(listOf("new-id"), selection.items.map { it.candidate.id })
         assertFalse(selection.items.single().exposed)
-        assertFalse(selection.items.single().primary)
-        assertEquals(listOf("new-id"), selection.entries().map { it.dataSourceId })
+        assertFalse(selection.items.single().familyDefault)
+        assertTrue(selection.entries().isEmpty())
     }
 
     @Test
-    fun exposingTheFirstSourceMakesItPrimaryForItsFamily() {
+    fun exposingTheFirstSourceMakesItDefaultForItsFamily() {
         val selection =
             DataSourceExposureSelection(
                 candidates = listOf(postgres("orders")),
                 exposedIds = emptySet(),
-                primaryIds = emptySet(),
+                defaultIds = emptySet(),
             )
 
         selection.setExposed("orders", true)
 
         assertTrue(selection.items.single().exposed)
-        assertTrue(selection.items.single().primary)
+        assertTrue(selection.items.single().familyDefault)
     }
 
     @Test
-    fun selectingAnotherPrimaryClearsThePreviousPrimary() {
+    fun selectingAnotherDefaultClearsThePreviousDefault() {
         val selection =
             DataSourceExposureSelection(
                 candidates = listOf(postgres("orders"), postgres("reporting")),
                 exposedIds = setOf("orders", "reporting"),
-                primaryIds = setOf("orders"),
+                defaultIds = setOf("orders"),
             )
 
-        selection.setPrimary("reporting")
+        selection.setDefault("reporting")
 
-        assertFalse(selection.items.single { it.candidate.id == "orders" }.primary)
-        assertTrue(selection.items.single { it.candidate.id == "reporting" }.primary)
+        assertFalse(selection.items.single { it.candidate.id == "orders" }.familyDefault)
+        assertTrue(selection.items.single { it.candidate.id == "reporting" }.familyDefault)
     }
 
     @Test
-    fun disablingThePrimaryPromotesAnotherExposedSource() {
+    fun disablingTheDefaultPromotesAnotherExposedSource() {
         val selection =
             DataSourceExposureSelection(
                 candidates = listOf(postgres("orders"), postgres("reporting")),
                 exposedIds = setOf("orders", "reporting"),
-                primaryIds = setOf("orders"),
+                defaultIds = setOf("orders"),
             )
 
         selection.setExposed("orders", false)
 
-        assertTrue(selection.items.single { it.candidate.id == "reporting" }.primary)
+        assertTrue(selection.items.single { it.candidate.id == "reporting" }.familyDefault)
     }
 
     @Test
@@ -84,12 +84,35 @@ class DataSourceExposureSelectionTest {
             DataSourceExposureSelection(
                 candidates = listOf(postgres("orders"), postgres("reporting")),
                 exposedIds = emptySet(),
-                primaryIds = emptySet(),
+                defaultIds = emptySet(),
             )
 
         selection.shareAll()
 
         assertTrue(selection.items.all { it.exposed })
-        assertEquals(1, selection.items.count { it.primary })
+        assertEquals(1, selection.items.count { it.familyDefault })
+        assertEquals(
+            setOf("orders", "reporting"),
+            selection.entries().mapTo(mutableSetOf()) { it.dataSourceId },
+        )
+    }
+
+    @Test
+    fun fallbackDefaultUsesTheSameDeterministicOrderingAsLaunch() {
+        val beta = postgres("beta", "Beta")
+        val alpha = postgres("alpha", "Alpha")
+        val selection =
+            DataSourceExposureSelection(
+                candidates = listOf(beta, alpha),
+                exposedIds = setOf("beta", "alpha"),
+                defaultIds = emptySet(),
+            )
+
+        assertFalse(selection.items.single { it.candidate.id == "beta" }.familyDefault)
+        assertTrue(selection.items.single { it.candidate.id == "alpha" }.familyDefault)
+        assertEquals(
+            Candidates.effectiveDefaults(listOf(beta, alpha), emptySet()),
+            selection.items.filter { it.familyDefault }.mapTo(mutableSetOf()) { it.candidate.id },
+        )
     }
 }

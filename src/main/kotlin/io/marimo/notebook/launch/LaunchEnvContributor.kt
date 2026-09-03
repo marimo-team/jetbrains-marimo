@@ -5,6 +5,7 @@ package io.marimo.notebook.launch
 import com.intellij.openapi.extensions.ExtensionPointName
 import com.intellij.openapi.project.Project
 import com.intellij.openapi.vfs.VirtualFile
+import java.util.Collections
 
 /**
  * Environment entries for one marimo server launch and user-visible labels for the Sessions tool
@@ -14,7 +15,9 @@ import com.intellij.openapi.vfs.VirtualFile
 data class LaunchEnvContribution(
     val env: Map<String, String>,
     val labels: List<String> = emptyList(),
-)
+) {
+    override fun toString(): String = "LaunchEnvContribution(envKeys=${env.keys}, labels=$labels)"
+}
 
 /** Contributes environment entries to each marimo server launch for a project. */
 interface LaunchEnvContributor {
@@ -37,7 +40,16 @@ interface LaunchEnvContributor {
                 contribution.env.forEach { (name, value) -> env.putIfAbsent(name, value) }
                 labels += contribution.labels
             }
-            return LaunchEnvContribution(env, labels)
+            return immutableLaunchEnvContribution(env, labels)
         }
     }
 }
+
+internal fun immutableLaunchEnvContribution(
+    env: Map<String, String>,
+    labels: List<String>,
+): LaunchEnvContribution =
+    LaunchEnvContribution(
+        env = Collections.unmodifiableMap(LinkedHashMap(env)),
+        labels = Collections.unmodifiableList(ArrayList(labels)),
+    )

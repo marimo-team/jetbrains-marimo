@@ -30,7 +30,7 @@ class DataSourceEnvContributor(
         val exposed = candidates(project).filter { it.supported && it.id in exposedIds }
         if (exposed.isEmpty()) return null
 
-        val primaries = Candidates.effectivePrimaries(exposed, store.primaryIds(notebookKey))
+        val defaults = Candidates.effectiveDefaults(exposed, store.defaultIds(notebookKey))
         val sources = exposed.map { candidate ->
             val endpoint = requireNotNull(candidate.endpoint)
             ExposedDataSource(
@@ -41,8 +41,9 @@ class DataSourceEnvContributor(
                 port = endpoint.port,
                 username = candidate.username,
                 database = endpoint.database,
-                password = password(project, candidate.id),
-                familyPrimary = candidate.id in primaries,
+                schema = endpoint.schema,
+                password = if (candidate.id in defaults) password(project, candidate.id) else null,
+                familyDefault = candidate.id in defaults,
             )
         }
         val built = DataSourceEnvBuilder.build(sources)

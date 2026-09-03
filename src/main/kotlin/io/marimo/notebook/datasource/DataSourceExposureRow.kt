@@ -20,10 +20,10 @@ internal class DataSourceExposureRow(
     detail: String,
     exposed: Boolean,
     supported: Boolean,
-    primary: Boolean = false,
-    showPrimaryAction: Boolean = false,
+    familyDefault: Boolean = false,
+    showDefaultAction: Boolean = false,
     onExposureChanged: (Boolean) -> Unit,
-    onMakePrimary: () -> Unit,
+    onMakeDefault: () -> Unit,
 ) : JPanel() {
     init {
         layout = BoxLayout(this, BoxLayout.Y_AXIS)
@@ -39,8 +39,8 @@ internal class DataSourceExposureRow(
                 add(
                     JPanel(FlowLayout(FlowLayout.RIGHT, 4, 0)).apply {
                         isOpaque = false
-                        if (showPrimaryAction && exposed) {
-                            if (primary) {
+                        if (showDefaultAction && exposed) {
+                            if (familyDefault) {
                                 add(
                                     JBLabel(MarimoBundle.message("datasource.panel.default"))
                                         .apply {
@@ -51,7 +51,7 @@ internal class DataSourceExposureRow(
                                 add(
                                     compactButton(
                                         MarimoBundle.message("datasource.panel.make.default"),
-                                        onMakePrimary,
+                                        onMakeDefault,
                                     )
                                 )
                             }

@@ -13,19 +13,19 @@ class StalenessPolicyTest {
     }
 
     @Test
-    fun removingASourceStalesOnlyNotebooksThatExposeIt() {
+    fun removingASourceStalesOnlyNotebooksThatUseItAsTheFamilyDefault() {
         assertTrue(StalenessPolicy.marksStale(DataSourceEvent.Removed("pg-1"), setOf("pg-1")))
         assertFalse(StalenessPolicy.marksStale(DataSourceEvent.Removed("pg-1"), setOf("mysql-1")))
     }
 
     @Test
-    fun editingASourceStalesOnlyNotebooksThatExposeIt() {
+    fun editingASourceStalesOnlyNotebooksThatUseItAsTheFamilyDefault() {
         assertTrue(StalenessPolicy.marksStale(DataSourceEvent.Changed("pg-1"), setOf("pg-1")))
         assertFalse(StalenessPolicy.marksStale(DataSourceEvent.Changed("pg-1"), setOf("mysql-1")))
     }
 
     @Test
-    fun anonymousChangesStaleOnlyNotebooksWithSharedSources() {
+    fun anonymousChangesStaleOnlyNotebooksWithSharedDefaults() {
         assertTrue(StalenessPolicy.marksStale(DataSourceEvent.Changed(null), setOf("pg-1")))
         assertFalse(StalenessPolicy.marksStale(DataSourceEvent.Changed(null), emptySet()))
     }

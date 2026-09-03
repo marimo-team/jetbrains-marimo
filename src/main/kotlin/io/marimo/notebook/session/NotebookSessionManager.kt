@@ -166,9 +166,15 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         readyUrl: CompletableFuture<String>,
     ) {
         var tokenFile: File? = null
+        var restoreLaunchEnvStale = false
         try {
             val planned = planLaunch(session, file)
-            synchronized(session) { session.launchEnvStale = false }
+            val launchEnvWasStale = beginLaunchEnvCollection(session, readyUrl)
+            if (launchEnvWasStale == null) {
+                cancelReadyUrl(readyUrl, "Notebook session launch was cancelled")
+                return
+            }
+            restoreLaunchEnvStale = launchEnvWasStale
             val launchEnv = launchEnvCollector(file)
             val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
             val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
@@ -203,9 +209,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             if (attachTransition == null) {
                 tokenFile?.delete()
                 Disposer.dispose(handle)
-                readyUrl.completeExceptionally(
-                    CancellationException("Notebook session is no longer available")
-                )
+                cancelReadyUrl(readyUrl, "Notebook session is no longer available")
                 return
             }
             attachTransition.publish()
@@ -216,9 +220,29 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             throw e
         } catch (e: Exception) {
             tokenFile?.delete()
-            completeLaunchFailure(session, readyUrl, e)
+            completeLaunchFailure(session, readyUrl, e, restoreLaunchEnvStale)
         }
     }
+
+    private fun cancelReadyUrl(readyUrl: CompletableFuture<String>, message: String) {
+        readyUrl.completeExceptionally(CancellationException(message))
+    }
+
+    private fun beginLaunchEnvCollection(
+        session: NotebookSession,
+        readyUrl: CompletableFuture<String>,
+    ): Boolean? =
+        synchronized(session) {
+            if (sessions[session.id] !== session || session.inFlightReadyUrl !== readyUrl) {
+                null
+            } else {
+                // Clear immediately before collection so changes during collection remain visible.
+                // A canceled launch must not clear the replacement launch's flag.
+                val wasStale = session.launchEnvStale
+                session.launchEnvStale = false
+                wasStale
+            }
+        }
 
     private fun planLaunch(session: NotebookSession, file: VirtualFile): PlannedLaunch {
         val baseRequest =
@@ -415,10 +439,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         session: NotebookSession,
         readyUrl: CompletableFuture<String>,
         error: Exception,
+        restoreLaunchEnvStale: Boolean = false,
     ) {
         val failureTransition =
             synchronized(session) {
                 if (sessions[session.id] === session && session.inFlightReadyUrl === readyUrl) {
+                    if (restoreLaunchEnvStale) session.launchEnvStale = true
                     session.lifecycle.prepareLaunchPlanFailure(error)
                 } else {
                     null

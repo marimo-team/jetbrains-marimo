@@ -2,6 +2,8 @@
 
 package io.marimo.notebook.datasource
 
+import java.util.Locale
+
 /** Connection facts copied from one Database Tools data source. Never holds a credential. */
 data class IdeDataSourceFacts(
     val id: String,
@@ -30,6 +32,8 @@ data class CandidateDataSource(
 
 object Candidates {
     private val SUPPORTED_AUTH = setOf(null, "user-pass", "no-auth")
+    private val FALLBACK_ORDER =
+        compareBy<CandidateDataSource>({ it.displayName.lowercase(Locale.ROOT) }, { it.id })
 
     fun from(facts: IdeDataSourceFacts): CandidateDataSource {
         val endpoint = JdbcUrl.parse(facts.url)
@@ -39,11 +43,12 @@ object Candidates {
             when {
                 facts.authProviderId !in SUPPORTED_AUTH ->
                     "uses IDE auth '${facts.authProviderId}'. " +
-                        "Only user/password sources map to environment variables"
-                endpoint == null -> "the JDBC URL has no host/port form the plugin can map"
-                family == null -> "the database family has no vendor variables for Quick add"
-                family == DbFamily.POSTGRES && username == null ->
-                    "PostgreSQL Quick add requires a username"
+                        "Choose user/password or no authentication to share this source"
+                endpoint == null -> "the JDBC URL has no host/port form that the plugin can map"
+                family == null -> "the database family has no vendor variables for Quick Add"
+                username == null -> "${family.displayName} Quick Add requires a username"
+                endpoint.database == null ->
+                    "${family.displayName} Quick Add requires ${family.databaseName}"
                 else -> null
             }
         return CandidateDataSource(
@@ -56,18 +61,18 @@ object Candidates {
         )
     }
 
-    /** Selects one exposed source to own each family's ambient variables. */
-    fun effectivePrimaries(
+    /** Selects one exposed source to own each family's vendor variables. */
+    fun effectiveDefaults(
         exposed: List<CandidateDataSource>,
-        storedPrimaries: Set<String>,
+        storedDefaults: Set<String>,
     ): Set<String> =
         exposed
             .filter { it.family != null }
             .groupBy { it.family }
             .values
             .mapNotNull { members ->
-                members.firstOrNull { it.id in storedPrimaries }?.id
-                    ?: members.minByOrNull { it.displayName.lowercase() }?.id
+                members.filter { it.id in storedDefaults }.minWithOrNull(FALLBACK_ORDER)?.id
+                    ?: members.minWithOrNull(FALLBACK_ORDER)?.id
             }
             .toSet()
 }

@@ -6,7 +6,7 @@ import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 
 class MarimoNotebookSelectionTest : BasePlatformTestCase() {
-    fun testSelectsOnlyAMarimoNotebook() {
+    fun testSelectsTheFocusedFileWhenItIsAMarimoNotebook() {
         val python = LightVirtualFile("script.py", "print('hello')")
         val notebook =
             LightVirtualFile(
@@ -14,7 +14,18 @@ class MarimoNotebookSelectionTest : BasePlatformTestCase() {
                 "import marimo\napp = marimo.App()\n",
             )
 
-        assertEquals(notebook, MarimoNotebookSelection.from(listOf(python, notebook)))
+        assertEquals(notebook, MarimoNotebookSelection.from(listOf(notebook, python)))
+    }
+
+    fun testDoesNotSelectAMarimoNotebookFromAnUnfocusedSplit() {
+        val python = LightVirtualFile("script.py", "print('hello')")
+        val notebook =
+            LightVirtualFile(
+                "orders.py",
+                "import marimo\napp = marimo.App()\n",
+            )
+
+        assertNull(MarimoNotebookSelection.from(listOf(python, notebook)))
     }
 
     fun testReturnsNullWithoutAMarimoNotebook() {

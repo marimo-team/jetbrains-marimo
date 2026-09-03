@@ -31,10 +31,10 @@ object DataSourceStaleness {
         val affectedNotebookKeys =
             when (event) {
                 is DataSourceEvent.Added -> emptySet()
-                is DataSourceEvent.Removed -> store.notebookPathsExposing(event.id)
+                is DataSourceEvent.Removed -> store.notebookPathsUsingDefault(event.id)
                 is DataSourceEvent.Changed ->
-                    event.id?.let(store::notebookPathsExposing)
-                        ?: store.notebookPathsWithExposures()
+                    event.id?.let(store::notebookPathsUsingDefault)
+                        ?: store.notebookPathsWithDefaults()
                 DataSourceEvent.ExposureEdited -> setOfNotNull(targetNotebookKey)
             }
         if (affectedNotebookKeys.isEmpty()) return
@@ -47,7 +47,7 @@ object DataSourceStaleness {
                         ?: return@mapNotNull null
                 val notebookKey = NotebookExposureKey.from(project, file) ?: return@mapNotNull null
                 if (notebookKey !in affectedNotebookKeys) return@mapNotNull null
-                file.takeIf { StalenessPolicy.marksStale(event, store.exposedIds(notebookKey)) }
+                file.takeIf { StalenessPolicy.marksStale(event, store.defaultIds(notebookKey)) }
             }
         if (affected.isEmpty()) return
         affected.forEach(manager::markLaunchEnvStale)

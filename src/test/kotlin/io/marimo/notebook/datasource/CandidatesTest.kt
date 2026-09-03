@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.datasource
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
@@ -30,8 +31,10 @@ class CandidatesTest {
     @Test
     fun otherAuthProvidersAreGreyedOutWithAReason() {
         val candidate = Candidates.from(facts(authProviderId = "ms-sso"))
-        assertNotNull(candidate.unsupportedReason)
-        assertTrue(candidate.unsupportedReason!!.contains("ms-sso"))
+        val reason = candidate.unsupportedReason
+        assertNotNull(reason)
+        assertTrue(requireNotNull(reason).contains("ms-sso"))
+        assertTrue(reason.contains("no authentication"))
     }
 
     @Test
@@ -44,7 +47,7 @@ class CandidatesTest {
     @Test
     fun unknownSchemesExplainThatQuickAddIsUnavailable() {
         val candidate = Candidates.from(facts(url = "jdbc:snowflake://acme.example.com"))
-        assertTrue(candidate.unsupportedReason!!.contains("Quick add"))
+        assertTrue(candidate.unsupportedReason!!.contains("Quick Add"))
         assertNull(candidate.family)
         assertEquals("snowflake", candidate.dialect)
     }
@@ -62,17 +65,67 @@ class CandidatesTest {
     }
 
     @Test
-    fun storedPrimaryWinsOtherwiseFirstByName() {
-        val a = Candidates.from(facts(id = "a", name = "Beta"))
-        val b = Candidates.from(facts(id = "b", name = "Alpha"))
-        assertEquals(setOf("a"), Candidates.effectivePrimaries(listOf(a, b), setOf("a")))
-        assertEquals(setOf("b"), Candidates.effectivePrimaries(listOf(a, b), emptySet()))
+    fun everySupportedFamilyRequiresAUsername() {
+        val urls =
+            listOf(
+                "jdbc:postgresql://db/orders",
+                "jdbc:mysql://db/orders",
+                "jdbc:trino://db/hive",
+            )
+
+        urls.forEach { url ->
+            val candidate = Candidates.from(facts(url = url, username = null))
+            assertTrue(
+                "$url should require a username",
+                candidate.unsupportedReason!!.contains("username"),
+            )
+        }
     }
 
     @Test
-    fun primariesAreIndependentPerFamily() {
+    fun everySupportedFamilyRequiresADatabaseOrCatalog() {
+        val cases =
+            listOf(
+                "jdbc:postgresql://db" to "database",
+                "jdbc:mysql://db" to "database",
+                "jdbc:trino://db" to "catalog",
+            )
+
+        cases.forEach { (url, requiredField) ->
+            val candidate = Candidates.from(facts(url = url))
+            assertTrue(
+                "$url should require a $requiredField",
+                candidate.unsupportedReason!!.contains(requiredField),
+            )
+        }
+    }
+
+    @Test
+    fun storedDefaultWinsOtherwiseFirstByName() {
+        val a = Candidates.from(facts(id = "a", name = "Beta"))
+        val b = Candidates.from(facts(id = "b", name = "Alpha"))
+        assertEquals(setOf("a"), Candidates.effectiveDefaults(listOf(a, b), setOf("a")))
+        assertEquals(setOf("b"), Candidates.effectiveDefaults(listOf(a, b), emptySet()))
+    }
+
+    @Test
+    fun fallbackOrderingDoesNotDependOnTheDefaultLocale() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"))
+            val i = Candidates.from(facts(id = "i", name = "I"))
+            val j = Candidates.from(facts(id = "j", name = "J"))
+
+            assertEquals(setOf("i"), Candidates.effectiveDefaults(listOf(j, i), emptySet()))
+        } finally {
+            Locale.setDefault(previous)
+        }
+    }
+
+    @Test
+    fun defaultsAreIndependentPerFamily() {
         val pg = Candidates.from(facts(id = "pg", name = "PG"))
         val my = Candidates.from(facts(id = "my", name = "My", url = "jdbc:mysql://db/shop"))
-        assertEquals(setOf("pg", "my"), Candidates.effectivePrimaries(listOf(pg, my), emptySet()))
+        assertEquals(setOf("pg", "my"), Candidates.effectiveDefaults(listOf(pg, my), emptySet()))
     }
 }

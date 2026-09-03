@@ -19,7 +19,7 @@ class DataSourceEnvBuilderTest {
             username = "app",
             database = "orders",
             password = "s3cret",
-            familyPrimary = true,
+            familyDefault = true,
         )
 
     @Test
@@ -44,11 +44,11 @@ class DataSourceEnvBuilderTest {
             ordersDb.copy(
                 displayName = "Orders Replica",
                 host = "replica.internal",
-                familyPrimary = false,
+                familyDefault = false,
             )
         val result = DataSourceEnvBuilder.build(listOf(ordersDb, second))
         val env = result.env
-        assertEquals("only the primary owns PGHOST", "db.internal", env["PGHOST"])
+        assertEquals("only the default owns PGHOST", "db.internal", env["PGHOST"])
         assertFalse(env.values.contains("replica.internal"))
         assertEquals(listOf("Orders DB (postgresql, default)"), result.labels)
     }
@@ -60,7 +60,7 @@ class DataSourceEnvBuilderTest {
                 displayName = "Warehouse",
                 family = null,
                 dialect = "snowflake",
-                familyPrimary = false,
+                familyDefault = false,
             )
         val result = DataSourceEnvBuilder.build(listOf(snowflake))
         assertTrue(result.env.isEmpty())
@@ -74,8 +74,34 @@ class DataSourceEnvBuilderTest {
     }
 
     @Test
+    fun trinoCatalogAndSchemaUseSeparateVendorVariables() {
+        val trino =
+            ordersDb.copy(
+                displayName = "Warehouse",
+                family = DbFamily.TRINO,
+                dialect = "trino",
+                username = "analyst",
+                database = "hive",
+                schema = "sales",
+            )
+
+        val env = DataSourceEnvBuilder.build(listOf(trino)).env
+
+        assertEquals("hive", env["TRINO_CATALOG"])
+        assertEquals("sales", env["TRINO_SCHEMA"])
+    }
+
+    @Test
     fun labelsNameTheSourceAndItsRole() {
         val labels = DataSourceEnvBuilder.build(listOf(ordersDb)).labels
         assertEquals(listOf("Orders DB (postgresql, default)"), labels)
+    }
+
+    @Test
+    fun exposedDataSourceStringDoesNotRevealItsPassword() {
+        val rendered = ordersDb.toString()
+
+        assertFalse(rendered.contains("s3cret"))
+        assertTrue(rendered.contains("password=<redacted>"))
     }
 }

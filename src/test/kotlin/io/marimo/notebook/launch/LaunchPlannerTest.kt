@@ -4,6 +4,7 @@ package io.marimo.notebook.launch
 
 import com.intellij.testFramework.LightVirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import org.junit.Assert.assertThrows
 
 class LaunchPlannerTest : BasePlatformTestCase() {
     private fun launcher(id: String, can: Boolean) =
@@ -48,5 +49,56 @@ class LaunchPlannerTest : BasePlatformTestCase() {
     fun testSandboxNeedsUvWhenUvMissing() {
         val decision = planner(sdkCan = true, uvCan = false).plan(request(sandbox = true))
         assertInstanceOf(decision, LaunchDecision.NeedsUv::class.java)
+    }
+
+    fun testLaunchRequestStringDoesNotRevealSecretValues() {
+        val request =
+            LaunchRequest(
+                project = project,
+                notebook = LightVirtualFile("nb.py"),
+                port = 2718,
+                authenticatedUrl = "http://127.0.0.1:2718/?access_token=url-secret",
+                extraEnv = mapOf("PGPASSWORD" to "env-secret"),
+            )
+
+        val rendered = request.toString()
+
+        assertFalse(rendered.contains("url-secret"))
+        assertFalse(rendered.contains("env-secret"))
+        assertTrue(rendered.contains("extraEnvKeys=[PGPASSWORD]"))
+    }
+
+    fun testLaunchEnvContributionStringDoesNotRevealSecretValues() {
+        val contribution =
+            LaunchEnvContribution(
+                env = mapOf("PGPASSWORD" to "env-secret"),
+                labels = listOf("Orders DB"),
+            )
+
+        val rendered = contribution.toString()
+
+        assertFalse(rendered.contains("env-secret"))
+        assertTrue(rendered.contains("envKeys=[PGPASSWORD]"))
+        assertTrue(rendered.contains("labels=[Orders DB]"))
+    }
+
+    fun testLaunchEnvContributionSnapshotIsDefensiveAndUnmodifiable() {
+        val sourceEnv = linkedMapOf("PGPASSWORD" to "secret")
+        val sourceLabels = mutableListOf("Orders DB")
+        val contribution = immutableLaunchEnvContribution(sourceEnv, sourceLabels)
+
+        sourceEnv["PGHOST"] = "db.internal"
+        sourceLabels += "Reporting DB"
+
+        assertEquals(setOf("PGPASSWORD"), contribution.env.keys)
+        assertEquals(listOf("Orders DB"), contribution.labels)
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (contribution.env as MutableMap<String, String>)["PGHOST"] = "other"
+        }
+        assertThrows(UnsupportedOperationException::class.java) {
+            @Suppress("UNCHECKED_CAST")
+            (contribution.labels as MutableList<String>) += "Other DB"
+        }
     }
 }

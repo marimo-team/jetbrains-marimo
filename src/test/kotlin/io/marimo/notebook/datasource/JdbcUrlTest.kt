@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.datasource
 
+import java.util.Locale
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
 import org.junit.Test
@@ -36,11 +37,27 @@ class JdbcUrlTest {
     }
 
     @Test
-    fun trinoCatalogRidesTheDatabaseSlot() {
+    fun parsesATrinoCatalogAndSchema() {
         assertEquals(
-            JdbcEndpoint("trino", "trino.internal", "8080", "hive"),
-            JdbcUrl.parse("jdbc:trino://trino.internal:8080/hive"),
+            JdbcEndpoint("trino", "trino.internal", "8080", "hive", "sales"),
+            JdbcUrl.parse("jdbc:trino://trino.internal:8080/hive/sales"),
         )
+    }
+
+    @Test
+    fun schemeNormalizationDoesNotDependOnTheDefaultLocale() {
+        val previous = Locale.getDefault()
+        try {
+            Locale.setDefault(Locale.forLanguageTag("tr-TR"))
+
+            assertEquals(
+                JdbcEndpoint("trino", "trino.internal", "8080", "hive"),
+                JdbcUrl.parse("jdbc:TRINO://trino.internal:8080/hive"),
+            )
+            assertEquals(DbFamily.TRINO, DbFamily.fromScheme("TRINO"))
+        } finally {
+            Locale.setDefault(previous)
+        }
     }
 
     @Test

@@ -29,4 +29,12 @@ class DataSourceRestartActionTest {
         assertFalse(shouldOfferDataSourceRestart(MarimoSessionState.FAILED))
         assertFalse(shouldOfferDataSourceRestart(null))
     }
+
+    @Test
+    fun actionIsRestoredOnlyWhenTheLiveSessionEnvironmentIsStale() {
+        assertTrue(shouldOfferDataSourceRestart(MarimoSessionState.RUNNING, launchEnvStale = true))
+        assertFalse(
+            shouldOfferDataSourceRestart(MarimoSessionState.RUNNING, launchEnvStale = false)
+        )
+    }
 }

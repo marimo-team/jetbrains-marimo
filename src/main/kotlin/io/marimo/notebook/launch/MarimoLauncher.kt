@@ -24,7 +24,14 @@ data class LaunchRequest(
     val workDir: String? = null,
     /** Extra server environment entries. Values can hold credentials, so never log this map. */
     val extraEnv: Map<String, String> = emptyMap(),
-)
+) {
+    override fun toString(): String =
+        "LaunchRequest(" +
+            "project=${project.name}, notebook=${notebook.path}, port=$port, host=$host, " +
+            "sandbox=$sandbox, tokenAuth=${tokenPasswordFile != null}, " +
+            "authenticatedUrlPresent=${authenticatedUrl != null}, workDir=$workDir, " +
+            "extraEnvKeys=${extraEnv.keys})"
+}
 
 /** Owns a spawned marimo process; the lifecycle service drives readiness and disposal. */
 interface MarimoServerHandle : Disposable {

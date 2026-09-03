@@ -15,12 +15,12 @@ sealed interface DataSourceEvent {
 
 /** Decides whether a data-source event invalidates a notebook's launch environment. */
 object StalenessPolicy {
-    fun marksStale(event: DataSourceEvent, exposedIds: Set<String>): Boolean =
+    fun marksStale(event: DataSourceEvent, defaultIds: Set<String>): Boolean =
         when (event) {
             is DataSourceEvent.Added -> false
-            is DataSourceEvent.Removed -> event.id in exposedIds
+            is DataSourceEvent.Removed -> event.id in defaultIds
             is DataSourceEvent.Changed ->
-                if (event.id == null) exposedIds.isNotEmpty() else event.id in exposedIds
+                if (event.id == null) defaultIds.isNotEmpty() else event.id in defaultIds
             DataSourceEvent.ExposureEdited -> true
         }
 }

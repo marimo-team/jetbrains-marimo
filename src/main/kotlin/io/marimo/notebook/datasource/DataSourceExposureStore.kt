@@ -21,7 +21,7 @@ class DataSourceExposureStore : PersistentStateComponent<DataSourceExposureStore
     class ExposureEntry {
         var dataSourceId: String = ""
         var exposed: Boolean = false
-        var familyPrimary: Boolean = false
+        var familyDefault: Boolean = false
     }
 
     class NotebookExposure {
@@ -35,61 +35,91 @@ class DataSourceExposureStore : PersistentStateComponent<DataSourceExposureStore
         var notebooks: MutableList<NotebookExposure> = mutableListOf()
     }
 
+    private val lock = Any()
     private var current = State()
 
-    override fun getState(): State = current
+    override fun getState(): State = synchronized(lock) { current.copy() }
 
     override fun loadState(state: State) {
-        current = state
+        synchronized(lock) { current = state.copy() }
     }
 
     fun decisionRecorded(notebookPath: String): Boolean =
-        notebook(notebookPath)?.decisionRecorded == true
+        synchronized(lock) { notebook(notebookPath)?.decisionRecorded == true }
 
-    fun neverForThisProject(): Boolean = current.neverForThisProject
+    fun neverForThisProject(): Boolean = synchronized(lock) { current.neverForThisProject }
 
     fun exposedIds(notebookPath: String): Set<String> =
-        notebook(notebookPath)
-            ?.entries
-            .orEmpty()
-            .filter { it.exposed }
-            .mapTo(mutableSetOf()) {
-                it.dataSourceId
-            }
+        synchronized(lock) {
+            notebook(notebookPath)
+                ?.entries
+                .orEmpty()
+                .filter { it.exposed }
+                .mapTo(mutableSetOf()) {
+                    it.dataSourceId
+                }
+        }
 
-    fun primaryIds(notebookPath: String): Set<String> =
-        notebook(notebookPath)
-            ?.entries
-            .orEmpty()
-            .filter { it.exposed && it.familyPrimary }
-            .mapTo(mutableSetOf()) { it.dataSourceId }
+    fun defaultIds(notebookPath: String): Set<String> =
+        synchronized(lock) {
+            notebook(notebookPath)
+                ?.entries
+                .orEmpty()
+                .filter { it.exposed && it.familyDefault }
+                .mapTo(mutableSetOf()) { it.dataSourceId }
+        }
 
     fun notebookPathsExposing(dataSourceId: String): Set<String> =
-        current.notebooks
-            .filter { notebook ->
-                notebook.entries.any { it.exposed && it.dataSourceId == dataSourceId }
-            }
-            .mapTo(mutableSetOf()) { it.notebookPath }
+        synchronized(lock) {
+            current.notebooks
+                .filter { notebook ->
+                    notebook.entries.any { it.exposed && it.dataSourceId == dataSourceId }
+                }
+                .mapTo(mutableSetOf()) { it.notebookPath }
+        }
+
+    fun notebookPathsUsingDefault(dataSourceId: String): Set<String> =
+        synchronized(lock) {
+            current.notebooks
+                .filter { notebook ->
+                    notebook.entries.any {
+                        it.exposed && it.familyDefault && it.dataSourceId == dataSourceId
+                    }
+                }
+                .mapTo(mutableSetOf()) { it.notebookPath }
+        }
 
     fun notebookPathsWithExposures(): Set<String> =
-        current.notebooks
-            .filter { notebook -> notebook.entries.any { it.exposed } }
-            .mapTo(mutableSetOf()) { it.notebookPath }
+        synchronized(lock) {
+            current.notebooks
+                .filter { notebook -> notebook.entries.any { it.exposed } }
+                .mapTo(mutableSetOf()) { it.notebookPath }
+        }
+
+    fun notebookPathsWithDefaults(): Set<String> =
+        synchronized(lock) {
+            current.notebooks
+                .filter { notebook -> notebook.entries.any { it.exposed && it.familyDefault } }
+                .mapTo(mutableSetOf()) { it.notebookPath }
+        }
 
     fun recordNever() {
-        current.neverForThisProject = true
-        current.notebooks.clear()
+        synchronized(lock) {
+            current.neverForThisProject = true
+            current.notebooks.clear()
+        }
     }
 
     /** Replaces the decision. Returns true when the effective exposure set changes. */
-    fun recordExposures(notebookPath: String, entries: List<ExposureEntry>): Boolean {
-        val notebook = notebook(notebookPath) ?: addNotebook(notebookPath)
-        val before = fingerprint(notebook.entries)
-        notebook.decisionRecorded = true
-        current.neverForThisProject = false
-        notebook.entries = entries.toMutableList()
-        return before != fingerprint(notebook.entries)
-    }
+    fun recordExposures(notebookPath: String, entries: List<ExposureEntry>): Boolean =
+        synchronized(lock) {
+            val notebook = notebook(notebookPath) ?: addNotebook(notebookPath)
+            val before = fingerprint(notebook.entries)
+            notebook.decisionRecorded = true
+            current.neverForThisProject = false
+            notebook.entries = entries.mapTo(mutableListOf()) { it.copy() }
+            before != fingerprint(notebook.entries)
+        }
 
     private fun notebook(notebookPath: String): NotebookExposure? =
         current.notebooks.firstOrNull { it.notebookPath == notebookPath }
@@ -101,7 +131,27 @@ class DataSourceExposureStore : PersistentStateComponent<DataSourceExposureStore
         }
 
     private fun fingerprint(entries: List<ExposureEntry>): Set<Triple<String, Boolean, Boolean>> =
-        entries.mapTo(mutableSetOf()) { Triple(it.dataSourceId, it.exposed, it.familyPrimary) }
+        entries.mapTo(mutableSetOf()) { Triple(it.dataSourceId, it.exposed, it.familyDefault) }
+
+    private fun State.copy(): State =
+        State().also { copy ->
+            copy.neverForThisProject = neverForThisProject
+            copy.notebooks = notebooks.mapTo(mutableListOf()) { it.copy() }
+        }
+
+    private fun NotebookExposure.copy(): NotebookExposure =
+        NotebookExposure().also { copy ->
+            copy.notebookPath = notebookPath
+            copy.decisionRecorded = decisionRecorded
+            copy.entries = entries.mapTo(mutableListOf()) { it.copy() }
+        }
+
+    private fun ExposureEntry.copy(): ExposureEntry =
+        ExposureEntry().also { copy ->
+            copy.dataSourceId = dataSourceId
+            copy.exposed = exposed
+            copy.familyDefault = familyDefault
+        }
 
     companion object {
         fun getInstance(project: Project): DataSourceExposureStore =

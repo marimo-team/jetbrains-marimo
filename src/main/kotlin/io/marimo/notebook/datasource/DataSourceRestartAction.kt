@@ -18,5 +18,7 @@ internal class DataSourceRestartAction(onRestart: () -> Unit) :
     }
 }
 
-internal fun shouldOfferDataSourceRestart(state: MarimoSessionState?): Boolean =
-    state?.isLive == true
+internal fun shouldOfferDataSourceRestart(
+    state: MarimoSessionState?,
+    launchEnvStale: Boolean = true,
+): Boolean = state?.isLive == true && launchEnvStale

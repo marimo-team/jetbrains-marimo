@@ -13,5 +13,5 @@ object MarimoNotebookSelection {
         from(FileEditorManager.getInstance(project).selectedFiles.asList())
 
     internal fun from(files: List<VirtualFile>): VirtualFile? =
-        files.firstOrNull(MarimoDetector::looksLikeMarimo)
+        files.firstOrNull()?.takeIf(MarimoDetector::looksLikeMarimo)
 }

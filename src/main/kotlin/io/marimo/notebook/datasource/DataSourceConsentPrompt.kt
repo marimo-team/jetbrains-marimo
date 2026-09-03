@@ -25,11 +25,7 @@ object DataSourceConsentPrompt {
                     .getNotificationGroup("Marimo")
                     .createNotification(
                         MarimoBundle.message("datasource.consent.title"),
-                        MarimoBundle.message(
-                            "datasource.consent.body",
-                            notebookKey,
-                            mappableCount,
-                        ),
+                        dataSourceConsentBody(notebookKey, mappableCount),
                         NotificationType.INFORMATION,
                     )
             notification.isImportant = true
@@ -37,17 +33,30 @@ object DataSourceConsentPrompt {
                 NotificationAction.createSimpleExpiring(
                     MarimoBundle.message("datasource.consent.configure")
                 ) {
-                    DataSourceToolWindowTabProvider.show(project)
+                    DataSourceToolWindowTabProvider.show(project, notebookKey)
                 }
             )
             notification.addAction(
                 NotificationAction.createSimpleExpiring(
                     MarimoBundle.message("datasource.consent.never")
                 ) {
-                    store.recordNever()
+                    never(project)
                 }
             )
             notification.notify(project)
         }
     }
+
+    internal fun never(project: Project) {
+        val store = DataSourceExposureStore.getInstance(project)
+        DataSourceStaleness.apply(project, DataSourceEvent.Changed(id = null))
+        store.recordNever()
+    }
 }
+
+internal fun dataSourceConsentBody(notebookKey: String, mappableCount: Int): String =
+    MarimoBundle.message(
+        if (mappableCount == 1) "datasource.consent.body.one" else "datasource.consent.body.many",
+        notebookKey,
+        mappableCount,
+    )

@@ -6,20 +6,20 @@ package io.marimo.notebook.datasource
 internal class DataSourceExposureSelection(
     candidates: List<CandidateDataSource>,
     exposedIds: Set<String>,
-    primaryIds: Set<String>,
+    defaultIds: Set<String>,
 ) {
     internal data class Item(
         val candidate: CandidateDataSource,
         var exposed: Boolean,
-        var primary: Boolean,
+        var familyDefault: Boolean,
     )
 
     val items: List<Item> = candidates.map { candidate ->
         Item(
             candidate = candidate,
             exposed = candidate.supported && candidate.id in exposedIds,
-            primary =
-                candidate.supported && candidate.id in exposedIds && candidate.id in primaryIds,
+            familyDefault =
+                candidate.supported && candidate.id in exposedIds && candidate.id in defaultIds,
         )
     }
 
@@ -31,15 +31,15 @@ internal class DataSourceExposureSelection(
         val item = items.firstOrNull { it.candidate.id == id } ?: return
         if (!item.candidate.supported) return
         item.exposed = exposed
-        if (!exposed) item.primary = false
+        if (!exposed) item.familyDefault = false
         normalizeFamily(item.candidate.family)
     }
 
-    fun setPrimary(id: String) {
+    fun setDefault(id: String) {
         val item = items.firstOrNull { it.candidate.id == id } ?: return
         val family = item.candidate.family ?: return
         if (!item.candidate.supported || !item.exposed) return
-        items.filter { it.candidate.family == family }.forEach { it.primary = it === item }
+        items.filter { it.candidate.family == family }.forEach { it.familyDefault = it === item }
     }
 
     fun shareAll() {
@@ -47,13 +47,16 @@ internal class DataSourceExposureSelection(
         normalizeAllFamilies()
     }
 
-    fun entries(): List<DataSourceExposureStore.ExposureEntry> = items.map { item ->
-        DataSourceExposureStore.ExposureEntry().apply {
-            dataSourceId = item.candidate.id
-            exposed = item.exposed
-            familyPrimary = item.exposed && item.primary
-        }
-    }
+    fun entries(): List<DataSourceExposureStore.ExposureEntry> =
+        items
+            .filter { it.exposed }
+            .map { item ->
+                DataSourceExposureStore.ExposureEntry().apply {
+                    dataSourceId = item.candidate.id
+                    exposed = true
+                    familyDefault = item.familyDefault
+                }
+            }
 
     private fun normalizeAllFamilies() {
         items.mapNotNull { it.candidate.family }.toSet().forEach(::normalizeFamily)
@@ -62,13 +65,16 @@ internal class DataSourceExposureSelection(
     private fun normalizeFamily(family: DbFamily?) {
         if (family == null) return
         val members = items.filter { it.candidate.family == family }
-        members.filter { !it.exposed }.forEach { it.primary = false }
+        members.filter { !it.exposed }.forEach { it.familyDefault = false }
         val exposed = members.filter { it.exposed }
-        val selected = exposed.filter { it.primary }
-        when {
-            exposed.isEmpty() -> Unit
-            selected.isEmpty() -> exposed.first().primary = true
-            selected.size > 1 -> selected.drop(1).forEach { it.primary = false }
+        if (exposed.isEmpty()) return
+        val effective =
+            Candidates.effectiveDefaults(
+                exposed.map { it.candidate },
+                exposed.filter { it.familyDefault }.mapTo(mutableSetOf()) { it.candidate.id },
+            )
+        members.forEach { item ->
+            item.familyDefault = item.exposed && item.candidate.id in effective
         }
     }
 }

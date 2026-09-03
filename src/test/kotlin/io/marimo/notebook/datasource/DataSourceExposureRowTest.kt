@@ -19,7 +19,7 @@ class DataSourceExposureRowTest {
                 exposed = false,
                 supported = true,
                 onExposureChanged = {},
-                onMakePrimary = {},
+                onMakeDefault = {},
             )
 
         row.size = Dimension(400, 600)
@@ -39,7 +39,7 @@ class DataSourceExposureRowTest {
                 exposed = true,
                 supported = true,
                 onExposureChanged = requested::add,
-                onMakePrimary = {},
+                onMakeDefault = {},
             )
         val unshared =
             DataSourceExposureRow(
@@ -48,7 +48,7 @@ class DataSourceExposureRowTest {
                 exposed = false,
                 supported = true,
                 onExposureChanged = requested::add,
-                onMakePrimary = {},
+                onMakeDefault = {},
             )
 
         button(shared, "Unshare").doClick()

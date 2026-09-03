@@ -41,6 +41,7 @@ class DataSourceExposurePanel(
     private var notebookFile: VirtualFile? = null
     private var notebookKey: String? = null
     private var selection: DataSourceExposureSelection? = null
+    private val loadState = DataSourceExposurePanelLoadState()
 
     init {
         border = BorderFactory.createEmptyBorder(8, 8, 8, 8)
@@ -69,14 +70,15 @@ class DataSourceExposurePanel(
     }
 
     fun reload() {
-        restartAction.isVisible = false
         notebookFile = selectedNotebook()
         notebookKey = notebookFile?.let { NotebookExposureKey.from(project, it) }
+        val load = loadState.begin(notebookKey)
+        candidates = emptyList()
+        selection = null
+        shareAll.isEnabled = false
+        restartAction.isVisible = shouldOfferRestartForSelectedNotebook()
         updateTarget()
         if (notebookKey == null) {
-            candidates = emptyList()
-            selection = null
-            shareAll.isEnabled = false
             showMessage(MarimoBundle.message("datasource.panel.select.notebook"))
             return
         }
@@ -85,6 +87,7 @@ class DataSourceExposurePanel(
             val loaded = IdeDataSourceCatalog.candidates(project)
             ApplicationManager.getApplication().invokeLater {
                 if (project.isDisposed) return@invokeLater
+                if (!loadState.isCurrent(load)) return@invokeLater
                 candidates = loaded
                 renderCandidates()
             }
@@ -132,7 +135,7 @@ class DataSourceExposurePanel(
             return
         }
         val current =
-            DataSourceExposureSelection(candidates, store.exposedIds(key), store.primaryIds(key))
+            DataSourceExposureSelection(candidates, store.exposedIds(key), store.defaultIds(key))
         selection = current
         val familySizes =
             current.items
@@ -154,14 +157,14 @@ class DataSourceExposurePanel(
                     detail = detail,
                     exposed = item.exposed,
                     supported = candidate.supported,
-                    primary = item.primary,
-                    showPrimaryAction = (familySizes[candidate.family] ?: 0) > 1,
+                    familyDefault = item.familyDefault,
+                    showDefaultAction = (familySizes[candidate.family] ?: 0) > 1,
                     onExposureChanged = { exposed ->
                         current.setExposed(candidate.id, exposed)
                         persist(key, current)
                     },
-                    onMakePrimary = {
-                        current.setPrimary(candidate.id)
+                    onMakeDefault = {
+                        current.setDefault(candidate.id)
                         persist(key, current)
                     },
                 )
@@ -182,12 +185,15 @@ class DataSourceExposurePanel(
     private fun persist(key: String, current: DataSourceExposureSelection) {
         if (store.recordExposures(key, current.entries())) {
             DataSourceStaleness.exposureEdited(project, key)
-            restartAction.isVisible =
-                shouldOfferDataSourceRestart(
-                    notebookFile?.let { project.service<NotebookSessionManager>().peek(it)?.state }
-                )
+            restartAction.isVisible = shouldOfferRestartForSelectedNotebook()
         }
         renderCandidates()
+    }
+
+    private fun shouldOfferRestartForSelectedNotebook(): Boolean {
+        val snapshot =
+            notebookFile?.let { project.service<NotebookSessionManager>().peek(it) } ?: return false
+        return shouldOfferDataSourceRestart(snapshot.state, snapshot.launchEnvStale)
     }
 
     private fun showMessage(message: String) {
@@ -209,4 +215,22 @@ class DataSourceExposurePanel(
             margin = Insets(1, 6, 1, 6)
             isFocusable = false
         }
+}
+
+internal data class DataSourceExposurePanelLoad(
+    val generation: Long,
+    val notebookKey: String?,
+)
+
+/** Rejects catalog results from an earlier notebook selection or refresh. */
+internal class DataSourceExposurePanelLoadState {
+    private var generation = 0L
+    private var current = DataSourceExposurePanelLoad(generation, null)
+
+    fun begin(notebookKey: String?): DataSourceExposurePanelLoad {
+        current = DataSourceExposurePanelLoad(++generation, notebookKey)
+        return current
+    }
+
+    fun isCurrent(load: DataSourceExposurePanelLoad): Boolean = load == current
 }

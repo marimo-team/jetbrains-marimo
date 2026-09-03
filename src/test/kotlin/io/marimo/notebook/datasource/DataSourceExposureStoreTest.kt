@@ -12,11 +12,11 @@ class DataSourceExposureStoreTest {
     private val ordersNotebook = "notebooks/orders.py"
     private val reportNotebook = "notebooks/report.py"
 
-    private fun entry(id: String, exposed: Boolean, primary: Boolean) =
+    private fun entry(id: String, exposed: Boolean, familyDefault: Boolean) =
         DataSourceExposureStore.ExposureEntry().apply {
             dataSourceId = id
             this.exposed = exposed
-            familyPrimary = primary
+            this.familyDefault = familyDefault
         }
 
     @Test
@@ -26,17 +26,17 @@ class DataSourceExposureStoreTest {
         assertTrue(
             store.recordExposures(
                 ordersNotebook,
-                listOf(entry("pg-1", exposed = true, primary = true)),
+                listOf(entry("pg-1", exposed = true, familyDefault = true)),
             )
         )
         assertTrue(store.decisionRecorded(ordersNotebook))
         assertEquals(setOf("pg-1"), store.exposedIds(ordersNotebook))
-        assertEquals(setOf("pg-1"), store.primaryIds(ordersNotebook))
+        assertEquals(setOf("pg-1"), store.defaultIds(ordersNotebook))
         assertFalse(
             "an identical decision must not report a change",
             store.recordExposures(
                 ordersNotebook,
-                listOf(entry("pg-1", exposed = true, primary = true)),
+                listOf(entry("pg-1", exposed = true, familyDefault = true)),
             ),
         )
     }
@@ -46,7 +46,7 @@ class DataSourceExposureStoreTest {
         val store = DataSourceExposureStore()
         store.recordExposures(
             ordersNotebook,
-            listOf(entry("pg-1", exposed = true, primary = true)),
+            listOf(entry("pg-1", exposed = true, familyDefault = true)),
         )
 
         assertEquals(setOf("pg-1"), store.exposedIds(ordersNotebook))
@@ -59,11 +59,11 @@ class DataSourceExposureStoreTest {
         val store = DataSourceExposureStore()
         store.recordExposures(
             ordersNotebook,
-            listOf(entry("pg-1", exposed = true, primary = true)),
+            listOf(entry("pg-1", exposed = true, familyDefault = true)),
         )
         store.recordExposures(
             reportNotebook,
-            listOf(entry("mysql-1", exposed = true, primary = true)),
+            listOf(entry("mysql-1", exposed = true, familyDefault = true)),
         )
 
         assertEquals(setOf(ordersNotebook), store.notebookPathsExposing("pg-1"))
@@ -75,11 +75,30 @@ class DataSourceExposureStoreTest {
     }
 
     @Test
+    fun sourceChangesResolveOnlyNotebooksThatUseTheSourceAsDefault() {
+        val store = DataSourceExposureStore()
+        store.recordExposures(
+            ordersNotebook,
+            listOf(
+                entry("pg-default", exposed = true, familyDefault = true),
+                entry("pg-replica", exposed = true, familyDefault = false),
+            ),
+        )
+
+        assertEquals(
+            setOf(ordersNotebook),
+            store.notebookPathsUsingDefault("pg-default"),
+        )
+        assertTrue(store.notebookPathsUsingDefault("pg-replica").isEmpty())
+        assertEquals(setOf(ordersNotebook), store.notebookPathsWithDefaults())
+    }
+
+    @Test
     fun neverForThisProjectClearsExposures() {
         val store = DataSourceExposureStore()
         store.recordExposures(
             ordersNotebook,
-            listOf(entry("pg-1", exposed = true, primary = true)),
+            listOf(entry("pg-1", exposed = true, familyDefault = true)),
         )
         store.recordNever()
         assertFalse(store.decisionRecorded(ordersNotebook))
@@ -93,8 +112,8 @@ class DataSourceExposureStoreTest {
         store.recordExposures(
             ordersNotebook,
             listOf(
-                entry("pg-1", exposed = true, primary = true),
-                entry("pg-2", exposed = false, primary = false),
+                entry("pg-1", exposed = true, familyDefault = true),
+                entry("pg-2", exposed = false, familyDefault = false),
             ),
         )
         val element = XmlSerializer.serialize(store.state)
@@ -102,5 +121,41 @@ class DataSourceExposureStoreTest {
         val reloaded = DataSourceExposureStore().apply { loadState(copy) }
         assertEquals(setOf("pg-1"), reloaded.exposedIds(ordersNotebook))
         assertTrue(reloaded.decisionRecorded(ordersNotebook))
+    }
+
+    @Test
+    fun persistedStateIsAnIndependentSnapshot() {
+        val store = DataSourceExposureStore()
+        store.recordExposures(
+            ordersNotebook,
+            listOf(entry("pg-1", exposed = true, familyDefault = true)),
+        )
+
+        val snapshot = store.state
+        snapshot.notebooks.clear()
+
+        assertEquals(setOf("pg-1"), store.exposedIds(ordersNotebook))
+    }
+
+    @Test
+    fun loadedStateIsCopiedBeforePublication() {
+        val state =
+            DataSourceExposureStore.State().apply {
+                notebooks =
+                    mutableListOf(
+                        DataSourceExposureStore.NotebookExposure().apply {
+                            notebookPath = ordersNotebook
+                            decisionRecorded = true
+                            entries =
+                                mutableListOf(entry("pg-1", exposed = true, familyDefault = true))
+                        }
+                    )
+            }
+        val store = DataSourceExposureStore()
+
+        store.loadState(state)
+        state.notebooks.clear()
+
+        assertEquals(setOf("pg-1"), store.exposedIds(ordersNotebook))
     }
 }
