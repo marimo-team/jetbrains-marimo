@@ -143,7 +143,16 @@ private class SessionCard(
             JPanel(BorderLayout(8, 0)).apply {
                 isOpaque = false
                 add(JLabel(snapshot.fileName, MarimoIcons.FILE, JLabel.LEFT), BorderLayout.CENTER)
-                add(statusBadge(snapshot.state), BorderLayout.EAST)
+                add(
+                    JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply {
+                        isOpaque = false
+                        if (snapshot.launchEnvStale && snapshot.state.isLive) {
+                            add(staleEnvBadge())
+                        }
+                        add(statusBadge(snapshot.state))
+                    },
+                    BorderLayout.EAST,
+                )
             }
 
         val details =
@@ -152,6 +161,12 @@ private class SessionCard(
                 isOpaque = false
                 border = BorderFactory.createEmptyBorder(2, 0, 2, 0)
                 add(detailLine("URL", url))
+                launch
+                    ?.launchEnvLabels
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { labels ->
+                        add(detailLine("Data sources", labels.joinToString(", ")))
+                    }
             }
 
         val actions =
@@ -216,6 +231,13 @@ private class SessionCard(
             }
         return JLabel(text).apply { foreground = color }
     }
+
+    private fun staleEnvBadge(): JLabel =
+        JLabel("ENV STALE").apply {
+            foreground = JBColor(0xB26500, 0xE0A03C)
+            toolTipText =
+                "IDE data sources changed after this server started. Restart to apply them."
+        }
 
     private fun detailLine(label: String, value: String): JLabel =
         JLabel("$label: $value").apply {
