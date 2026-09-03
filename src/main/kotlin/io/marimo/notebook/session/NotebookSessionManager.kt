@@ -177,14 +177,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                 planned.request.copy(
                     tokenPasswordFile = tokenFile?.absolutePath,
                     extraEnv = launchEnv.env,
-                    authenticatedUrl =
-                        token?.let {
-                            MarimoLocalhost.authenticatedUrl(
-                                planned.request.host,
-                                planned.request.port,
-                                it,
-                            )
-                        },
+                    authenticatedUrl = authenticatedUrl(planned.request, token),
                 )
             val launcherInfo = launcherInfoFor(planned.launcher, request)
             val handle = planned.launcher.launch(request)
@@ -248,6 +241,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     private fun launcherInfoFor(launcher: MarimoLauncher, request: LaunchRequest): LauncherInfo? =
         launcher.marimoCliPrefix(request)?.let { prefix -> LauncherInfo(prefix, request.sandbox) }
+
+    private fun authenticatedUrl(request: LaunchRequest, token: String?): String? = token?.let {
+        MarimoLocalhost.authenticatedUrl(request.host, request.port, it)
+    }
 
     private fun completeReadyUrlFrom(
         handle: io.marimo.notebook.launch.MarimoServerHandle,
