@@ -8,4 +8,8 @@
         <toolWindowTabProvider
             implementation="io.marimo.notebook.datasource.DataSourceToolWindowTabProvider"/>
     </extensions>
+    <projectListeners>
+        <listener class="io.marimo.notebook.datasource.ide.DataSourceStorageListener"
+                  topic="com.intellij.database.dataSource.DataSourceStorage$Listener"/>
+    </projectListeners>
 </idea-plugin>

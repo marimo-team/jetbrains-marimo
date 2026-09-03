@@ -367,6 +367,45 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals("every restart must recompute the environment", 2, calls)
     }
 
+    fun testMarkLaunchEnvStaleFlagsOnlyTheTargetNotebook() {
+        val target = runningNotebook("stale_target_nb.py")
+        val other = runningNotebook("fresh_other_nb.py")
+
+        manager.markLaunchEnvStale(target)
+
+        assertTrue(manager.statusFor(target)!!.launchEnvStale)
+        assertFalse(manager.statusFor(other)!!.launchEnvStale)
+    }
+
+    fun testRestartClearsLaunchEnvironmentStaleness() {
+        val file = runningNotebook("stale_restart_nb.py")
+        manager.markLaunchEnvStale(file)
+
+        manager.restart(file)
+
+        assertTrue(sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles[1].becomeReady()
+        manager.urlFor(file).get(5, TimeUnit.SECONDS)
+        assertFalse(manager.statusFor(file)!!.launchEnvStale)
+    }
+
+    fun testEnvironmentChangeDuringRestartRemainsStale() {
+        val file = runningNotebook("stale_during_restart_nb.py")
+        manager.markLaunchEnvStale(file)
+        val launchGate = CountDownLatch(1)
+        sdk.secondLaunchGate = launchGate
+
+        manager.restart(file)
+        assertTrue(sdk.secondLaunchEntered.await(5, TimeUnit.SECONDS))
+        manager.markLaunchEnvStale(file)
+        launchGate.countDown()
+
+        assertTrue(sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles[1].becomeReady()
+        manager.urlFor(file).get(5, TimeUnit.SECONDS)
+        assertTrue(manager.statusFor(file)!!.launchEnvStale)
+    }
+
     fun testReleaseClearsLaunchContext() {
         val file = notebook("release_context_nb.py")
         val readyUrl = launch(file)

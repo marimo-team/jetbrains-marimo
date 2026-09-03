@@ -55,6 +55,26 @@ class DataSourceExposureStoreTest {
     }
 
     @Test
+    fun sourceChangesResolveOnlyNotebooksThatExposeTheSource() {
+        val store = DataSourceExposureStore()
+        store.recordExposures(
+            ordersNotebook,
+            listOf(entry("pg-1", exposed = true, primary = true)),
+        )
+        store.recordExposures(
+            reportNotebook,
+            listOf(entry("mysql-1", exposed = true, primary = true)),
+        )
+
+        assertEquals(setOf(ordersNotebook), store.notebookPathsExposing("pg-1"))
+        assertTrue(store.notebookPathsExposing("other").isEmpty())
+        assertEquals(
+            setOf(ordersNotebook, reportNotebook),
+            store.notebookPathsWithExposures(),
+        )
+    }
+
+    @Test
     fun neverForThisProjectClearsExposures() {
         val store = DataSourceExposureStore()
         store.recordExposures(

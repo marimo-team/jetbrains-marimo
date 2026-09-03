@@ -64,6 +64,18 @@ class DataSourceExposureStore : PersistentStateComponent<DataSourceExposureStore
             .filter { it.exposed && it.familyPrimary }
             .mapTo(mutableSetOf()) { it.dataSourceId }
 
+    fun notebookPathsExposing(dataSourceId: String): Set<String> =
+        current.notebooks
+            .filter { notebook ->
+                notebook.entries.any { it.exposed && it.dataSourceId == dataSourceId }
+            }
+            .mapTo(mutableSetOf()) { it.notebookPath }
+
+    fun notebookPathsWithExposures(): Set<String> =
+        current.notebooks
+            .filter { notebook -> notebook.entries.any { it.exposed } }
+            .mapTo(mutableSetOf()) { it.notebookPath }
+
     fun recordNever() {
         current.neverForThisProject = true
         current.notebooks.clear()

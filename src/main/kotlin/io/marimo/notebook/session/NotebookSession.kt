@@ -50,6 +50,7 @@ data class SessionSnapshot(
     val expiresAtMillis: Long?,
     val launch: MarimoLaunchContext?,
     val sandbox: Boolean,
+    val launchEnvStale: Boolean = false,
 )
 
 /** Cancels a scheduled TTL task. */
@@ -90,6 +91,7 @@ internal class NotebookSession(
     val lifecycle = NotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
     var launchContext: MarimoLaunchContext? = null
+    var launchEnvStale: Boolean = false
     var inFlightReadyUrl: CompletableFuture<String>? = null
     private val leaseCounts = EnumMap<LeaseOwner, Int>(LeaseOwner::class.java)
     var ttl: TtlCancellable? = null
@@ -129,6 +131,7 @@ internal class NotebookSession(
             expiresAtMillis = expiresAtMillis,
             launch = launchContext,
             sandbox = sandboxEnabled.get(),
+            launchEnvStale = launchEnvStale,
         )
 
     override fun dispose() = lifecycle.release()

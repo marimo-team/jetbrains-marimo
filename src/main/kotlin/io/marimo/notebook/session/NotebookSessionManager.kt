@@ -168,6 +168,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         var tokenFile: File? = null
         try {
             val planned = planLaunch(session, file)
+            synchronized(session) { session.launchEnvStale = false }
             val launchEnv = launchEnvCollector(file)
             val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
             val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
@@ -272,6 +273,24 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     fun sessions(): List<SessionSnapshot> =
         sessions.values.map { synchronized(it) { it.snapshot() } }
+
+    /** Marks one live notebook when its launch environment no longer matches its configuration. */
+    fun markLaunchEnvStale(file: VirtualFile) {
+        val session = sessionForUrl(file.url) ?: return
+        val changed =
+            synchronized(session) {
+                val state = session.lifecycle.state
+                val live =
+                    state is MarimoNotebookState.Starting || state is MarimoNotebookState.Running
+                if (!live || session.launchEnvStale) {
+                    false
+                } else {
+                    session.launchEnvStale = true
+                    true
+                }
+            }
+        if (changed) notifySessionsChanged()
+    }
 
     /**
      * Stops [file]'s server. An active ownership lease retains the session so its UI displays a
