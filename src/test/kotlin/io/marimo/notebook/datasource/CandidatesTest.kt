@@ -35,16 +35,16 @@ class CandidatesTest {
     }
 
     @Test
-    fun unparseableUrlsAreGreyedOutWithAReason() {
+    fun unparsableUrlsAreGreyedOutWithAReason() {
         val candidate = Candidates.from(facts(url = "jdbc:oracle:thin:@//db:1521/svc"))
         assertNotNull(candidate.unsupportedReason)
         assertNull(candidate.endpoint)
     }
 
     @Test
-    fun unknownSchemesStayExposableWithoutAFamily() {
+    fun unknownSchemesExplainThatQuickAddIsUnavailable() {
         val candidate = Candidates.from(facts(url = "jdbc:snowflake://acme.example.com"))
-        assertTrue(candidate.supported)
+        assertTrue(candidate.unsupportedReason!!.contains("Quick add"))
         assertNull(candidate.family)
         assertEquals("snowflake", candidate.dialect)
     }

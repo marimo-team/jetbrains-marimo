@@ -8,7 +8,7 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class LauncherEnvironmentTest {
-    private val extraEnv = mapOf("PGHOST" to "db.internal", "JB_ORDERS_DB_HOST" to "db.internal")
+    private val extraEnv = mapOf("PGHOST" to "db.internal", "CUSTOM_DB_HOST" to "db.internal")
 
     @Test
     fun sdkCommandCarriesExtraEnvOutsideArgv() {
@@ -22,7 +22,7 @@ class LauncherEnvironmentTest {
                 extraEnv = extraEnv,
             )
         assertEquals("db.internal", cmd.environment["PGHOST"])
-        assertEquals("db.internal", cmd.environment["JB_ORDERS_DB_HOST"])
+        assertEquals("db.internal", cmd.environment["CUSTOM_DB_HOST"])
         assertFalse(
             "env values must never appear in argv",
             cmd.parametersList.parameters.any { it.contains("db.internal") },

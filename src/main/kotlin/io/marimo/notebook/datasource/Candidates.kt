@@ -41,6 +41,7 @@ object Candidates {
                     "uses IDE auth '${facts.authProviderId}'. " +
                         "Only user/password sources map to environment variables"
                 endpoint == null -> "the JDBC URL has no host/port form the plugin can map"
+                family == null -> "the database family has no vendor variables for Quick add"
                 family == DbFamily.POSTGRES && username == null ->
                     "PostgreSQL Quick add requires a username"
                 else -> null
