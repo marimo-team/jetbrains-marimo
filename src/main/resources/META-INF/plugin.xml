@@ -18,6 +18,9 @@
           <li><b>Reactive editor, in the IDE</b> — cells re-run automatically when their inputs change.</li>
           <li><b>Interactive widgets</b> — sliders, tables, plots, and other <code>mo.ui</code> elements work inline.</li>
           <li><b>SQL cells, variables, and dependency panels</b> — the full marimo experience.</li>
+          <li><b>IDE database connections</b> — share Database Tools sources with selected notebooks.
+              marimo can suggest the default source for each database family as a Quick Add SQL cell.
+              Credentials enter only the notebook process environment. The plugin does not write them to disk.</li>
           <li><b>Runs on your project interpreter</b> — with a one-click offer to install marimo when it's missing.</li>
           <li><b>Isolated sandbox runs</b> — optionally launch a notebook in a one-off <a href="https://docs.astral.sh/uv/">uv</a> environment.</li>
           <li><b>Pair with marimo</b> — start a supported terminal AI harness, or copy the notebook's pairing prompt.</li>
@@ -34,8 +37,18 @@
     <depends>com.intellij.modules.platform</depends>
     <depends>com.intellij.modules.python</depends>
     <depends>org.jetbrains.plugins.terminal</depends>
+    <depends optional="true" config-file="marimo-database.xml">com.intellij.database</depends>
 
     <resource-bundle>messages.MarimoBundle</resource-bundle>
+
+    <extensionPoints>
+        <extensionPoint qualifiedName="io.marimo.notebook.launchEnvContributor"
+                        interface="io.marimo.notebook.launch.LaunchEnvContributor"
+                        dynamic="true"/>
+        <extensionPoint qualifiedName="io.marimo.notebook.toolWindowTabProvider"
+                        interface="io.marimo.notebook.MarimoToolWindowTabProvider"
+                        dynamic="true"/>
+    </extensionPoints>
 
     <extensions defaultExtensionNs="com.intellij">
         <fileEditorProvider implementation="io.marimo.notebook.editor.MarimoFileEditorProvider"/>

@@ -1,0 +1,15 @@
+<!-- Loaded only when the Database Tools plugin (com.intellij.database) is enabled. -->
+<idea-plugin>
+    <extensions defaultExtensionNs="io.marimo.notebook">
+        <launchEnvContributor
+            implementation="io.marimo.notebook.datasource.DataSourceEnvContributor"/>
+    </extensions>
+    <extensions defaultExtensionNs="io.marimo.notebook">
+        <toolWindowTabProvider
+            implementation="io.marimo.notebook.datasource.DataSourceToolWindowTabProvider"/>
+    </extensions>
+    <projectListeners>
+        <listener class="io.marimo.notebook.datasource.ide.DataSourceStorageListener"
+                  topic="com.intellij.database.dataSource.DataSourceStorage$Listener"/>
+    </projectListeners>
+</idea-plugin>

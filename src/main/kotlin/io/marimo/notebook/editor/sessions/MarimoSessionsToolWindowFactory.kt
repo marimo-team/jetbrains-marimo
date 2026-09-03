@@ -19,6 +19,8 @@ import com.intellij.ui.components.JBScrollPane
 import com.intellij.ui.content.ContentFactory
 import io.marimo.notebook.MarimoIcons
 import io.marimo.notebook.MarimoLocalhost
+import io.marimo.notebook.MarimoToolWindowTabProvider
+import io.marimo.notebook.editor.MarimoNotebookSelection
 import io.marimo.notebook.session.MarimoSessionState
 import io.marimo.notebook.session.NotebookSessionManager
 import io.marimo.notebook.session.SessionSnapshot
@@ -43,9 +45,20 @@ class MarimoSessionsToolWindowFactory : ToolWindowFactory, DumbAware {
         val panel = MarimoSessionsPanel(project, service)
         service.addSessionsListener(panel) { panel.refresh() }
         panel.refresh()
-        val content = ContentFactory.getInstance().createContent(panel, "", false)
+        val content = ContentFactory.getInstance().createContent(panel, "Sessions", false)
+        content.putUserData(MarimoToolWindowTabProvider.CONTENT_ID_KEY, "sessions")
         content.setDisposer(panel)
         toolWindow.contentManager.addContent(content)
+        MarimoToolWindowTabProvider.registeredTabs(project) {
+                MarimoNotebookSelection.selected(project)
+            }
+            .forEach { tab ->
+                val contributed =
+                    ContentFactory.getInstance().createContent(tab.component, tab.title, false)
+                contributed.putUserData(MarimoToolWindowTabProvider.CONTENT_ID_KEY, tab.id)
+                if (tab.component is Disposable) contributed.setDisposer(tab.component)
+                toolWindow.contentManager.addContent(contributed)
+            }
     }
 }
 
@@ -130,7 +143,16 @@ private class SessionCard(
             JPanel(BorderLayout(8, 0)).apply {
                 isOpaque = false
                 add(JLabel(snapshot.fileName, MarimoIcons.FILE, JLabel.LEFT), BorderLayout.CENTER)
-                add(statusBadge(snapshot.state), BorderLayout.EAST)
+                add(
+                    JPanel(FlowLayout(FlowLayout.RIGHT, 6, 0)).apply {
+                        isOpaque = false
+                        if (snapshot.launchEnvStale && snapshot.state.isLive) {
+                            add(staleEnvBadge())
+                        }
+                        add(statusBadge(snapshot.state))
+                    },
+                    BorderLayout.EAST,
+                )
             }
 
         val details =
@@ -139,6 +161,12 @@ private class SessionCard(
                 isOpaque = false
                 border = BorderFactory.createEmptyBorder(2, 0, 2, 0)
                 add(detailLine("URL", url))
+                launch
+                    ?.launchEnvLabels
+                    ?.takeIf { it.isNotEmpty() }
+                    ?.let { labels ->
+                        add(detailLine("Data sources", labels.joinToString(", ")))
+                    }
             }
 
         val actions =
@@ -203,6 +231,13 @@ private class SessionCard(
             }
         return JLabel(text).apply { foreground = color }
     }
+
+    private fun staleEnvBadge(): JLabel =
+        JLabel("ENV STALE").apply {
+            foreground = JBColor(0xB26500, 0xE0A03C)
+            toolTipText =
+                "IDE data sources changed after this server started. Restart to apply them."
+        }
 
     private fun detailLine(label: String, value: String): JLabel =
         JLabel("$label: $value").apply {

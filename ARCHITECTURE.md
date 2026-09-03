@@ -11,6 +11,7 @@ Gradle commands are in [AGENTS.md](AGENTS.md). The contributor procedure is in [
 | Layer | Role |
 |---|---|
 | `detect/` | Reads the file header to find whether a `.py` file is a marimo notebook. The result is cached. |
+| `datasource/` | Maps IDE Database Tools connections to vendor launch variables: exposure store, family defaults, and staleness. Loads its IDE-facing parts only when the Database Tools plugin is present. |
 | `launch/` | Selects uv or the SDK. Builds the CLI. Supervises the process. Owns `NotebookLifecycle`. |
 | `session/` | Holds one `NotebookSession` per file. The session has leases, a single-flight start, a TTL, tokens, and an environment probe. The session starts processes through `launch/`. |
 | `editor/` | Holds file editors, JCEF views, the Sessions tool window, and session actions. Owns `EDITOR_TAB` leases. |
@@ -91,7 +92,10 @@ These types are `@Service`. They are not in `plugin.xml`:
 | File editor | source | `MarimoSourceEditorProvider` |
 | Icon | (none) | `MarimoFileIconProvider` |
 | Tool window | Marimo Sessions | `MarimoSessionsToolWindowFactory` |
+| Extension point | `io.marimo.notebook.launchEnvContributor` | `DataSourceEnvContributor` from `marimo-database.xml` |
+| Extension point | `io.marimo.notebook.toolWindowTabProvider` | `DataSourceToolWindowTabProvider` from `marimo-database.xml` |
 | Configurable | `io.marimo.notebook.telemetry.settings` | `MarimoSettingsConfigurable` |
+| Listener | `DataSourceStorage$Listener` | `DataSourceStorageListener` from `marimo-database.xml` |
 | Template | marimo Notebook | internal file template |
 | Notifications | Marimo | balloon group |
 | Action | `Marimo.NewNotebook` | `CreateMarimoNotebookAction` |
@@ -105,11 +109,15 @@ These types are `@Service`. They are not in `plugin.xml`:
 This diagram shows the permitted imports between plugin packages. `PackageDependencyTest` makes sure that these rules hold:
 
 - `detect` does not import other plugin packages.
+- `datasource` does not import `editor` or `pair`.
 - `launch` does not import `session`, `editor`, or `pair`.
 - `session` does not import `editor` or `pair`.
 
 ```mermaid
 flowchart LR
+    datasource --> launch
+    datasource --> session
+    datasource --> telemetry
     editor --> session
     editor --> launch
     editor --> detect
@@ -138,6 +146,7 @@ These tasks run on pooled or scheduled threads (`AppExecutorUtil`):
 - environment probes
 - package installs
 - token-file writes
+- launch-environment collection and credential reads
 - TTL
 
 These threads do not change Swing. `readyUrl()` can start work on a pooled thread. The future can complete on any thread. Then the view shows the result on the EDT.

@@ -15,6 +15,7 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 - **Runs on your interpreter** — the plugin launches marimo on your configured project interpreter, and offers to install it when it's missing.
 - **Start in a sandbox** — run a notebook in an isolated [uv](https://docs.astral.sh/uv/) environment.
 - **Pair with AI** — start a supported terminal AI harness for a notebook, or copy its pairing prompt.
+- **IDE database connections in notebooks** — share PyCharm Database Tools sources with a selected notebook. marimo 0.23.16+ can suggest the default source for each database family as a Quick Add SQL cell. The plugin reads passwords from the IDE credential store only at launch. The notebook process can read shared passwords, but the plugin does not write them to project files or logs. If a shared source changes, the session card marks the running notebook stale until restart.
 - **Clear recovery when a notebook can't start** — Retry, Install, or Open as Python File instead of a stack trace.
 - **New → marimo Notebook** — a file template and notebook icon for marimo `.py` files, plus "Open as Python File" to view the raw source.
 - **Stays in sync** — edits made to a notebook's source in another editor reload the marimo editor automatically, and the editor theme follows the IDE's light/dark theme.
@@ -26,6 +27,7 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 - A project interpreter with marimo installed — the plugin runs marimo on your configured interpreter,
   and offers to install it for you if it's missing
 - [uv](https://docs.astral.sh/uv/) (optional) — only needed to run a notebook in an isolated sandbox
+- PyCharm Professional with Database Tools (optional) — only needed to share IDE data sources
 
 ## Getting started
 

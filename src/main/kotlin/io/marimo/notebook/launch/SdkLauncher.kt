@@ -24,6 +24,7 @@ class SdkLauncher : MarimoLauncher {
                 request.port,
                 watch,
                 request.tokenPasswordFile,
+                request.extraEnv,
             )
         return startMarimoServer(
             command(watch = true),
@@ -49,6 +50,7 @@ class SdkLauncher : MarimoLauncher {
             port: Int,
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
+            extraEnv: Map<String, String> = emptyMap(),
         ): GeneralCommandLine {
             val params =
                 MarimoCommandLine.buildEditParams(
@@ -59,7 +61,10 @@ class SdkLauncher : MarimoLauncher {
                     watch = watch,
                     tokenPasswordFile = tokenPasswordFile,
                 )
-            return GeneralCommandLine(pythonPath).withWorkDirectory(workDir).withParameters(params)
+            return GeneralCommandLine(pythonPath)
+                .withWorkDirectory(workDir)
+                .withParameters(params)
+                .withEnvironment(extraEnv)
         }
     }
 }

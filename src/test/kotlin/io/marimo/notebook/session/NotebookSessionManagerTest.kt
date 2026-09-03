@@ -7,6 +7,7 @@ import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
+import io.marimo.notebook.launch.LaunchEnvContribution
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
@@ -20,6 +21,7 @@ import java.util.concurrent.CopyOnWriteArrayList
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicInteger
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -71,11 +73,20 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val firstLaunch = CountDownLatch(1)
         val secondLaunchEntered = CountDownLatch(1)
         val secondLaunch = CountDownLatch(1)
+        val firstCanLaunchEntered = CountDownLatch(1)
         var canLaunch = true
         var launchFailure: Exception? = null
+        var firstCanLaunchGate: CountDownLatch? = null
         var secondLaunchGate: CountDownLatch? = null
+        private val canLaunchCalls = AtomicInteger()
 
-        override fun canLaunch(request: LaunchRequest): Boolean = canLaunch
+        override fun canLaunch(request: LaunchRequest): Boolean {
+            if (canLaunchCalls.incrementAndGet() == 1 && firstCanLaunchGate != null) {
+                firstCanLaunchEntered.countDown()
+                firstCanLaunchGate?.await(5, TimeUnit.SECONDS)
+            }
+            return canLaunch
+        }
 
         override fun launch(request: LaunchRequest): MarimoServerHandle {
             requests.add(request)
@@ -188,6 +199,33 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals(sdk.requests.single().port, manager.statusFor(file)!!.launch!!.port)
         assertEquals("fake-sdk", manager.statusFor(file)!!.launch!!.launcherId)
         assertEquals(sdk.handles.single().authUrl, url.get())
+    }
+
+    fun testLaunchEnvContributionReachesTheRequestAndTheLaunchContext() {
+        manager.launchEnvCollector = {
+            LaunchEnvContribution(
+                env = mapOf("PGHOST" to "db.internal"),
+                labels = listOf("Orders DB (postgresql, default)"),
+            )
+        }
+        val file = notebook("env_nb.py")
+        launch(file)
+        assertEquals("db.internal", sdk.requests.single().extraEnv["PGHOST"])
+        assertEquals(
+            listOf("Orders DB (postgresql, default)"),
+            manager.statusFor(file)!!.launch!!.launchEnvLabels,
+        )
+    }
+
+    fun testSnapshotsNeverRenderEnvValues() {
+        manager.launchEnvCollector = {
+            LaunchEnvContribution(mapOf("PGPASSWORD" to "supersecret"), listOf("Orders DB"))
+        }
+        val file = notebook("env_secret_nb.py")
+        launch(file)
+        sdk.handles.single().becomeReady()
+        val rendered = manager.statusFor(file).toString()
+        assertFalse("snapshots may be logged anywhere: $rendered", rendered.contains("supersecret"))
     }
 
     fun testLaunchContextRetainsTheTokenAuthModeFromItsLaunch() {
@@ -325,6 +363,101 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
             listOf(NotebookSessionEvent.Restarted(sessionId)),
             events,
         )
+    }
+
+    fun testRestartRecollectsTheLaunchEnvironment() {
+        var calls = 0
+        manager.launchEnvCollector = {
+            calls++
+            LaunchEnvContribution(emptyMap())
+        }
+        val file = runningNotebook("env_recollect_nb.py")
+        manager.restart(file)
+        assertTrue(sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        assertEquals("every restart must recompute the environment", 2, calls)
+    }
+
+    fun testMarkLaunchEnvStaleFlagsOnlyTheTargetNotebook() {
+        val target = runningNotebook("stale_target_nb.py")
+        val other = runningNotebook("fresh_other_nb.py")
+
+        manager.markLaunchEnvStale(target)
+
+        assertTrue(manager.statusFor(target)!!.launchEnvStale)
+        assertFalse(manager.statusFor(other)!!.launchEnvStale)
+    }
+
+    fun testRestartClearsLaunchEnvironmentStaleness() {
+        val file = runningNotebook("stale_restart_nb.py")
+        manager.markLaunchEnvStale(file)
+
+        manager.restart(file)
+
+        assertTrue(sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles[1].becomeReady()
+        manager.urlFor(file).get(5, TimeUnit.SECONDS)
+        assertFalse(manager.statusFor(file)!!.launchEnvStale)
+    }
+
+    fun testFailedRestartPreservesLaunchEnvironmentStaleness() {
+        val file = runningNotebook("stale_failed_restart_nb.py")
+        manager.markLaunchEnvStale(file)
+        sdk.launchFailure = IOException("replacement failed")
+
+        manager.restart(file)
+        awaitFailure(manager.urlFor(file))
+
+        assertEquals(MarimoSessionState.FAILED, manager.statusFor(file)!!.state)
+        assertTrue(manager.statusFor(file)!!.launchEnvStale)
+    }
+
+    fun testEnvironmentChangeDuringRestartRemainsStale() {
+        val file = runningNotebook("stale_during_restart_nb.py")
+        manager.markLaunchEnvStale(file)
+        val launchGate = CountDownLatch(1)
+        sdk.secondLaunchGate = launchGate
+
+        manager.restart(file)
+        assertTrue(sdk.secondLaunchEntered.await(5, TimeUnit.SECONDS))
+        manager.markLaunchEnvStale(file)
+        launchGate.countDown()
+
+        assertTrue(sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles[1].becomeReady()
+        manager.urlFor(file).get(5, TimeUnit.SECONDS)
+        assertTrue(manager.statusFor(file)!!.launchEnvStale)
+    }
+
+    fun testCanceledLaunchCannotClearReplacementLaunchStaleness() {
+        val file = notebook("canceled_launch_stale_nb.py")
+        val oldPlanGate = CountDownLatch(1)
+        sdk.firstCanLaunchGate = oldPlanGate
+        val replacementCollectorEntered = CountDownLatch(1)
+        val replacementCollectorGate = CountDownLatch(1)
+        val collectorCalls = AtomicInteger()
+        manager.launchEnvCollector = {
+            if (collectorCalls.incrementAndGet() == 1) {
+                replacementCollectorEntered.countDown()
+                replacementCollectorGate.await(5, TimeUnit.SECONDS)
+            }
+            LaunchEnvContribution(emptyMap())
+        }
+
+        manager.urlFor(file)
+        assertTrue(sdk.firstCanLaunchEntered.await(5, TimeUnit.SECONDS))
+        manager.restart(file)
+        assertTrue(replacementCollectorEntered.await(5, TimeUnit.SECONDS))
+        manager.markLaunchEnvStale(file)
+
+        oldPlanGate.countDown()
+        replacementCollectorGate.countDown()
+        val deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(5)
+        while (manager.statusFor(file)?.launch == null && System.nanoTime() < deadline) {
+            Thread.yield()
+        }
+
+        assertNotNull("replacement launch did not attach", manager.statusFor(file)?.launch)
+        assertTrue(manager.statusFor(file)!!.launchEnvStale)
     }
 
     fun testReleaseClearsLaunchContext() {

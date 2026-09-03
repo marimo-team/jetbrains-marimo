@@ -33,6 +33,8 @@ data class MarimoLaunchContext(
     val sandbox: Boolean,
     /** True when this launched server requires an access token. */
     val tokenAuthEnabled: Boolean,
+    /** Labels for injected data sources. These labels contain names only, never values. */
+    val launchEnvLabels: List<String> = emptyList(),
 )
 
 /**
@@ -48,6 +50,7 @@ data class SessionSnapshot(
     val expiresAtMillis: Long?,
     val launch: MarimoLaunchContext?,
     val sandbox: Boolean,
+    val launchEnvStale: Boolean = false,
 )
 
 /** Cancels a scheduled TTL task. */
@@ -88,6 +91,7 @@ internal class NotebookSession(
     val lifecycle = NotebookLifecycle()
     val sandboxEnabled = AtomicBoolean(false)
     var launchContext: MarimoLaunchContext? = null
+    var launchEnvStale: Boolean = false
     var inFlightReadyUrl: CompletableFuture<String>? = null
     private val leaseCounts = EnumMap<LeaseOwner, Int>(LeaseOwner::class.java)
     var ttl: TtlCancellable? = null
@@ -127,6 +131,7 @@ internal class NotebookSession(
             expiresAtMillis = expiresAtMillis,
             launch = launchContext,
             sandbox = sandboxEnabled.get(),
+            launchEnvStale = launchEnvStale,
         )
 
     override fun dispose() = lifecycle.release()

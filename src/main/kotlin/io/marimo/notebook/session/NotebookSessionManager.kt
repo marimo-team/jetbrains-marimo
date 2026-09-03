@@ -14,6 +14,8 @@ import com.intellij.util.concurrency.AppExecutorUtil
 import com.intellij.util.net.NetUtils
 import io.marimo.notebook.MarimoLocalhost
 import io.marimo.notebook.launch.LaunchDecision
+import io.marimo.notebook.launch.LaunchEnvContribution
+import io.marimo.notebook.launch.LaunchEnvContributor
 import io.marimo.notebook.launch.LaunchPlanner
 import io.marimo.notebook.launch.LaunchRequest
 import io.marimo.notebook.launch.MarimoLauncher
@@ -52,6 +54,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
     internal var planner = LaunchPlanner(SdkLauncher(), UvLauncher())
 
     internal var tokenPasswordFileWriter: (String) -> File = ::writeTokenPasswordFile
+
+    internal var launchEnvCollector: (VirtualFile) -> LaunchEnvContribution = { notebook ->
+        LaunchEnvContributor.collect(project, notebook)
+    }
 
     internal var ttlScheduler = TtlScheduler { delayMillis, task ->
         val future =
@@ -160,22 +166,24 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         readyUrl: CompletableFuture<String>,
     ) {
         var tokenFile: File? = null
+        var restoreLaunchEnvStale = false
         try {
             val planned = planLaunch(session, file)
+            val launchEnvWasStale = beginLaunchEnvCollection(session, readyUrl)
+            if (launchEnvWasStale == null) {
+                cancelReadyUrl(readyUrl, "Notebook session launch was cancelled")
+                return
+            }
+            restoreLaunchEnvStale = launchEnvWasStale
+            val launchEnv = launchEnvCollector(file)
             val tokenAuthEnabled = SessionSettings.getInstance().state.tokenAuthEnabled
             val token = tokenAuthEnabled.takeIf { it }?.let { generateAccessToken() }
             tokenFile = token?.let(tokenPasswordFileWriter)
             val request =
                 planned.request.copy(
                     tokenPasswordFile = tokenFile?.absolutePath,
-                    authenticatedUrl =
-                        token?.let {
-                            MarimoLocalhost.authenticatedUrl(
-                                planned.request.host,
-                                planned.request.port,
-                                it,
-                            )
-                        },
+                    extraEnv = launchEnv.env,
+                    authenticatedUrl = authenticatedUrl(planned.request, token),
                 )
             val launcherInfo = launcherInfoFor(planned.launcher, request)
             val handle = planned.launcher.launch(request)
@@ -192,6 +200,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
                                 launcherInfo = launcherInfo,
                                 sandbox = request.sandbox,
                                 tokenAuthEnabled = tokenAuthEnabled,
+                                launchEnvLabels = launchEnv.labels,
                             )
                         Disposer.register(session.lifecycle, handle)
                         session.lifecycle.prepareAttach(handle)
@@ -200,9 +209,7 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             if (attachTransition == null) {
                 tokenFile?.delete()
                 Disposer.dispose(handle)
-                readyUrl.completeExceptionally(
-                    CancellationException("Notebook session is no longer available")
-                )
+                cancelReadyUrl(readyUrl, "Notebook session is no longer available")
                 return
             }
             attachTransition.publish()
@@ -213,9 +220,29 @@ class NotebookSessionManager(private val project: Project) : Disposable {
             throw e
         } catch (e: Exception) {
             tokenFile?.delete()
-            completeLaunchFailure(session, readyUrl, e)
+            completeLaunchFailure(session, readyUrl, e, restoreLaunchEnvStale)
         }
     }
+
+    private fun cancelReadyUrl(readyUrl: CompletableFuture<String>, message: String) {
+        readyUrl.completeExceptionally(CancellationException(message))
+    }
+
+    private fun beginLaunchEnvCollection(
+        session: NotebookSession,
+        readyUrl: CompletableFuture<String>,
+    ): Boolean? =
+        synchronized(session) {
+            if (sessions[session.id] !== session || session.inFlightReadyUrl !== readyUrl) {
+                null
+            } else {
+                // Clear immediately before collection so changes during collection remain visible.
+                // A canceled launch must not clear the replacement launch's flag.
+                val wasStale = session.launchEnvStale
+                session.launchEnvStale = false
+                wasStale
+            }
+        }
 
     private fun planLaunch(session: NotebookSession, file: VirtualFile): PlannedLaunch {
         val baseRequest =
@@ -238,6 +265,10 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     private fun launcherInfoFor(launcher: MarimoLauncher, request: LaunchRequest): LauncherInfo? =
         launcher.marimoCliPrefix(request)?.let { prefix -> LauncherInfo(prefix, request.sandbox) }
+
+    private fun authenticatedUrl(request: LaunchRequest, token: String?): String? = token?.let {
+        MarimoLocalhost.authenticatedUrl(request.host, request.port, it)
+    }
 
     private fun completeReadyUrlFrom(
         handle: io.marimo.notebook.launch.MarimoServerHandle,
@@ -263,6 +294,24 @@ class NotebookSessionManager(private val project: Project) : Disposable {
 
     fun sessions(): List<SessionSnapshot> =
         sessions.values.map { synchronized(it) { it.snapshot() } }
+
+    /** Marks one live notebook when its launch environment no longer matches its configuration. */
+    fun markLaunchEnvStale(file: VirtualFile) {
+        val session = sessionForUrl(file.url) ?: return
+        val changed =
+            synchronized(session) {
+                val state = session.lifecycle.state
+                val live =
+                    state is MarimoNotebookState.Starting || state is MarimoNotebookState.Running
+                if (!live || session.launchEnvStale) {
+                    false
+                } else {
+                    session.launchEnvStale = true
+                    true
+                }
+            }
+        if (changed) notifySessionsChanged()
+    }
 
     /**
      * Stops [file]'s server. An active ownership lease retains the session so its UI displays a
@@ -390,10 +439,12 @@ class NotebookSessionManager(private val project: Project) : Disposable {
         session: NotebookSession,
         readyUrl: CompletableFuture<String>,
         error: Exception,
+        restoreLaunchEnvStale: Boolean = false,
     ) {
         val failureTransition =
             synchronized(session) {
                 if (sessions[session.id] === session && session.inFlightReadyUrl === readyUrl) {
+                    if (restoreLaunchEnvStale) session.launchEnvStale = true
                     session.lifecycle.prepareLaunchPlanFailure(error)
                 } else {
                     null

@@ -23,6 +23,7 @@ class UvLauncher : MarimoLauncher {
                 request.sandbox,
                 watch,
                 request.tokenPasswordFile,
+                request.extraEnv,
             )
         return startMarimoServer(
             command(watch = true),
@@ -49,6 +50,7 @@ class UvLauncher : MarimoLauncher {
             sandbox: Boolean = false,
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
+            extraEnv: Map<String, String> = emptyMap(),
         ): GeneralCommandLine {
             val params =
                 MarimoCommandLine.buildEditParams(
@@ -60,7 +62,10 @@ class UvLauncher : MarimoLauncher {
                     tokenPasswordFile = tokenPasswordFile,
                     sandbox = sandbox,
                 )
-            return GeneralCommandLine(uvPath).withWorkDirectory(workDir).withParameters(params)
+            return GeneralCommandLine(uvPath)
+                .withWorkDirectory(workDir)
+                .withParameters(params)
+                .withEnvironment(extraEnv)
         }
 
         /**
