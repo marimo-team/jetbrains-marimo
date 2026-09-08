@@ -3,5 +3,8 @@
   "extends": [
     "local>marimo-team/.github:renovate-config"
   ],
-  "minimumReleaseAge": "7 days"
+  "minimumReleaseAge": "7 days",
+  "labels": [
+    "dependencies"
+  ]
 }
