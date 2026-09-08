@@ -133,7 +133,7 @@ dependencies {
     // The IDE provides the Kotlin stdlib; a second copy leaking in transitively poisons the
     // platform-test classpath (project creation deadlocks and every BasePlatformTestCase hangs),
     // and plugins must not bundle their own stdlib -> https://jb.gg/intellij-platform-kotlin-stdlib
-    implementation("com.posthog:posthog-server:2.15.6") {
+    implementation("com.posthog:posthog-server:2.16.0") {
         exclude(group = "org.jetbrains.kotlin")
     }
     implementation("io.sentry:sentry:8.54.0")
