@@ -136,7 +136,7 @@ dependencies {
     implementation("com.posthog:posthog-server:2.18.0") {
         exclude(group = "org.jetbrains.kotlin")
     }
-    implementation("io.sentry:sentry:8.57.0")
+    implementation("io.sentry:sentry:8.58.0")
 
     testImplementation("junit:junit:4.13.2")
 
