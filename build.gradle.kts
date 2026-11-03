@@ -1,6 +1,5 @@
 import dev.detekt.gradle.extensions.FailOnSeverity
-import org.gradle.api.Task
-import org.gradle.api.tasks.TaskProvider
+import org.gradle.api.provider.Provider
 import org.gradle.api.tasks.WriteProperties
 import org.gradle.language.jvm.tasks.ProcessResources
 import org.jetbrains.changelog.Changelog
@@ -164,15 +163,10 @@ if (reusePluginArchive.isPresent) {
     val signPlugin = tasks.named<SignPluginTask>("signPlugin")
     signPlugin.configure { archiveFile.set(reusedArchive) }
     tasks.named<PublishPluginTask>("publishPlugin").configure {
-        archiveFile.set(signPlugin.flatMap { it.signedArchiveFile })
-        setDependsOn(dependsOn.filterNot { dependencyName(it) == "buildPlugin" })
+        archiveFiles.setFrom(signPlugin.flatMap { it.signedArchiveFile })
+        // The plugin wires the archive dependency as a lazy provider that resolves to
+        // buildPlugin. Drop it so publishing never rebuilds the zip verified upstream.
+        setDependsOn(dependsOn.filterNot { it is Provider<*> })
+        dependsOn(signPlugin)
     }
 }
-
-fun dependencyName(dependency: Any): String? =
-    when (dependency) {
-        is Task -> dependency.name
-        is TaskProvider<*> -> dependency.name
-        is String -> dependency
-        else -> null
-    }
