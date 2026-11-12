@@ -150,6 +150,7 @@ dependencies {
         pycharm("2026.1.3")
         bundledPlugin("PythonCore")
         bundledPlugin("org.jetbrains.plugins.terminal")
+        bundledPlugin("com.intellij.modules.jcef")
         // Database Tools is optional at runtime. Its classes appear only in marimo-database.xml.
         bundledPlugin("com.intellij.database")
         testFramework(TestFrameworkType.Platform)
