@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   analyze:
     name: Analyze (java-kotlin)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-p-medium
     permissions:
       contents: read
       security-events: write
