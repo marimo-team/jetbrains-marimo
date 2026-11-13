@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
+### Added
+
+- Share IDE data sources with individual notebooks from **Marimo Sessions**. Choose one default per database family and restart sessions when their shared connection settings change.
+- Keep notebook sessions independent of editor tabs. Split editors share one session, and closing a tab preserves the session until its idle timeout.
+
+### Changed
+
+- Use the normal marimo settings file instead of the old IDE-specific `marimo-theme` copy. The plugin no longer rewrites theme settings on disk. Settings from the old copy are not migrated.
+
+### Fixed
+
+- Preserve explicit user, project, and notebook themes across IDE restarts. A `system` theme uses the IDE theme. Support `MARIMO_DISPLAY_THEME` while retaining the theme query parameter for older marimo versions.
+- Open the embedded notebook editor on PyCharm versions that package JCEF as a separate bundled plugin.
+- Detect authenticated notebook startup correctly and restart a stopped session when its notebook opens again.
+- Keep **Retry** and **Restart** responsive when callbacks arrive from an earlier launch attempt.
+- Save **Source** edits when the marimo tab is selected so the notebook reloads the updated code.
+- Keep pairing terminals separate for each notebook and harness. Handle shell arguments safely and stop pending prompt work when the project closes.
+- Dispose notebook lifecycle objects when sessions end, including on IDE shutdown, without errors about undisposed objects.
+- Reuse the verified plugin archive during release signing and publishing with the current Gradle plugin.
+
 ## [0.1.2] - 2026-07-24
 
 ### Fixed
@@ -53,7 +75,8 @@ First public release of marimo for JetBrains IDEs.
 - Duplicating a notebook now opens the copy as an editor tab instead of a detached window; external links from the notebook open in your system browser.
 - Wait for the marimo server to accept connections before loading the editor, fixing an intermittent `ERR_CONNECTION_REFUSED` when opening a notebook.
 
-[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/marimo-team/jetbrains-marimo/compare/0.0.1...0.1.0
