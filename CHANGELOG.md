@@ -8,23 +8,23 @@
 
 ### Added
 
-- Share IDE data sources with individual notebooks from **Marimo Sessions**. Choose one default per database family and restart sessions when their shared connection settings change.
-- Keep notebook sessions independent of editor tabs. Split editors share one session, and closing a tab preserves the session until its idle timeout.
+- Share IDE data sources with individual notebooks from **Marimo Sessions**, with one default per database family.
+- Keep notebook sessions open across editor tabs and splits until their idle timeout.
 
 ### Changed
 
-- Use the normal marimo settings file instead of the old IDE-specific `marimo-theme` copy. The plugin no longer rewrites theme settings on disk. Settings from the old copy are not migrated.
+- Use the normal marimo settings file without rewriting theme settings. Settings from the old IDE-specific `marimo-theme` copy are not migrated.
 
 ### Fixed
 
-- Preserve explicit user, project, and notebook themes across IDE restarts. A `system` theme uses the IDE theme. Support `MARIMO_DISPLAY_THEME` while retaining the theme query parameter for older marimo versions.
-- Open the embedded notebook editor on PyCharm versions that package JCEF as a separate bundled plugin.
-- Detect authenticated notebook startup correctly and restart a stopped session when its notebook opens again.
-- Keep **Retry** and **Restart** responsive when callbacks arrive from an earlier launch attempt.
+- Preserve explicit themes across IDE restarts. A `system` theme uses the IDE theme, with support for current and upcoming marimo versions.
+- Restore the embedded notebook editor on PyCharm versions that package JCEF separately.
+- Fix authenticated startup and restart stopped sessions when their notebooks reopen.
+- Keep **Retry** and **Restart** responsive after failed launches.
 - Save **Source** edits when the marimo tab is selected so the notebook reloads the updated code.
-- Keep pairing terminals separate for each notebook and harness. Handle shell arguments safely and stop pending prompt work when the project closes.
-- Dispose notebook lifecycle objects when sessions end, including on IDE shutdown, without errors about undisposed objects.
-- Reuse the verified plugin archive during release signing and publishing with the current Gradle plugin.
+- Keep pairing terminals separate for each notebook and harness, with safe shell arguments and prompt cleanup on project close.
+- Close notebook sessions without errors about undisposed objects on IDE shutdown.
+- Preserve the verified plugin archive during release signing and publishing.
 
 ## [0.1.2] - 2026-07-24
 
