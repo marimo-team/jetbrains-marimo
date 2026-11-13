@@ -5,6 +5,7 @@ package io.marimo.notebook.session
 import com.intellij.execution.process.ProcessHandler
 import com.intellij.openapi.application.ApplicationManager
 import com.intellij.openapi.components.service
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.testFramework.fixtures.BasePlatformTestCase
 import io.marimo.notebook.launch.LaunchEnvContribution
@@ -34,6 +35,10 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         private val ready = CompletableFuture<String>()
         private var terminationListener: ((Int, String) -> Unit)? = null
         val readinessObserved = CountDownLatch(1)
+        var disposeCount = 0
+            private set
+
+        var reportExitOnDispose = false
         override var isAlive = true
         override val processHandle: ProcessHandler
             get() = throw UnsupportedOperationException()
@@ -60,7 +65,12 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         }
 
         override fun dispose() {
+            disposeCount++
             isAlive = false
+            if (reportExitOnDispose) {
+                ready.completeExceptionally(IOException("disposed"))
+                terminationListener?.invoke(0, "disposed")
+            }
         }
     }
 
@@ -310,6 +320,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val file = notebook("stop_bg_nb.py")
         launch(file)
         sdk.handles.single().becomeReady()
+        val lifecycle = manager.lifecycleFor(file)
         val sessionId = manager.leaseIfPresent(file)!!.sessionId
         val events = mutableListOf<NotebookSessionEvent>()
         manager.addSessionEventListener(testRootDisposable, events::add)
@@ -319,6 +330,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertEquals(listOf(NotebookSessionEvent.Ended(sessionId)), events)
         assertNull("a stopped background session must leave the registry", manager.statusFor(file))
         assertFalse(sdk.handles.single().isAlive)
+        assertTrue("session removal must dispose the lifecycle", Disposer.isDisposed(lifecycle))
+        assertEquals(1, sdk.handles.single().disposeCount)
     }
 
     fun testStopWithAnActiveLeaseKeepsTheEntryAsStopped() {
@@ -326,11 +339,14 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         launch(file)
         sdk.handles.single().becomeReady()
         val editor = editorLease(file)
+        val lifecycle = manager.lifecycleFor(file)
         editor.stop()
         val status = manager.statusFor(file)
         assertNotNull("an active lease still needs status to render", status)
         assertEquals(MarimoSessionState.STOPPED, status!!.state)
         assertFalse(sdk.handles.single().isAlive)
+        assertFalse("an active session must remain reusable", Disposer.isDisposed(lifecycle))
+        assertSame(lifecycle, manager.lifecycleFor(file))
     }
 
     fun testRestartLaunchesAFreshProcess() {
@@ -338,6 +354,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val firstReadyUrl = launch(file)
         sdk.handles.single().becomeReady()
         firstReadyUrl.get(5, TimeUnit.SECONDS)
+        val lifecycle = manager.lifecycleFor(file)
         val sessionId = manager.leaseIfPresent(file)!!.sessionId
         val events = mutableListOf<NotebookSessionEvent>()
         manager.addSessionEventListener(testRootDisposable, events::add)
@@ -359,6 +376,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         restartedUrl.get(5, TimeUnit.SECONDS)
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
         assertEquals(sdk.requests[1].port, manager.statusFor(file)!!.launch!!.port)
+        assertFalse("restart must keep the lifecycle reusable", Disposer.isDisposed(lifecycle))
+        assertSame(lifecycle, manager.lifecycleFor(file))
         assertEquals(
             listOf(NotebookSessionEvent.Restarted(sessionId)),
             events,
@@ -579,6 +598,51 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         assertFalse(sdk.handles.single().isAlive)
     }
 
+    fun testManagerDisposalDisposesTheLifecycleAndHandle() {
+        val isolatedManager = NotebookSessionManager(project)
+        Disposer.register(testRootDisposable, isolatedManager)
+        isolatedManager.planner = LaunchPlanner(sdk, uv)
+        val file = notebook("manager_dispose_nb.py")
+        val url = isolatedManager.urlFor(file)
+        assertTrue(sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        sdk.handles.single().becomeReady()
+        url.get(5, TimeUnit.SECONDS)
+        val lifecycle = isolatedManager.lifecycleFor(file)
+
+        Disposer.dispose(isolatedManager)
+
+        assertTrue("project shutdown must dispose the lifecycle", Disposer.isDisposed(lifecycle))
+        assertEquals(1, sdk.handles.single().disposeCount)
+        assertFalse(sdk.handles.single().isAlive)
+        assertTrue(isolatedManager.sessions().isEmpty())
+    }
+
+    fun testDisposalInvalidatesPendingReadinessAndExitCallbacks() {
+        val isolatedManager = NotebookSessionManager(project)
+        Disposer.register(testRootDisposable, isolatedManager)
+        isolatedManager.planner = LaunchPlanner(sdk, uv)
+        val file = notebook("pending_dispose_nb.py")
+        val url = isolatedManager.urlFor(file)
+        assertTrue(sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+        val handle = sdk.handles.single()
+        assertTrue(handle.readinessObserved.await(5, TimeUnit.SECONDS))
+        handle.reportExitOnDispose = true
+        val lifecycle = isolatedManager.lifecycleFor(file)
+        val states = CopyOnWriteArrayList<MarimoNotebookState>()
+        lifecycle.addListener { states.add(it.state) }
+
+        Disposer.dispose(isolatedManager)
+
+        assertTrue(Disposer.isDisposed(lifecycle))
+        assertEquals(1, handle.disposeCount)
+        assertTrue("readiness must finish on shutdown", url.isCompletedExceptionally)
+        assertFalse(states.any { it is MarimoNotebookState.Failed })
+        assertFalse(states.any { it is MarimoNotebookState.Stopped })
+        handle.becomeReady()
+        handle.crash()
+        assertEquals(MarimoNotebookState.Starting, lifecycle.state)
+    }
+
     fun testTheTokenSettingReachesTheLaunchRequest() {
         val settings = SessionSettings.getInstance()
         val before = settings.state.tokenAuthEnabled
@@ -697,6 +761,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testTtlExpiryStopsDisposesAndRemovesExactlyOnce() {
         val file = runningNotebook("expire_nb.py")
+        val lifecycle = manager.lifecycleFor(file)
         val lease = editorLease(file)
         val events = mutableListOf<NotebookSessionEvent>()
         manager.addSessionEventListener(testRootDisposable, events::add)
@@ -708,6 +773,8 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         ttl.fireAll()
         assertNull(manager.statusFor(file))
         assertEquals("session removal must be single-shot", 1, events.size)
+        assertTrue("expiry must dispose the lifecycle", Disposer.isDisposed(lifecycle))
+        assertEquals(1, sdk.handles.single().disposeCount)
     }
 
     fun testAStaleExpiryTaskCannotKillAReattachedSession() {

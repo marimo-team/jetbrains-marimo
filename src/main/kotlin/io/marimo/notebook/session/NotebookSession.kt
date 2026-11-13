@@ -3,6 +3,7 @@
 package io.marimo.notebook.session
 
 import com.intellij.openapi.Disposable
+import com.intellij.openapi.util.Disposer
 import com.intellij.openapi.vfs.VirtualFile
 import com.intellij.openapi.vfs.pointers.VirtualFilePointer
 import com.intellij.openapi.vfs.pointers.VirtualFilePointerManager
@@ -134,5 +135,12 @@ internal class NotebookSession(
             launchEnvStale = launchEnvStale,
         )
 
-    override fun dispose() = lifecycle.release()
+    override fun dispose() {
+        try {
+            // Invalidate callbacks before Disposer removes the lifecycle's child handles.
+            lifecycle.release()
+        } finally {
+            Disposer.dispose(lifecycle)
+        }
+    }
 }
