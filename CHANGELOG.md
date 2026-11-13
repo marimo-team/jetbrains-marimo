@@ -4,6 +4,28 @@
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-11-12
+
+### Added
+
+- Share IDE data sources with individual notebooks from **Marimo Sessions**, with one default per database family.
+- Keep notebook sessions open across editor tabs and splits until their idle timeout.
+
+### Changed
+
+- Use the normal marimo settings file without rewriting theme settings. Settings from the old IDE-specific `marimo-theme` copy are not migrated.
+
+### Fixed
+
+- Preserve explicit themes across IDE restarts. A `system` theme uses the IDE theme, with support for current and upcoming marimo versions.
+- Restore the embedded notebook editor on PyCharm versions that package JCEF separately.
+- Fix authenticated startup and restart stopped sessions when their notebooks reopen.
+- Keep **Retry** and **Restart** responsive after failed launches.
+- Save **Source** edits when the marimo tab is selected so the notebook reloads the updated code.
+- Keep pairing terminals separate for each notebook and harness, with safe shell arguments and prompt cleanup on project close.
+- Close notebook sessions without errors about undisposed objects on IDE shutdown.
+- Preserve the verified plugin archive during release signing and publishing.
+
 ## [0.1.2] - 2026-07-24
 
 ### Fixed
@@ -53,7 +75,8 @@ First public release of marimo for JetBrains IDEs.
 - Duplicating a notebook now opens the copy as an editor tab instead of a detached window; external links from the notebook open in your system browser.
 - Wait for the marimo server to accept connections before loading the editor, fixing an intermittent `ERR_CONNECTION_REFUSED` when opening a notebook.
 
-[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.2...HEAD
+[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.2.0...HEAD
+[0.2.0]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.0...0.1.1
 [0.1.0]: https://github.com/marimo-team/jetbrains-marimo/compare/0.0.1...0.1.0

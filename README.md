@@ -4,22 +4,20 @@
 
 Open and run [marimo](https://marimo.io) notebooks directly in PyCharm.
 
-marimo notebooks are stored as plain Python files, and this plugin lets you open them in a full marimo editor without leaving your IDE — reactive cells, interactive UI widgets, package management, and more, all in a dedicated notebook tab.
+Keep notebooks as plain Python files. Edit reactive cells, use interactive widgets, and manage packages in a dedicated notebook tab.
 
 ![A marimo notebook open in PyCharm, showing reactive controls and an interactive Altair chart](docs/cars-explorer.png)
 
 ## Features
 
-- **Open `.py` marimo notebooks as notebooks** — files that use marimo open in an interactive editor instead of a plain text view. Non-marimo files keep the normal Python editor.
-- **Full marimo experience** — reactive execution, `mo.ui` widgets, SQL cells, the variables and dependency panels, and the built-in package manager all work as they do in marimo.
-- **Runs on your interpreter** — the plugin launches marimo on your configured project interpreter, and offers to install it when it's missing.
-- **Start in a sandbox** — run a notebook in an isolated [uv](https://docs.astral.sh/uv/) environment.
-- **Pair with AI** — start a supported terminal AI harness for a notebook, or copy its pairing prompt.
-- **IDE database connections in notebooks** — share PyCharm Database Tools sources with a selected notebook. marimo 0.23.16+ can suggest the default source for each database family as a Quick Add SQL cell. The plugin reads passwords from the IDE credential store only at launch. The notebook process can read shared passwords, but the plugin does not write them to project files or logs. If a shared source changes, the session card marks the running notebook stale until restart.
-- **Clear recovery when a notebook can't start** — Retry, Install, or Open as Python File instead of a stack trace.
-- **New → marimo Notebook** — a file template and notebook icon for marimo `.py` files, plus "Open as Python File" to view the raw source.
-- **Stays in sync** — edits made to a notebook's source in another editor reload the marimo editor automatically, and the editor theme follows the IDE's light/dark theme.
-- **Git-friendly** — notebooks stay as regular `.py` files, so diffs and reviews work normally.
+- **Interactive notebooks:** reactive cells, `mo.ui` widgets, SQL, variables, dependencies, and package management.
+- **Project interpreter or sandbox:** use your Python interpreter, or start an isolated [uv](https://docs.astral.sh/uv/) environment.
+- **Persistent sessions:** split editors share a notebook session. Closing a tab preserves the session until its idle timeout.
+- **Database sharing:** share IDE data sources with individual notebooks from **Marimo Sessions**.
+- **Pair with AI:** start a supported terminal harness for a notebook, or copy its pairing prompt.
+- **Source editing:** switch between Python source and the notebook. Source edits reload in marimo.
+- **Recovery actions:** use **Retry**, **Install**, or **Open as Python File** when startup fails.
+- **Notebook template:** choose **New → marimo Notebook** to create a notebook.
 
 ## Requirements
 
@@ -36,7 +34,7 @@ marimo notebooks are stored as plain Python files, and this plugin lets you open
 3. Open the notebook `.py` file — it loads in the marimo editor.
 4. Edit and run cells; results update reactively.
 
-A marimo notebook is a Python file that looks roughly like this:
+A minimal marimo notebook:
 
 ```python
 import marimo
@@ -47,13 +45,29 @@ app = marimo.App()
 def _():
     import marimo as mo
     return (mo,)
+
+if __name__ == "__main__":
+    app.run()
 ```
 
 If a `.py` file isn't a marimo notebook, it opens in the normal Python editor as usual.
 
-The plugin preserves explicit notebook, project, and user themes. A `system` theme uses the IDE theme.
-It sends the resolved theme through `MARIMO_DISPLAY_THEME` and retains the legacy `theme` URL parameter.
-If an IDE theme change does not update the notebook, restart its session from Marimo Sessions.
+## Share a database connection
+
+In **Marimo Sessions → Data Sources**, select a notebook and share an IDE data source.
+Choose one default per database family. With marimo 0.23.16 or later, **Quick Add** can suggest a SQL cell for that default.
+
+The notebook process can read shared credentials. The plugin reads passwords from the IDE credential store at launch and keeps them out of project files and logs.
+If a shared source changes, restart the session to apply the new connection settings.
+
+![Data Sources lists the connections available to share with the selected notebook](docs/screenshots/data-source-sharing.png)
+
+## Themes
+
+Explicit notebook, project, and user themes stay unchanged. A `system` theme uses the IDE theme.
+If an IDE theme change does not update the notebook, restart its session from **Marimo Sessions**.
+
+![An explicit dark notebook theme inside a light IDE, with three running notebook sessions](docs/screenshots/sessions-and-theme.png)
 
 ## Development
 

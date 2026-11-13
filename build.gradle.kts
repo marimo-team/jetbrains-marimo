@@ -17,6 +17,8 @@ plugins {
     id("dev.detekt") version "2.0.0-alpha.6"
 }
 
+changelog { versionPrefix.set("") }
+
 spotless {
     kotlin {
         target("src/**/*.kt")
