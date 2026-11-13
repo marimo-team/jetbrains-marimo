@@ -1,0 +1,5 @@
+self-hosted-runner:
+  labels:
+    - ubuntu-p-small
+    - ubuntu-p-medium
+    - ubuntu-p-large
