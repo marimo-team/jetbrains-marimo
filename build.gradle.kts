@@ -13,7 +13,7 @@ plugins {
     id("org.jetbrains.kotlin.jvm")
     id("org.jetbrains.intellij.platform")
     id("org.jetbrains.changelog")
-    id("com.diffplug.spotless") version "8.10.4"
+    id("com.diffplug.spotless") version "8.11.0"
     id("dev.detekt") version "2.0.0-alpha.6"
 }
 
@@ -134,7 +134,7 @@ dependencies {
     // The IDE provides the Kotlin stdlib; a second copy leaking in transitively poisons the
     // platform-test classpath (project creation deadlocks and every BasePlatformTestCase hangs),
     // and plugins must not bundle their own stdlib -> https://jb.gg/intellij-platform-kotlin-stdlib
-    implementation("com.posthog:posthog-server:2.23.1") {
+    implementation("com.posthog:posthog-server:2.24.0") {
         exclude(group = "org.jetbrains.kotlin")
     }
     implementation("io.sentry:sentry:8.62.0")
