@@ -10,7 +10,7 @@ permissions: {}
 
 jobs:
   auto-label:
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     permissions:
       contents: read
       pull-requests: write
