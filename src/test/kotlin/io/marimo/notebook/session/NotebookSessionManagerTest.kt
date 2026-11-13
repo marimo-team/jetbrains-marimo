@@ -148,8 +148,30 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     private fun launch(file: VirtualFile): CompletableFuture<String> =
         manager.urlFor(file).also {
-            assertTrue("launch did not begin", sdk.firstLaunch.await(5, TimeUnit.SECONDS))
+            awaitSession(file, "launch context") { it.launch != null }
         }
+
+    private fun awaitSession(
+        file: VirtualFile,
+        description: String,
+        condition: (SessionSnapshot) -> Boolean,
+    ) {
+        val reached = CountDownLatch(1)
+        val subscription = Disposer.newDisposable()
+        try {
+            val check = {
+                if (manager.statusFor(file)?.let(condition) == true) reached.countDown()
+            }
+            manager.addSessionsListener(subscription, check)
+            check()
+            assertTrue(
+                "${file.name}: timed out waiting for $description",
+                reached.await(5, TimeUnit.SECONDS),
+            )
+        } finally {
+            Disposer.dispose(subscription)
+        }
+    }
 
     private fun editorLease(file: VirtualFile): NotebookSessionLease =
         manager.acquire(file, LeaseOwner.EDITOR_TAB).also(leases::add)
@@ -205,6 +227,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
         sdk.handles.single().becomeReady()
         url.get(5, TimeUnit.SECONDS)
+        awaitSession(file, "RUNNING state") { it.state == MarimoSessionState.RUNNING }
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
         assertEquals(sdk.requests.single().port, manager.statusFor(file)!!.launch!!.port)
         assertEquals("fake-sdk", manager.statusFor(file)!!.launch!!.launcherId)
@@ -301,9 +324,10 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val a = notebook("iso_a.py")
         val b = notebook("iso_b.py")
         launch(a)
-        manager.urlFor(b)
-        assertTrue("second launch did not begin", sdk.secondLaunch.await(5, TimeUnit.SECONDS))
+        launch(b)
         sdk.handles.forEach { it.becomeReady() }
+        awaitSession(a, "RUNNING state") { it.state == MarimoSessionState.RUNNING }
+        awaitSession(b, "RUNNING state") { it.state == MarimoSessionState.RUNNING }
         assertEquals(2, manager.sessions().size)
         assertFalse(
             "each launch must carry its own token URL",
@@ -374,6 +398,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val restartedUrl = manager.urlFor(file)
         sdk.handles[1].becomeReady()
         restartedUrl.get(5, TimeUnit.SECONDS)
+        awaitSession(file, "RUNNING state") { it.state == MarimoSessionState.RUNNING }
         assertEquals(MarimoSessionState.RUNNING, manager.statusFor(file)!!.state)
         assertEquals(sdk.requests[1].port, manager.statusFor(file)!!.launch!!.port)
         assertFalse("restart must keep the lifecycle reusable", Disposer.isDisposed(lifecycle))
@@ -582,12 +607,12 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
 
     fun testListenersFireOnSessionEvents() {
         val file = notebook("listen_nb.py")
-        var events = 0
-        manager.addSessionsListener(testRootDisposable) { events++ }
+        val events = CountDownLatch(4)
+        manager.addSessionsListener(testRootDisposable) { events.countDown() }
         launch(file)
         sdk.handles.single().becomeReady()
         editorLease(file).close()
-        assertTrue("expected several change notifications, saw $events", events >= 4)
+        assertTrue("expected at least four change notifications", events.await(5, TimeUnit.SECONDS))
     }
 
     fun testStopKillsItsProcess() {
@@ -710,6 +735,7 @@ class NotebookSessionManagerTest : BasePlatformTestCase() {
         val file = notebook(name)
         launch(file)
         sdk.handles.last().becomeReady()
+        awaitSession(file, "RUNNING state") { it.state == MarimoSessionState.RUNNING }
         return file
     }
 
