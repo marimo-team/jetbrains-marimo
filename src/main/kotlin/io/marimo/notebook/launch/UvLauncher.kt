@@ -3,6 +3,7 @@
 package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import io.marimo.notebook.MarimoTheme
 import java.io.File
 
 class UvLauncher : MarimoLauncher {
@@ -13,6 +14,15 @@ class UvLauncher : MarimoLauncher {
     override fun launch(request: LaunchRequest): MarimoServerHandle {
         val uv = findUv() ?: throw NoApplicableLauncherException(request)
         val workDir = request.workDir ?: NotebookWorkDir.resolve(request.project, request.notebook)
+        val theme =
+            LaunchThemeResolver.resolve(
+                LaunchThemeResolver.command(
+                    listOf(uv, "run", "--with", "marimo", "python"),
+                    request.notebook.path,
+                    workDir,
+                    request.extraEnv,
+                )
+            )
         fun command(watch: Boolean) =
             buildCommandLine(
                 uv,
@@ -24,6 +34,7 @@ class UvLauncher : MarimoLauncher {
                 watch,
                 request.tokenPasswordFile,
                 request.extraEnv,
+                theme,
             )
         return startMarimoServer(
             command(watch = true),
@@ -51,6 +62,7 @@ class UvLauncher : MarimoLauncher {
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
             extraEnv: Map<String, String> = emptyMap(),
+            theme: String? = null,
         ): GeneralCommandLine {
             val params =
                 MarimoCommandLine.buildEditParams(
@@ -66,6 +78,9 @@ class UvLauncher : MarimoLauncher {
                 .withWorkDirectory(workDir)
                 .withParameters(params)
                 .withEnvironment(extraEnv)
+                .also {
+                    if (theme != null) it.withEnvironment(MarimoTheme.ENVIRONMENT_VARIABLE, theme)
+                }
         }
 
         /**
