@@ -51,6 +51,10 @@ def _():
 
 If a `.py` file isn't a marimo notebook, it opens in the normal Python editor as usual.
 
+The plugin preserves explicit notebook, project, and user themes. A `system` theme uses the IDE theme.
+It sends the resolved theme through `MARIMO_DISPLAY_THEME` and retains the legacy `theme` URL parameter.
+If an IDE theme change does not update the notebook, restart its session from Marimo Sessions.
+
 ## Development
 
 You need JDK 21 or later; Gradle is provided through the wrapper. To launch a

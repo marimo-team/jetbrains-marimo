@@ -2,6 +2,7 @@
 
 package io.marimo.notebook.session
 
+import io.marimo.notebook.editor.MarimoThemedUrl
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -10,6 +11,76 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PageConfigReaderTest {
+
+    private fun mounted(config: String, overrides: String = "{}") =
+        """<script data-marimo="true">
+        Object.defineProperty(window, "__MARIMO_MOUNT_CONFIG__", {
+          value: Object.freeze({"config":$config,"configOverrides":$overrides}),
+          writable: false, configurable: false
+        });
+        </script>"""
+
+    @Test
+    fun projectThemeOverridesUserSystemWithoutAnIdeQuery() {
+        val html =
+            page(escapedConfig("system")) +
+                mounted("""{"display":{"theme":"system"}}""", """{"display":{"theme":"dark"}}""")
+        val theme = PageConfigReader.displayTheme(html)
+        assertEquals("dark", theme)
+        assertEquals(
+            "http://localhost:2718/",
+            MarimoThemedUrl.of("http://localhost:2718/", theme, "light"),
+        )
+    }
+
+    @Test
+    fun systemOverrideFollowsTheIdeDespitePinnedUserTheme() {
+        val theme =
+            PageConfigReader.displayTheme(
+                mounted("""{"display":{"theme":"dark"}}""", """{"display":{"theme":"system"}}""")
+            )
+        assertEquals("system", theme)
+        assertTrue(MarimoThemedUrl.followsIdeTheme(theme))
+    }
+
+    @Test
+    fun mountConfigWorksWithoutLegacyTag() {
+        assertEquals(
+            "light",
+            PageConfigReader.displayTheme(mounted("""{"display":{"theme":"light"}}""")),
+        )
+    }
+
+    @Test
+    fun unrelatedOverridesKeepBaseTheme() {
+        assertEquals(
+            "dark",
+            PageConfigReader.displayTheme(
+                mounted(
+                    """{"display":{"theme":"dark"}}""",
+                    """{"display":{"cell_output":"above"}}""",
+                )
+            ),
+        )
+    }
+
+    @Test
+    fun parsesNestedJsonAndEscapedStringsWithoutExecutingScript() {
+        val config =
+            """{"custom_css":["brace } and quote \" and slash \\"],"display":{"theme":"system"}}"""
+        assertEquals(
+            "dark",
+            PageConfigReader.displayTheme(mounted(config, """{"display":{"theme":"dark"}}""")),
+        )
+    }
+
+    @Test
+    fun malformedMountFallsBackToLegacyTheme() {
+        assertEquals(
+            "dark",
+            PageConfigReader.displayTheme(page(escapedConfig("dark")) + mounted("not JSON")),
+        )
+    }
 
     private fun page(escapedConfig: String) =
         """

@@ -19,10 +19,10 @@ class MarimoThemedUrlTest {
     }
 
     @Test
-    fun unreadableThemeFollowsTheIde() {
-        assertTrue(MarimoThemedUrl.followsIdeTheme(null))
+    fun unreadableThemeIsLeftAlone() {
+        assertFalse(MarimoThemedUrl.followsIdeTheme(null))
         assertEquals(
-            "http://127.0.0.1:2718?theme=light",
+            "http://127.0.0.1:2718",
             MarimoThemedUrl.of("http://127.0.0.1:2718", null, "light"),
         )
     }

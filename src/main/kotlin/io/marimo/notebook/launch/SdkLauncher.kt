@@ -3,6 +3,7 @@
 package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
+import io.marimo.notebook.MarimoTheme
 
 class SdkLauncher : MarimoLauncher {
     override val id = "sdk"
@@ -15,6 +16,15 @@ class SdkLauncher : MarimoLauncher {
             SdkPythonResolver.resolvePythonPath(request.project, request.notebook)
                 ?: throw NoApplicableLauncherException(request)
         val workDir = request.workDir ?: NotebookWorkDir.resolve(request.project, request.notebook)
+        val theme =
+            LaunchThemeResolver.resolve(
+                LaunchThemeResolver.command(
+                    listOf(python),
+                    request.notebook.path,
+                    workDir,
+                    request.extraEnv,
+                )
+            )
         fun command(watch: Boolean) =
             buildCommandLine(
                 python,
@@ -25,6 +35,7 @@ class SdkLauncher : MarimoLauncher {
                 watch,
                 request.tokenPasswordFile,
                 request.extraEnv,
+                theme,
             )
         return startMarimoServer(
             command(watch = true),
@@ -51,6 +62,7 @@ class SdkLauncher : MarimoLauncher {
             watch: Boolean = true,
             tokenPasswordFile: String? = null,
             extraEnv: Map<String, String> = emptyMap(),
+            theme: String? = null,
         ): GeneralCommandLine {
             val params =
                 MarimoCommandLine.buildEditParams(
@@ -65,6 +77,9 @@ class SdkLauncher : MarimoLauncher {
                 .withWorkDirectory(workDir)
                 .withParameters(params)
                 .withEnvironment(extraEnv)
+                .also {
+                    if (theme != null) it.withEnvironment(MarimoTheme.ENVIRONMENT_VARIABLE, theme)
+                }
         }
     }
 }
