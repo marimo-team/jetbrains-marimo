@@ -49,7 +49,7 @@ jobs:
   # immediately without waiting on approval and without the publishing secrets in scope.
   preflight:
     name: Preflight
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     permissions:
       contents: read
     outputs:
@@ -116,7 +116,7 @@ jobs:
     name: Build and Preview Notes
     if: ${{ inputs.dry_run }}
     needs: preflight
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     permissions:
       contents: read
     steps:
@@ -213,7 +213,7 @@ jobs:
     name: Confirm Archive Identity
     if: ${{ inputs.dry_run }}
     needs: preview
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     permissions:
       contents: read
     steps:
@@ -249,7 +249,7 @@ jobs:
     name: Select Dry-Run Archive
     if: ${{ inputs.dry_run == false }}
     needs: preflight
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     permissions:
       contents: read
       actions: read
@@ -341,7 +341,7 @@ jobs:
     name: Publish Plugin
     if: ${{ inputs.dry_run == false }}
     needs: [preflight, select]
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     # Scopes the publishing/signing secrets to this job and gates it behind the environment's
     # protection rules (configure required reviewers on the 'release' environment for manual approval).
     environment: release

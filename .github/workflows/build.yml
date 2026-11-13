@@ -30,7 +30,7 @@ jobs:
   # Prepare the environment and build the plugin
   build:
     name: Build
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     steps:
 
       # Free GitHub Actions Environment Disk Space
@@ -74,7 +74,7 @@ jobs:
   # never reads the build job's artifact, so it runs concurrently with that job.
   test:
     name: Test
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     steps:
 
       # Free GitHub Actions Environment Disk Space
@@ -131,7 +131,7 @@ jobs:
   # concurrently with that job.
   verify:
     name: Verify plugin
-    runs-on: ubuntu-p-small
+    runs-on: "${{ vars.CI_RUNNER_SMALL || 'ubuntu-latest' }}"
     steps:
 
       # Free GitHub Actions Environment Disk Space

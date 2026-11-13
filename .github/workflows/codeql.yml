@@ -13,7 +13,7 @@ permissions: {}
 jobs:
   analyze:
     name: Analyze (java-kotlin)
-    runs-on: ubuntu-p-medium
+    runs-on: "${{ vars.CI_RUNNER_MEDIUM || 'ubuntu-latest' }}"
     permissions:
       contents: read
       security-events: write
