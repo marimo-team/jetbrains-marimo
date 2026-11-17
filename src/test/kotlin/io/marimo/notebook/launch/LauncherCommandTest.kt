@@ -4,6 +4,7 @@ package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import io.marimo.notebook.MarimoLocalhost
+import java.io.File
 import org.junit.Assert.assertEquals
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -80,7 +81,7 @@ class LauncherCommandTest(private val launcher: LauncherFixture) {
     fun buildsMarimoEditCommand() {
         val cmd = launcher.command()
         assertEquals(launcher.executablePath, cmd.exePath)
-        assertEquals(WORK_DIR, cmd.workDirectory?.path)
+        assertEquals(File(WORK_DIR), cmd.workDirectory)
         assertEquals(
             launcher.expectedPrefix +
                 listOf(

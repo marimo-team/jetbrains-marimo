@@ -4,6 +4,7 @@ package io.marimo.notebook.launch
 
 import com.intellij.execution.configurations.GeneralCommandLine
 import com.intellij.execution.process.ProcessOutput
+import java.io.File
 import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -69,7 +70,7 @@ class LaunchThemeResolverTest {
                     listOf("-c", LaunchThemeResolver.CONFIG_PROBE, "/proj/a notebook.py"),
                 probe.parametersList.parameters,
             )
-            assertEquals("/proj", probe.workDirectory?.path)
+            assertEquals(File("/proj"), probe.workDirectory)
             assertEquals("dark", probe.environment["MARIMO_DISPLAY_THEME"])
             assertFalse(probe.parametersList.parameters.contains("dark"))
         }

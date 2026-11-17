@@ -76,7 +76,10 @@ class MarimoHarnessTest {
     @Test
     fun findOnPathTrueWhenAnyDirHasExecutable() {
         val path = listOf("/a", "/b").joinToString(java.io.File.pathSeparator)
-        val found = MarimoHarness.CLAUDE.findOnPath(path) { it == "/b/claude" }
+        val found =
+            MarimoHarness.CLAUDE.findOnPath(path) {
+                java.io.File(it) == java.io.File("/b", "claude")
+            }
         assertEquals(true, found)
     }
 

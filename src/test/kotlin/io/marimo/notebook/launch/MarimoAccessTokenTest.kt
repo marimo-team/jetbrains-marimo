@@ -3,12 +3,13 @@
 package io.marimo.notebook.launch
 
 import io.marimo.notebook.MarimoLocalhost
-import java.io.File
 import java.io.IOException
-import java.nio.file.Path
+import java.nio.file.Files
+import java.nio.file.attribute.AclFileAttributeView
 import java.nio.file.attribute.PosixFilePermission
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertSame
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -43,40 +44,42 @@ class MarimoAccessTokenTest {
     }
 
     @Test
-    fun rejectedFallbackPermissionChangeFails() {
-        val file = File.createTempFile("marimo-token-test-", ".txt")
+    fun tokenPasswordFileIsAccessibleToItsOwnerOnly() {
+        val path = writeTokenPasswordFile("token").toPath()
         try {
-            val operations =
-                object : TokenFilePermissionOperations {
-                    override fun setPosixFilePermissions(
-                        path: Path,
-                        permissions: Set<PosixFilePermission>,
-                    ) {
-                        throw UnsupportedOperationException()
-                    }
-
-                    override fun setReadable(
-                        file: File,
-                        readable: Boolean,
-                        ownerOnly: Boolean,
-                    ): Boolean = false
-
-                    override fun setWritable(
-                        file: File,
-                        writable: Boolean,
-                        ownerOnly: Boolean,
-                    ): Boolean = true
-
-                    override fun setExecutable(
-                        file: File,
-                        executable: Boolean,
-                        ownerOnly: Boolean,
-                    ): Boolean = true
-                }
-
-            assertThrows(IOException::class.java) { restrictTokenFilePermissions(file, operations) }
+            val views = path.fileSystem.supportedFileAttributeViews()
+            if ("posix" in views) {
+                assertEquals(
+                    setOf(PosixFilePermission.OWNER_READ, PosixFilePermission.OWNER_WRITE),
+                    Files.getPosixFilePermissions(path),
+                )
+            } else {
+                val view = Files.getFileAttributeView(path, AclFileAttributeView::class.java)
+                assertEquals(listOf(view.owner), view.acl.map { it.principal() })
+            }
+            assertEquals("token", Files.readString(path))
         } finally {
-            file.delete()
+            Files.deleteIfExists(path)
         }
+    }
+
+    @Test
+    fun posixFileSystemUsesPosixPermissions() {
+        assertSame(PosixRestrictor, privateFileRestrictorFor(setOf("basic", "posix", "owner")))
+    }
+
+    @Test
+    fun posixIsPreferredWhenBothViewsExist() {
+        assertSame(PosixRestrictor, privateFileRestrictorFor(setOf("posix", "acl")))
+    }
+
+    @Test
+    fun fileSystemWithoutPosixUsesAcl() {
+        assertSame(AclRestrictor, privateFileRestrictorFor(setOf("basic", "dos", "acl", "owner")))
+    }
+
+    @Test
+    fun fileSystemWithoutOwnerPermissionsIsRejected() {
+        assertThrows(IOException::class.java) { privateFileRestrictorFor(setOf("basic")) }
     }
 }
