@@ -4,6 +4,12 @@
 
 ## [Unreleased]
 
+## [0.2.1] - 2026-11-17
+
+### Fixed
+
+- Open notebooks on Windows again. In 0.2.0, every notebook showed "marimo couldn't be started" unless **Require an access token for notebook servers** was turned off. If you turned it off as a workaround, turn it back on in **Settings → Tools → marimo**.
+
 ## [0.2.0] - 2026-11-12
 
 ### Added
@@ -75,7 +81,8 @@ First public release of marimo for JetBrains IDEs.
 - Duplicating a notebook now opens the copy as an editor tab instead of a detached window; external links from the notebook open in your system browser.
 - Wait for the marimo server to accept connections before loading the editor, fixing an intermittent `ERR_CONNECTION_REFUSED` when opening a notebook.
 
-[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.2.0...HEAD
+[Unreleased]: https://github.com/marimo-team/jetbrains-marimo/compare/0.2.1...HEAD
+[0.2.1]: https://github.com/marimo-team/jetbrains-marimo/compare/0.2.0...0.2.1
 [0.2.0]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.2...0.2.0
 [0.1.2]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.1...0.1.2
 [0.1.1]: https://github.com/marimo-team/jetbrains-marimo/compare/0.1.0...0.1.1
